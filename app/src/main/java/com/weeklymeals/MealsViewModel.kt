@@ -14,7 +14,10 @@ import java.util.UUID
 
 /** One row on the "review before adding to cart" screen. */
 data class CartLine(
-    val item: ShopItem,
+    /** What gets searched at the store, e.g. "lemons" (also used to remember your pick). */
+    val term: String,
+    /** What the recipes call for, e.g. "2 Lemons, 1 tbsp Lemon zest". */
+    val need: String,
     val options: List<Product>,
     val selected: Int = 0,
     val include: Boolean = true,
@@ -267,16 +270,21 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val token = api.clientToken(k.clientId, k.clientSecret)
-                val lines = items.map { item ->
-                    val options = runCatching { api.searchProducts(token, k.store.id, item.name) }
+                // Items you'd buy as the same thing (Lemons + Lemon zest) become one line.
+                val groups = items.groupBy { Logic.searchTerm(it.name) }
+                val lines = groups.map { (term, group) ->
+                    val options = runCatching { api.searchProducts(token, k.store.id, term) }
                         .getOrDefault(emptyList())
-                    val remembered = k.choices[item.key]?.let { c -> options.indexOfFirst { it.upc == c.upc } } ?: -1
+                    val remembered = (k.choices["term:$term"] ?: group.firstNotNullOfOrNull { k.choices[it.key] })?.let { c -> options.indexOfFirst { it.upc == c.upc } } ?: -1
+                    // Whole items (2 lemons, 3 avocados) default to that many; everything else to 1.
+                    val count = group.filter { it.unit.isEmpty() }.sumOf { it.qty }
                     CartLine(
-                        item = item,
+                        term = term,
+                        need = group.joinToString(", ") { Logic.itemLabel(it) },
                         options = options,
                         selected = if (remembered >= 0) remembered else 0,
                         include = options.isNotEmpty(),
-                        quantity = 1,
+                        quantity = kotlin.math.ceil(count).toInt().coerceIn(1, 20),
                     )
                 }
                 review.value = CartReview(loading = false, lines = lines)
@@ -316,7 +324,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 store.update { s ->
                     val newChoices = chosen.associate {
                         val p = it.options[it.selected]
-                        it.item.key to Choice(p.upc, p.title)
+                        "term:${it.term}" to Choice(p.upc, p.title)
                     }
                     s.copy(kroger = s.kroger.copy(choices = s.kroger.choices + newChoices))
                 }

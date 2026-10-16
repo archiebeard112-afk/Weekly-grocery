@@ -186,6 +186,53 @@ object Logic {
         return Ingredient(q, u, name)
     }
 
+    // ---- What to search for at the store ------------------------------------
+
+    /** Recipe ingredients you get from buying something else (lemon zest -> lemons). */
+    private val buyAs = mapOf(
+        "lemon zest" to "lemons", "lemon juice" to "lemons", "lemon" to "lemons",
+        "lime zest" to "limes", "lime juice" to "limes", "lime" to "limes",
+        "orange zest" to "oranges", "orange juice" to "oranges", "orange" to "oranges",
+        "cooked rice" to "long grain white rice",
+        "egg" to "eggs", "large egg" to "eggs", "large eggs" to "eggs",
+        "celery stalks" to "celery",
+        "scallion" to "green onions", "scallions" to "green onions",
+        "garlic" to "garlic bulb",
+        "fresh ginger" to "ginger root",
+        "tomato" to "tomatoes", "large tomato" to "tomatoes",
+        "bell pepper" to "bell peppers",
+        "jalapeño" to "jalapeno peppers",
+        "fresno chile" to "fresno chili peppers",
+        "avocado" to "avocados",
+        "cucumber" to "cucumbers",
+        "onion" to "yellow onions", "yellow onion" to "yellow onions",
+        "small yellow onion" to "yellow onions", "red onion" to "red onions",
+    )
+
+    /** Words describing how it's prepped or its size, not what to buy. */
+    private val prepWords = Regex(
+        "\\b(zest|zested|juiced|chopped|minced|sliced|grated|peeled|cooked|" +
+            "drained|rinsed|softened|melted|large|small|medium|for serving|to taste)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Turns a recipe ingredient name into what to look for at King Soopers. */
+    fun searchTerm(name: String): String {
+        var n = name.lowercase()
+            .replace(Regex("\\(.*?\\)"), " ")   // "(drained)"
+            .substringBefore(",")                // "lemon, zested"
+            .trim()
+        if (" or " in n) {                       // "cotija or feta cheese" -> "cotija cheese"
+            val first = n.substringBefore(" or ").trim()
+            val rest = n.substringAfter(" or ").trim().split(" ")
+            n = if (first.contains(" ") || rest.size == 1) first else "$first ${rest.drop(1).joinToString(" ")}"
+        }
+        buyAs[n]?.let { return it }
+        val stripped = n.replace(prepWords, " ").replace(Regex("\\s+"), " ").trim()
+        buyAs[stripped]?.let { return it }
+        return stripped.ifEmpty { n }
+    }
+
     fun productLabel(p: Product): String = buildString {
         append(p.title)
         if (p.size.isNotBlank()) append(" · ").append(p.size)

@@ -161,8 +161,8 @@ private fun CartLineRow(line: CartLine, update: ((CartLine) -> CartLine) -> Unit
                     onCheckedChange = { c -> update { it.copy(include = c) } },
                 )
                 Column(Modifier.weight(1f)) {
-                    Text(line.item.name, style = MaterialTheme.typography.titleSmall)
-                    Text("Need: ${Logic.needText(line.item)}", style = MaterialTheme.typography.bodySmall)
+                    Text(line.term.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.titleSmall)
+                    Text("For: ${line.need}", style = MaterialTheme.typography.bodySmall)
                 }
                 if (line.options.isNotEmpty()) {
                     OutlinedButton(
