@@ -74,7 +74,7 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
             Button(
-                onClick = { vm.saveKrogerSettings(id, secret, zip); vm.findStore() },
+                onClick = { vm.findStore(id, secret, zip) },
                 enabled = !busy, modifier = Modifier.fillMaxWidth(),
             ) { Text("Save and find my store") }
             Text(

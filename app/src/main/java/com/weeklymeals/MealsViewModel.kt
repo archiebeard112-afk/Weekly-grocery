@@ -144,8 +144,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    fun findStore() {
-        val k = state.value.kroger
+    fun findStore(clientId: String, secret: String, zip: String) {
+        val k = KrogerState(clientId = clientId.trim(), clientSecret = secret.trim(), zip = zip.trim())
         if (k.clientId.isBlank() || k.clientSecret.isBlank() || k.zip.isBlank()) {
             message.value = "Enter client ID, secret and ZIP first"
             return
@@ -153,9 +153,18 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             busy.value = true
             try {
+                store.update { s ->
+                    val old = s.kroger
+                    val changedApp = old.clientId != k.clientId
+                    s.copy(kroger = old.copy(
+                        clientId = k.clientId, clientSecret = k.clientSecret, zip = k.zip,
+                        accessToken = if (changedApp) "" else old.accessToken,
+                        refreshToken = if (changedApp) "" else old.refreshToken,
+                    ))
+                }
                 val token = api.clientToken(k.clientId, k.clientSecret)
                 val found = api.findStore(token, k.zip)
-                if (found == null) message.value = "No King Soopers found near ${k.zip}"
+                if (found == null) message.value = "No stores found within 50 miles of ${k.zip}. Check the ZIP code."
                 else {
                     store.update { it.copy(kroger = it.kroger.copy(store = StoreInfo(found.id, found.name))) }
                     message.value = "Store set: ${found.name}"

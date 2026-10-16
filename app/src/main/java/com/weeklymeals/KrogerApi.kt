@@ -101,19 +101,25 @@ class KrogerApi {
     suspend fun findStore(token: String, zip: String): StoreResult? =
         withContext(Dispatchers.IO) {
             val url = Uri.parse("$BASE/locations").buildUpon()
-                .appendQueryParameter("filter.zipCode.near", zip)
-                .appendQueryParameter("filter.chain", "KING SOOPERS")
-                .appendQueryParameter("filter.limit", "1")
+                .appendQueryParameter("filter.zipCode.near", zip.trim())
+                .appendQueryParameter("filter.radiusInMiles", "50")
+                .appendQueryParameter("filter.limit", "50")
                 .build().toString()
             val req = Request.Builder().url(url)
                 .header("Authorization", "Bearer $token")
                 .header("Accept", "application/json").build()
             val data = JSONObject(call(req)).optJSONArray("data") ?: JSONArray()
-            if (data.length() == 0) null
-            else {
-                val o = data.getJSONObject(0)
-                StoreResult(o.getString("locationId"), o.optString("name", "King Soopers"))
+            // Results come back nearest first. Prefer the closest King Soopers,
+            // otherwise fall back to the closest Kroger-family store.
+            val stores = (0 until data.length()).map { data.getJSONObject(it) }
+                .filter { it.optString("locationId").isNotEmpty() }
+            fun isKingSoopers(o: JSONObject): Boolean {
+                val chain = o.optString("chain").replace(" ", "").uppercase()
+                val name = o.optString("name").replace(" ", "").uppercase()
+                return chain.contains("KINGSOOPERS") || name.contains("KINGSOOPERS")
             }
+            val pick = stores.firstOrNull { isKingSoopers(it) } ?: stores.firstOrNull()
+            pick?.let { StoreResult(it.getString("locationId"), it.optString("name", "King Soopers")) }
         }
 
     suspend fun searchProducts(token: String, storeId: String, term: String): List<Product> =
