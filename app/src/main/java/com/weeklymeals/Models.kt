@@ -35,7 +35,12 @@ data class RecipeBundle(val recipes: List<Recipe>, val sides: List<Side>)
 data class StoreInfo(val id: String = "", val name: String = "")
 
 @Serializable
-data class Choice(val upc: String, val label: String)
+data class Choice(
+    val upc: String,
+    val label: String,
+    /** The search you used to find it, if you typed your own (e.g. "jasmine rice"). */
+    val search: String = "",
+)
 
 @Serializable
 data class KrogerState(
@@ -61,4 +66,15 @@ data class UserState(
     val servings: Int = 2,
     val custom: List<Recipe> = emptyList(),
     val kroger: KrogerState = KrogerState(),
+    /** Past weeks, newest first. */
+    val history: List<PastWeek> = emptyList(),
+)
+
+@Serializable
+data class PastWeek(
+    /** When the week was finished, in milliseconds. */
+    val date: Long,
+    val recipes: List<Int>,
+    val sides: Map<Int, String> = emptyMap(),
+    val servings: Int = 2,
 )

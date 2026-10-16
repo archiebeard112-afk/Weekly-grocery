@@ -2,6 +2,7 @@ package com.weeklymeals
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,12 +15,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -57,7 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-private enum class Overlay { None, Settings, AddRecipe }
+private enum class Overlay { None, Settings, AddRecipe, History }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,19 +87,24 @@ fun App(vm: MealsViewModel) {
         if (Logic.isFav(r, st)) confirmRemove = r else vm.addFav(r.id)
     }
 
+    Box(Modifier.fillMaxSize()) {
     if (review != null) {
         CartReviewScreen(vm, review!!)
     } else if (overlay == Overlay.Settings) {
         SettingsScreen(vm, st) { overlay = Overlay.None }
+    } else if (overlay == Overlay.History) {
+        HistoryScreen(vm, st) { overlay = Overlay.None }
     } else if (overlay == Overlay.AddRecipe) {
         AddRecipeScreen(vm) { overlay = Overlay.None }
     } else {
         Scaffold(
-            snackbarHost = { SnackbarHost(snack) },
             topBar = {
                 TopAppBar(
                     title = { Text("Weekly Meals") },
                     actions = {
+                        IconButton(onClick = { overlay = Overlay.History }) {
+                            Icon(Icons.Filled.List, contentDescription = "History")
+                        }
                         IconButton(onClick = { overlay = Overlay.Settings }) {
                             Icon(Icons.Filled.Settings, contentDescription = "Settings")
                         }
@@ -134,6 +142,8 @@ fun App(vm: MealsViewModel) {
                 }
             }
         }
+    }
+    SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
     }
 
     confirmRemove?.let { r ->
@@ -247,6 +257,7 @@ private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) 
 @Composable
 private fun WeekScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit) {
     val all = vm.recipes(st)
+    var confirmFinish by remember { mutableStateOf(false) }
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -290,7 +301,7 @@ private fun WeekScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) ->
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Side: ", style = MaterialTheme.typography.bodyMedium)
-                        androidx.compose.foundation.layout.Box {
+                        Box {
                             OutlinedButton(onClick = { menu = true }) { Text(side?.label ?: "None") }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(text = { Text("None") }, onClick = { vm.setSide(id, null); menu = false })
@@ -315,6 +326,25 @@ private fun WeekScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) ->
                 }
             }
         }
+        if (st.week.isNotEmpty()) {
+            item {
+                OutlinedButton(
+                    onClick = { confirmFinish = true },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) { Text("Finish week (save to History and start fresh)") }
+            }
+        }
+    }
+    if (confirmFinish) {
+        AlertDialog(
+            onDismissRequest = { confirmFinish = false },
+            title = { Text("Finish this week?") },
+            text = { Text("Your ${st.week.size} meals will be saved to History, and My Week and the shopping list will be cleared.") },
+            confirmButton = {
+                TextButton(onClick = { vm.finishWeek(); confirmFinish = false }) { Text("Finish week") }
+            },
+            dismissButton = { TextButton(onClick = { confirmFinish = false }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -361,5 +391,89 @@ private fun FavoritesScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recip
                 }
             }
         }
+    }
+}
+
+// ---- History -----------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
+    val all = vm.recipes(st)
+    val fmt = remember { java.text.SimpleDateFormat("EEE, MMM d, yyyy", java.util.Locale.getDefault()) }
+    var confirmDelete by remember { mutableStateOf<PastWeek?>(null) }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("History") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") }
+                },
+            )
+        },
+    ) { pad ->
+        LazyColumn(
+            Modifier.padding(pad).fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (st.history.isEmpty()) {
+                item {
+                    Text(
+                        "No past weeks yet. When you're done with a week, tap \"Finish week\" at the bottom of My Week to save it here.",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
+            items(st.history, key = { it.date }) { w ->
+                var open by remember { mutableStateOf<Int?>(null) }
+                Card(colors = cardColors, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text("Week of ${fmt.format(java.util.Date(w.date))}", style = MaterialTheme.typography.titleMedium)
+                        Text("${w.recipes.size} meals · cooking for ${w.servings}", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.padding(4.dp))
+                        w.recipes.forEach { id ->
+                            val r = all[id]
+                            if (r == null) {
+                                Text("• (recipe no longer available)", style = MaterialTheme.typography.bodyMedium)
+                            } else {
+                                val side = w.sides[id]?.let { vm.sideMap[it] }
+                                TextButton(onClick = { open = if (open == id) null else id }) {
+                                    Text(
+                                        "${r.emoji}  ${r.name}" + (side?.let { " + ${it.label}" } ?: ""),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                                if (open == id) {
+                                    Column(Modifier.padding(start = 12.dp, bottom = 6.dp)) {
+                                        RecipeDetails(r, w.servings, side)
+                                        TextButton(onClick = { vm.addToWeek(id) }, enabled = id !in st.week) {
+                                            Text(if (id in st.week) "In this week" else "Add to this week")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Button(onClick = {
+                                vm.repeatWeek(w)
+                                vm.message.value = "Added to My Week"
+                            }) { Text("Repeat this week") }
+                            Spacer(Modifier.weight(1f))
+                            IconButton(onClick = { confirmDelete = w }) { Icon(Icons.Filled.Delete, "Delete") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    confirmDelete?.let { w ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("Delete this week?") },
+            text = { Text("This removes it from History. Your recipes and favorites are not affected.") },
+            confirmButton = { TextButton(onClick = { vm.deletePastWeek(w); confirmDelete = null }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Keep") } },
+        )
     }
 }

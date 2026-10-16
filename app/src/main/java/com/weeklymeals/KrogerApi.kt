@@ -127,7 +127,7 @@ class KrogerApi {
             val url = Uri.parse("$BASE/products").buildUpon()
                 .appendQueryParameter("filter.term", term)
                 .appendQueryParameter("filter.locationId", storeId)
-                .appendQueryParameter("filter.limit", "6")
+                .appendQueryParameter("filter.limit", "50")
                 .build().toString()
             val req = Request.Builder().url(url)
                 .header("Authorization", "Bearer $token")

@@ -18,6 +18,9 @@ data class CartLine(
     val term: String,
     /** What the recipes call for, e.g. "2 Lemons, 1 tbsp Lemon zest". */
     val need: String,
+    /** The search currently shown (starts as [term]; you can type your own). */
+    val search: String = term,
+    val searching: Boolean = false,
     val options: List<Product>,
     val selected: Int = 0,
     val include: Boolean = true,
@@ -96,6 +99,26 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun setSide(id: Int, key: String?) = edit { s ->
         s.copy(sides = if (key == null) s.sides - id else s.sides + (id to key))
     }
+
+    /** Saves this week to History, then clears it so you can plan the next one. */
+    fun finishWeek() = edit { s ->
+        if (s.week.isEmpty()) s else s.copy(
+            history = listOf(PastWeek(System.currentTimeMillis(), s.week, s.sides.filterKeys { it in s.week }, s.servings)) +
+                s.history.take(99),
+            week = emptyList(),
+            sides = emptyMap(),
+            checked = emptySet(),
+        )
+    }
+
+    /** Puts a past week's recipes back into this week (keeps anything already planned). */
+    fun repeatWeek(w: PastWeek) = edit { s ->
+        val all = recipes(s)
+        val add = w.recipes.filter { it in all && it !in s.week }
+        s.copy(week = s.week + add, sides = s.sides + w.sides.filterKeys { it in add })
+    }
+
+    fun deletePastWeek(w: PastWeek) = edit { s -> s.copy(history = s.history - w) }
 
     fun setServings(n: Int) = edit { it.copy(servings = n.coerceIn(1, 12)) }
 
@@ -273,14 +296,17 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 // Items you'd buy as the same thing (Lemons + Lemon zest) become one line.
                 val groups = items.groupBy { Logic.searchTerm(it.name) }
                 val lines = groups.map { (term, group) ->
-                    val options = runCatching { api.searchProducts(token, k.store.id, term) }
+                    val saved = k.choices["term:$term"] ?: group.firstNotNullOfOrNull { k.choices[it.key] }
+                    val search = saved?.search?.ifBlank { null } ?: term
+                    val options = runCatching { api.searchProducts(token, k.store.id, search) }
                         .getOrDefault(emptyList())
-                    val remembered = (k.choices["term:$term"] ?: group.firstNotNullOfOrNull { k.choices[it.key] })?.let { c -> options.indexOfFirst { it.upc == c.upc } } ?: -1
+                    val remembered = saved?.let { c -> options.indexOfFirst { it.upc == c.upc } } ?: -1
                     // Whole items (2 lemons, 3 avocados) default to that many; everything else to 1.
                     val count = group.filter { it.unit.isEmpty() }.sumOf { it.qty }
                     CartLine(
                         term = term,
                         need = group.joinToString(", ") { Logic.itemLabel(it) },
+                        search = search,
                         options = options,
                         selected = if (remembered >= 0) remembered else 0,
                         include = options.isNotEmpty(),
@@ -298,6 +324,27 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val r = review.value ?: return
         if (index !in r.lines.indices) return
         review.value = r.copy(lines = r.lines.toMutableList().also { it[index] = block(it[index]) })
+    }
+
+    /** Searches King Soopers again for one line with your own words (e.g. "jasmine rice"). */
+    fun researchLine(index: Int, query: String) {
+        val q = query.trim()
+        val k = state.value.kroger
+        if (q.isEmpty()) return
+        updateLine(index) { it.copy(search = q, searching = true) }
+        viewModelScope.launch {
+            try {
+                val token = api.clientToken(k.clientId, k.clientSecret)
+                val options = api.searchProducts(token, k.store.id, q)
+                updateLine(index) {
+                    it.copy(options = options, selected = 0, include = options.isNotEmpty(), searching = false)
+                }
+                if (options.isEmpty()) message.value = "Nothing found for \"$q\""
+            } catch (e: Exception) {
+                updateLine(index) { it.copy(searching = false) }
+                message.value = e.message ?: "Could not search products"
+            }
+        }
     }
 
     fun closeReview() {
@@ -324,7 +371,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 store.update { s ->
                     val newChoices = chosen.associate {
                         val p = it.options[it.selected]
-                        "term:${it.term}" to Choice(p.upc, p.title)
+                        "term:${it.term}" to Choice(p.upc, p.title, if (it.search != it.term) it.search else "")
                     }
                     s.copy(kroger = s.kroger.copy(choices = s.kroger.choices + newChoices))
                 }
