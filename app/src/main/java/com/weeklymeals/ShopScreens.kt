@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -133,6 +134,8 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, openSettings: () -> Unit) {
 fun CartReviewScreen(vm: MealsViewModel, review: CartReview) {
     val busy by vm.busy.collectAsState()
     var picking by remember { mutableStateOf<Int?>(null) }
+    // Kept here (outside the list) so the scroll position survives opening the product list.
+    val listState = rememberLazyListState()
     val pickIdx = picking
     if (pickIdx != null && pickIdx in review.lines.indices) {
         ProductPicker(vm, pickIdx, review.lines[pickIdx]) { picking = null }
@@ -168,6 +171,7 @@ fun CartReviewScreen(vm: MealsViewModel, review: CartReview) {
                 }
                 review.error != null -> Text(review.error, modifier = Modifier.padding(20.dp))
                 else -> LazyColumn(
+                    state = listState,
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
