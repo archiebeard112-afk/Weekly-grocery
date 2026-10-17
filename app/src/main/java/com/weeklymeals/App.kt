@@ -1,5 +1,14 @@
 package com.weeklymeals
 
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.os.Build
+import android.content.pm.PackageManager
+import android.Manifest
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -80,6 +89,22 @@ fun App(vm: MealsViewModel) {
     var overlay by rememberSaveable { mutableStateOf(Overlay.None) }
     var confirmRemove by remember { mutableStateOf<Recipe?>(null) }
     var viewing by rememberSaveable { mutableStateOf<Int?>(null) }
+    val ctx = LocalContext.current
+    val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (!ok) vm.message.value = "Allow notifications so timers can ring"
+    }
+    val timerCtl: (Recipe) -> TimerCtl = { r ->
+        TimerCtl(
+            prefix = "r${r.id}", title = r.name, running = st.timers,
+            start = { key, label, minutes ->
+                if (Build.VERSION.SDK_INT >= 33 &&
+                    ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                vm.startTimer(key, label, minutes)
+            },
+            stop = { vm.stopTimer(it) },
+        )
+    }
 
     LaunchedEffect(msg) {
         msg?.let {
@@ -100,7 +125,7 @@ fun App(vm: MealsViewModel) {
     if (review != null) {
         CartReviewScreen(vm, review!!)
     } else if (overlay == Overlay.None && viewing != null) {
-        RecipeScreen(vm, st, viewing!!, toggleFav) { viewing = null }
+        RecipeScreen(vm, st, viewing!!, toggleFav, timerCtl) { viewing = null }
     } else if (overlay == Overlay.Settings) {
         SettingsScreen(vm, st) { overlay = Overlay.None }
     } else if (overlay == Overlay.History) {
@@ -147,7 +172,7 @@ fun App(vm: MealsViewModel) {
             Column(Modifier.padding(pad).fillMaxSize()) {
                 when (tab) {
                     0 -> BrowseScreen(vm, st, toggleFav) { viewing = it }
-                    1 -> WeekScreen(vm, st, toggleFav)
+                    1 -> WeekScreen(vm, st, toggleFav, timerCtl)
                     2 -> FavoritesScreen(vm, st, toggleFav) { overlay = Overlay.AddRecipe }
                     else -> ShopScreen(vm, st) { overlay = Overlay.Settings }
                 }
@@ -172,10 +197,65 @@ fun App(vm: MealsViewModel) {
 
 // ---- Shared pieces ----------------------------------------------------------------
 
+/** Lets steps show timer buttons (only for recipes in your week). */
+data class TimerCtl(
+    val prefix: String,
+    val title: String,
+    val running: Map<String, Long>,
+    val start: (key: String, label: String, minutes: Int) -> Unit,
+    val stop: (key: String) -> Unit,
+)
+
 @Composable
-private fun Steps(steps: List<String>) {
+private fun Steps(steps: List<String>, ctl: TimerCtl? = null) {
     steps.forEachIndexed { n, s ->
         Text("${n + 1}. $s", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp))
+        if (ctl != null) {
+            val times = Logic.stepTimes(s)
+            if (times.isNotEmpty()) {
+                Row(
+                    Modifier.padding(start = 16.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    times.forEachIndexed { k, t ->
+                        TimerButton("${ctl.prefix}:$n:$k", "${ctl.title}: step ${n + 1}", t, ctl)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimerButton(key: String, label: String, t: Logic.StepTime, ctl: TimerCtl) {
+    val end = ctl.running[key]
+    val small = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+    if (end == null) {
+        OutlinedButton(
+            onClick = { ctl.start(key, label, t.minutes) },
+            contentPadding = small, modifier = Modifier.height(34.dp),
+        ) { Text("⏱ " + Logic.fmtMinutes(t.minutes) + if (t.perSide) " per side" else "") }
+        return
+    }
+    var now by remember(key) { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(key, end) {
+        while (true) {
+            now = System.currentTimeMillis()
+            if (now >= end) break
+            delay(500)
+        }
+    }
+    val left = ((end - now) / 1000).coerceAtLeast(0)
+    if (left > 0) {
+        FilledTonalButton(
+            onClick = { ctl.stop(key) },
+            contentPadding = small, modifier = Modifier.height(34.dp),
+        ) { Text("⏱ %d:%02d  ·  Stop".format(left / 60, left % 60)) }
+    } else {
+        Button(
+            onClick = { ctl.stop(key) },
+            contentPadding = small, modifier = Modifier.height(34.dp),
+        ) { Text("⏰ Done! Tap to stop") }
     }
 }
 
@@ -189,16 +269,16 @@ private fun Heading(text: String) {
 }
 
 @Composable
-private fun RecipeDetails(r: Recipe, serv: Int, side: Side?) {
+private fun RecipeDetails(r: Recipe, serv: Int, side: Side?, ctl: TimerCtl? = null) {
     Heading("Ingredients (for $serv)")
     r.ingredients.forEach { Text("• " + Logic.ingText(it, serv, r.base), style = MaterialTheme.typography.bodyMedium) }
     Heading("Steps")
-    Steps(r.steps)
+    Steps(r.steps, ctl)
     if (side != null) {
         Heading("Side: ${side.label}")
         side.ingredients.forEach { Text("• " + Logic.ingText(it, serv, 4), style = MaterialTheme.typography.bodyMedium) }
         Spacer(Modifier.padding(2.dp))
-        Steps(side.steps)
+        Steps(side.steps, ctl?.copy(prefix = ctl.prefix + "side", title = side.label.substringAfter(" ")))
     }
 }
 
@@ -272,7 +352,7 @@ private fun RecipeTile(
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (inWeek) "In your week" else "",
+                    "⏱ " + Logic.fmtShort(Logic.cookMinutes(r)),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f),
@@ -293,7 +373,10 @@ private fun RecipeTile(
 /** One recipe on its own page: buttons at the top, then ingredients and steps. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RecipeScreen(vm: MealsViewModel, st: UserState, id: Int, toggleFav: (Recipe) -> Unit, onBack: () -> Unit) {
+private fun RecipeScreen(
+    vm: MealsViewModel, st: UserState, id: Int, toggleFav: (Recipe) -> Unit,
+    timerCtl: (Recipe) -> TimerCtl, onBack: () -> Unit,
+) {
     val r = vm.recipes(st)[id]
     if (r == null) { onBack(); return }
     val side = st.sides[id]?.let { vm.sideMap[it] }
@@ -301,23 +384,32 @@ private fun RecipeScreen(vm: MealsViewModel, st: UserState, id: Int, toggleFav: 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(r.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = { },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
                 actions = { FavButton(r, st, toggleFav) },
             )
         },
     ) { pad ->
         Column(
-            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(r.emoji, style = MaterialTheme.typography.displaySmall)
                 Spacer(Modifier.width(12.dp))
-                Button(onClick = { vm.addToWeek(id) }, enabled = !inWeek) {
-                    Text(if (inWeek) "In your week" else "Add to week")
-                }
+                Text(r.name, style = MaterialTheme.typography.headlineSmall)
             }
-            RecipeDetails(r, st.servings, if (inWeek) side else null)
+            Text(
+                "⏱ About ${Logic.fmtMinutes(Logic.cookMinutes(r))} total",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            Button(
+                onClick = { vm.addToWeek(id) }, enabled = !inWeek,
+                modifier = Modifier.padding(top = 8.dp),
+            ) { Text(if (inWeek) "In your week" else "Add to week") }
+            RecipeDetails(r, st.servings, if (inWeek) side else null, if (inWeek) timerCtl(r) else null)
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
@@ -325,7 +417,7 @@ private fun RecipeScreen(vm: MealsViewModel, st: UserState, id: Int, toggleFav: 
 // ---- My Week -----------------------------------------------------------------------
 
 @Composable
-private fun WeekScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit) {
+private fun WeekScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit, timerCtl: (Recipe) -> TimerCtl) {
     val all = vm.recipes(st)
     var confirmFinish by remember { mutableStateOf(false) }
     LazyColumn(
@@ -392,7 +484,7 @@ private fun WeekScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) ->
                             Icon(Icons.Filled.Delete, "Remove from week")
                         }
                     }
-                    if (open) RecipeDetails(r, st.servings, side)
+                    if (open) RecipeDetails(r, st.servings, side, timerCtl(r))
                 }
             }
         }

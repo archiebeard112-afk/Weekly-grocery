@@ -68,6 +68,8 @@ data class UserState(
     val kroger: KrogerState = KrogerState(),
     /** Past weeks, newest first. */
     val history: List<PastWeek> = emptyList(),
+    /** Running cooking timers: key -> time it ends (milliseconds). */
+    val timers: Map<String, Long> = emptyMap(),
 )
 
 @Serializable

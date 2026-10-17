@@ -284,6 +284,44 @@ object Logic {
         return ceil(q - 0.05).toInt().coerceIn(1, 20)
     }
 
+    // ---- Cooking times -------------------------------------------------------
+
+    /** A time found in a step, e.g. "4-5 min per side" -> 5 minutes, per side. */
+    data class StepTime(val minutes: Int, val perSide: Boolean)
+
+    private val timeRx = Regex(
+        "(\\d+)(?:\\s*(?:-|–|to)\\s*(\\d+))?\\s*(minutes|minute|mins|min|hours|hour|hrs|hr)\\b(\\s+(?:per|each) side)?",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun stepTimes(step: String): List<StepTime> = timeRx.findAll(step).mapNotNull { m ->
+        val n = (m.groupValues[2].ifEmpty { m.groupValues[1] }).toIntOrNull() ?: return@mapNotNull null
+        val mins = if (m.groupValues[3].lowercase().startsWith("h")) n * 60 else n
+        if (mins <= 0) null else StepTime(mins, m.groupValues[4].isNotEmpty())
+    }.toList()
+
+    /** Rough total time: prep (based on ingredient count) plus every timed step. */
+    fun cookMinutes(r: Recipe): Int {
+        val prep = 8 + r.ingredients.size
+        val cook = r.steps.sumOf { s ->
+            val t = stepTimes(s)
+            if (t.isEmpty()) 3 else t.sumOf { if (it.perSide) it.minutes * 2 else it.minutes }
+        }
+        return ((prep + cook + 4) / 5) * 5
+    }
+
+    fun fmtMinutes(m: Int): String = when {
+        m < 60 -> "$m min"
+        m % 60 == 0 -> "${m / 60} hr"
+        else -> "${m / 60} hr ${m % 60} min"
+    }
+
+    fun fmtShort(m: Int): String = when {
+        m < 60 -> "${m}m"
+        m % 60 == 0 -> "${m / 60}h"
+        else -> "${m / 60}h ${m % 60}m"
+    }
+
     fun productLabel(p: Product): String = buildString {
         append(p.title)
         if (p.size.isNotBlank()) append(" · ").append(p.size)

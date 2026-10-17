@@ -122,6 +122,19 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deletePastWeek(w: PastWeek) = edit { s -> s.copy(history = s.history - w) }
 
+    // ---- Cooking timers --------------------------------------------------------
+
+    fun startTimer(key: String, label: String, minutes: Int) {
+        val end = System.currentTimeMillis() + minutes * 60_000L
+        Timers.schedule(getApplication(), key, label, end)
+        edit { it.copy(timers = it.timers + (key to end)) }
+    }
+
+    fun stopTimer(key: String) {
+        Timers.cancel(getApplication(), key)
+        edit { it.copy(timers = it.timers - key) }
+    }
+
     fun setServings(n: Int) = edit { it.copy(servings = n.coerceIn(1, 12)) }
 
     // ---- Favorites -----------------------------------------------------------

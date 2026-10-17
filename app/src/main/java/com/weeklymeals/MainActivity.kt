@@ -14,6 +14,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Timers.ensureChannel(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         goFullScreen()
         if (savedInstanceState == null) handle(intent)
