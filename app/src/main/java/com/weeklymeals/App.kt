@@ -398,10 +398,9 @@ private fun WeekScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) ->
         }
         if (st.week.isNotEmpty()) {
             item {
-                OutlinedButton(
-                    onClick = { confirmFinish = true },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                ) { Text("Finish week (save to History and start fresh)") }
+                Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
+                    OutlinedButton(onClick = { confirmFinish = true }) { Text("Finish week") }
+                }
             }
         }
     }
