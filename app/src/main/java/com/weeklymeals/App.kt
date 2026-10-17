@@ -77,6 +77,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 
 private enum class Overlay { None, Settings, AddRecipe, History }
@@ -167,7 +168,7 @@ fun App(vm: MealsViewModel) {
                     )
                     NavigationBarItem(
                         selected = tab == 3, onClick = { tab = 3 },
-                        icon = { Text("🍿", style = MaterialTheme.typography.titleMedium) },
+                        icon = { Icon(painterResource(R.drawable.ic_snack), null) },
                         label = { Text(if (st.snacks.isEmpty()) "Snacks" else "Snacks (${st.snacks.size})", maxLines = 1) },
                     )
                     NavigationBarItem(
