@@ -254,7 +254,7 @@ private fun ProductPicker(vm: MealsViewModel, index: Int, line: CartLine, onClos
                         Row(
                             Modifier.fillMaxWidth()
                                 .clickable {
-                                    vm.updateLine(index) { it.copy(selected = n, include = true) }
+                                    vm.selectProduct(index, n)
                                     onClose()
                                 }
                                 .padding(horizontal = 8.dp, vertical = 4.dp),

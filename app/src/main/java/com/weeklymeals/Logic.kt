@@ -68,10 +68,11 @@ object Logic {
 
     // ---- Store sections ------------------------------------------------------
 
-    private val seasonings = Regex("paprika|coriander|cumin|turmeric|cayenne|cinnamon|oregano|seasoning|powder|pepper flakes|black pepper|kosher salt|dried|ground ginger")
+    private val seasonings = Regex("masala|lemon pepper|paprika|coriander|cumin|turmeric|cayenne|cinnamon|oregano|seasoning|powder|pepper flakes|black pepper|kosher salt|dried|ground ginger")
     private val frozen = Regex("frozen|egg rolls|hash browns|pie crust|edamame")
+    private val deli = Regex("\\bham\\b|kielbasa|pepperoni|deli |smoked sausage")
     private val pantryFirst = Regex("broth|stock|soup|peanut butter|coconut|noodles|chips|breadcrumbs|panko|croutons|tuna|sun-dried|crushed|diced|pineapple|pickles|cornbread|sauce|dressing|pesto")
-    private val produce = Regex("onion|garlic|bell pepper|jalape|chile|tomato|cucumber|lettuce|greens|spinach|broccoli|carrot|celery|potato|squash|zucchini|mushroom|avocado|lemon|lime|orange|apple|banana|berries|grapes|cilantro|basil|dill|parsley|ginger|asparagus|green beans|corn on the cob|cauliflower|bok choy|cabbage|coleslaw|sprouts|scallion|romaine")
+    private val produce = Regex("\\bkale\\b|eggplant|\\bpears?\\b|rosemary|fresh thyme|onion|garlic|bell pepper|jalape|chile|tomato|cucumber|lettuce|greens|spinach|broccoli|carrot|celery|potato|squash|zucchini|mushroom|avocado|lemon|lime|orange|apple|banana|berries|grapes|cilantro|basil|dill|parsley|ginger|asparagus|green beans|corn on the cob|cauliflower|bok choy|cabbage|coleslaw|sprouts|scallion|romaine")
     private val meat = Regex("chicken|beef|pork|sausage|chorizo|bacon|turkey|steak|salmon|shrimp|cod|fish|tenderloin")
     private val dairy = Regex("egg|milk|butter|cream|cheese|mozzarella|cheddar|parmesan|feta|goat|ricotta|yogurt|cotija|swiss")
     private val bakery = Regex("bread|baguette|buns|tortillas|pita|naan|rolls|flatbread|dough|wraps|hoagie")
@@ -81,6 +82,7 @@ object Logic {
         return when {
             seasonings.containsMatchIn(n) -> AISLES[6]
             frozen.containsMatchIn(n) -> AISLES[4]
+            deli.containsMatchIn(n) -> AISLES[1]
             pantryFirst.containsMatchIn(n) -> AISLES[5]
             produce.containsMatchIn(n) -> AISLES[0]
             meat.containsMatchIn(n) -> AISLES[1]
@@ -193,7 +195,7 @@ object Logic {
         "lemon zest" to "lemons", "lemon juice" to "lemons", "lemon" to "lemons",
         "lime zest" to "limes", "lime juice" to "limes", "lime" to "limes",
         "orange zest" to "oranges", "orange juice" to "oranges", "orange" to "oranges",
-        "cooked rice" to "long grain white rice",
+        "cooked rice" to "long grain white rice", "cooked chicken" to "rotisserie chicken",
         "egg" to "eggs", "large egg" to "eggs", "large eggs" to "eggs",
         "celery stalks" to "celery",
         "scallion" to "green onions", "scallions" to "green onions",
@@ -231,6 +233,55 @@ object Logic {
         val stripped = n.replace(prepWords, " ").replace(Regex("\\s+"), " ").trim()
         buyAs[stripped]?.let { return it }
         return stripped.ifEmpty { n }
+    }
+
+    // ---- How many packages to buy --------------------------------------------
+
+    /** How much the recipes call for, in pounds and/or whole pieces. */
+    data class Need(val lb: Double = 0.0, val count: Double = 0.0)
+
+    /** Rough weight of one piece, for recipes that count meat or fish by the piece. */
+    private val pieceLb = listOf(
+        "pork tenderloin" to 1.25, "tenderloin" to 0.12, "thigh" to 0.3, "drumstick" to 0.25,
+        "wing" to 0.12, "breast" to 0.5, "chop" to 0.45, "fillet" to 0.4, "steak" to 0.6,
+        "sausage" to 0.25, "bratwurst" to 0.25,
+    )
+
+    fun needOf(items: List<ShopItem>): Need {
+        var lb = 0.0
+        var count = 0.0
+        for (i in items) {
+            when (i.unit) {
+                "lb" -> lb += i.qty
+                "oz" -> lb += i.qty / 16.0
+                "" -> {
+                    val w = pieceLb.firstOrNull { i.name.lowercase().contains(it.first) }?.second
+                    if (w != null) lb += i.qty * w else count += i.qty
+                }
+            }
+        }
+        return Need(lb, count)
+    }
+
+    private val sizeRx = Regex("(\\d+(?:\\.\\d+)?)\\s*(lbs?|oz|ct|count|pk|pack|each|ea)\\b")
+
+    /**
+     * Number of packages to add, using the product's size ("1.5 lb", "3 ct", "16 oz").
+     * 4 chicken thighs (~1.2 lb) with a 1.5 lb pack -> 1. 3 lemons sold each -> 3.
+     */
+    fun suggestQty(need: Need, p: Product?): Int {
+        if (p == null) return 1
+        val m = sizeRx.find(p.size.lowercase())
+        val v = m?.groupValues?.get(1)?.toDoubleOrNull()?.takeIf { it > 0 }
+        val unit = m?.groupValues?.get(2).orEmpty()
+        val q = when {
+            need.lb > 0 && v != null && unit.startsWith("lb") -> need.lb / v
+            need.lb > 0 && v != null && unit == "oz" -> need.lb * 16 / v
+            need.count > 0 && v != null && unit in setOf("ct", "count", "pk", "pack") -> need.count / v
+            need.count > 0 && (v == null || unit in setOf("each", "ea")) -> need.count
+            else -> 1.0
+        }
+        return ceil(q - 0.05).toInt().coerceIn(1, 20)
     }
 
     fun productLabel(p: Product): String = buildString {

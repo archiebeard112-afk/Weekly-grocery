@@ -21,6 +21,8 @@ data class CartLine(
     /** The search currently shown (starts as [term]; you can type your own). */
     val search: String = term,
     val searching: Boolean = false,
+    /** Total amount the recipes need, used to work out how many packages to add. */
+    val needAmount: Logic.Need = Logic.Need(),
     val options: List<Product>,
     val selected: Int = 0,
     val include: Boolean = true,
@@ -301,16 +303,17 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                     val options = runCatching { api.searchProducts(token, k.store.id, search) }
                         .getOrDefault(emptyList())
                     val remembered = saved?.let { c -> options.indexOfFirst { it.upc == c.upc } } ?: -1
-                    // Whole items (2 lemons, 3 avocados) default to that many; everything else to 1.
-                    val count = group.filter { it.unit.isEmpty() }.sumOf { it.qty }
+                    val needAmount = Logic.needOf(group)
+                    val sel = if (remembered >= 0) remembered else 0
                     CartLine(
                         term = term,
                         need = group.joinToString(", ") { Logic.itemLabel(it) },
                         search = search,
                         options = options,
-                        selected = if (remembered >= 0) remembered else 0,
+                        selected = sel,
                         include = options.isNotEmpty(),
-                        quantity = kotlin.math.ceil(count).toInt().coerceIn(1, 20),
+                        needAmount = needAmount,
+                        quantity = Logic.suggestQty(needAmount, options.getOrNull(sel)),
                     )
                 }
                 review.value = CartReview(loading = false, lines = lines)
@@ -337,7 +340,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 val token = api.clientToken(k.clientId, k.clientSecret)
                 val options = api.searchProducts(token, k.store.id, q)
                 updateLine(index) {
-                    it.copy(options = options, selected = 0, include = options.isNotEmpty(), searching = false)
+                    it.copy(
+                        options = options, selected = 0, include = options.isNotEmpty(), searching = false,
+                        quantity = Logic.suggestQty(it.needAmount, options.firstOrNull()),
+                    )
                 }
                 if (options.isEmpty()) message.value = "Nothing found for \"$q\""
             } catch (e: Exception) {
@@ -345,6 +351,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 message.value = e.message ?: "Could not search products"
             }
         }
+    }
+
+    /** Picks a different product for a line and recalculates how many packages it needs. */
+    fun selectProduct(index: Int, n: Int) = updateLine(index) {
+        it.copy(selected = n, include = true, quantity = Logic.suggestQty(it.needAmount, it.options.getOrNull(n)))
     }
 
     fun closeReview() {
