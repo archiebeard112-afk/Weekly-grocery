@@ -8,7 +8,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
@@ -56,6 +63,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** The 10 recipes currently on the Browse tab. */
     val browse = MutableStateFlow<List<Int>>(emptyList())
 
+    /** Browse shows only meals with $3+ of savings when this is on. */
+    val saleOnly = MutableStateFlow(false)
+
     init {
         refreshBrowse()
     }
@@ -64,9 +74,104 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         (bundle.recipes + st.custom).associateBy { it.id }
 
     fun refreshBrowse() {
+        if (saleOnly.value) {
+            val st = state.value
+            val cache = salesCache(st)
+            val pool = recipes(st).values.filter { Sales.savings(it, st.servings, cache) >= Sales.MIN_SAVINGS }.map { it.id }
+            browse.value = pool.shuffled().take(10)
+            if (pool.isEmpty()) message.value = "No meals save \$3 or more at your store today"
+            return
+        }
         val pool = bundle.recipes.filter { !it.imported }.map { it.id }
         browse.value = pool.shuffled().take(10)
     }
+
+    // ---- Sales -------------------------------------------------------------------
+
+    /** (done, total) while sale prices are being checked; null when idle. */
+    val salesProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+
+    /** Today's sale prices for your store (empty if stale or another store). */
+    fun salesCache(st: UserState = state.value): SalesCache =
+        st.sales.takeIf { it.day == Sales.today() && it.storeId == st.kroger.store.id } ?: SalesCache()
+
+    private suspend fun fetchSales(terms: Collection<String>) {
+        val st = state.value
+        val k = st.kroger
+        val cache = salesCache(st)
+        val todo = terms.filter { it !in cache.checked }.distinct()
+        if (todo.isEmpty()) return
+        val token = api.clientToken(k.clientId, k.clientSecret)
+        val found = ConcurrentHashMap<String, SaleItem>()
+        val done = AtomicInteger(0)
+        salesProgress.value = 0 to todo.size
+        try {
+            coroutineScope {
+                val gate = Semaphore(4)
+                todo.map { t ->
+                    async {
+                        gate.withPermit {
+                            runCatching { api.searchProducts(token, k.store.id, t, limit = 15) }.getOrNull()
+                                ?.let { Sales.bestSale(t, it) }
+                                ?.let { found[t] = it }
+                            salesProgress.value = done.incrementAndGet() to todo.size
+                        }
+                    }
+                }.awaitAll()
+            }
+            store.update { s ->
+                val c = s.sales.takeIf { it.day == Sales.today() && it.storeId == k.store.id } ?: SalesCache()
+                s.copy(sales = c.copy(day = Sales.today(), storeId = k.store.id, checked = c.checked + todo, items = c.items + found))
+            }
+        } finally {
+            salesProgress.value = null
+        }
+    }
+
+    private fun storeReady(): Boolean {
+        val k = state.value.kroger
+        if (k.store.id.isEmpty() || k.clientId.isBlank()) {
+            message.value = "Pick your King Soopers store in Settings first"
+            return false
+        }
+        return true
+    }
+
+    fun setSaleOnly(on: Boolean) {
+        if (!on) {
+            saleOnly.value = false
+            refreshBrowse()
+            return
+        }
+        if (!storeReady() || salesProgress.value != null) return
+        viewModelScope.launch {
+            try {
+                val st = state.value
+                fetchSales(recipes(st).values.flatMap { Sales.terms(it, st.servings) }.toSet())
+                saleOnly.value = true
+                refreshBrowse()
+            } catch (e: Exception) {
+                message.value = e.message ?: "Could not check sale prices"
+            }
+        }
+    }
+
+    /** Checks sale prices for just one recipe's main ingredients. */
+    fun checkSales(r: Recipe) {
+        if (!storeReady() || salesProgress.value != null) return
+        viewModelScope.launch {
+            try {
+                fetchSales(Sales.terms(r, state.value.servings))
+            } catch (e: Exception) {
+                message.value = e.message ?: "Could not check sale prices"
+            }
+        }
+    }
+
+    // ---- Open the King Soopers cart ---------------------------------------------
+
+    /** Set to true to ask the screen to open the King Soopers cart. */
+    val openCart = MutableStateFlow(false)
 
     private fun edit(block: (UserState) -> UserState) {
         viewModelScope.launch { store.update(block) }
@@ -439,6 +544,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 review.value = null
                 message.value = "Added ${chosen.size} items to your King Soopers cart"
+                openCart.value = true
             } catch (e: Exception) {
                 message.value = e.message ?: "Could not add to cart"
             } finally {

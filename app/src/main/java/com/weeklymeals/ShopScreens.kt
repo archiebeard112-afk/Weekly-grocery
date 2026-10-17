@@ -85,6 +85,11 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, openSettings: () -> Unit) {
                     }
                 )
             }
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            OutlinedButton(
+                onClick = { openKingSoopersCart(ctx) },
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            ) { Text("Open King Soopers cart") }
             if (items.isEmpty()) {
                 Text(
                     "Your list is empty. Add recipes to your week or pick snacks.",

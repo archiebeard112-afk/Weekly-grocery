@@ -12,7 +12,15 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class Product(val upc: String, val title: String, val size: String, val price: Double?)
+data class Product(
+    val upc: String,
+    val title: String,
+    val size: String,
+    /** Regular price. */
+    val price: Double?,
+    /** Sale price, when lower than the regular price. */
+    val promo: Double? = null,
+)
 
 data class TokenResult(val accessToken: String, val refreshToken: String, val expiresAt: Long)
 
@@ -122,12 +130,12 @@ class KrogerApi {
             pick?.let { StoreResult(it.getString("locationId"), it.optString("name", "King Soopers")) }
         }
 
-    suspend fun searchProducts(token: String, storeId: String, term: String): List<Product> =
+    suspend fun searchProducts(token: String, storeId: String, term: String, limit: Int = 50): List<Product> =
         withContext(Dispatchers.IO) {
             val url = Uri.parse("$BASE/products").buildUpon()
                 .appendQueryParameter("filter.term", term)
                 .appendQueryParameter("filter.locationId", storeId)
-                .appendQueryParameter("filter.limit", "50")
+                .appendQueryParameter("filter.limit", limit.toString())
                 .build().toString()
             val req = Request.Builder().url(url)
                 .header("Authorization", "Bearer $token")
@@ -137,14 +145,15 @@ class KrogerApi {
             for (n in 0 until data.length()) {
                 val o = data.getJSONObject(n)
                 val item = o.optJSONArray("items")?.optJSONObject(0)
-                val price = item?.optJSONObject("price")?.let {
-                    if (it.has("regular")) it.optDouble("regular") else null
-                }
+                val priceObj = item?.optJSONObject("price")
+                val price = priceObj?.let { if (it.has("regular")) it.optDouble("regular") else null }
+                val promo = priceObj?.optDouble("promo", 0.0)?.takeIf { p -> p > 0 && price != null && p < price }
                 out += Product(
                     upc = o.optString("upc"),
                     title = o.optString("description"),
                     size = item?.optString("size").orEmpty(),
                     price = price,
+                    promo = promo,
                 )
             }
             out

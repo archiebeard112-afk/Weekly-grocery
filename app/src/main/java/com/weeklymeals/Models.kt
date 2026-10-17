@@ -82,6 +82,8 @@ data class UserState(
     val staples: List<String> = Staples.DEFAULT,
     /** Usual items you picked last time (pre-checked next time). */
     val lastStaples: Set<String> = emptySet(),
+    /** Today's sale prices for main ingredients. */
+    val sales: SalesCache = SalesCache(),
 )
 
 @Serializable

@@ -80,6 +80,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.BadgedBox
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.Switch
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.unit.dp
 
 private enum class Overlay { None, Settings, AddRecipe, History }
@@ -96,6 +98,13 @@ fun App(vm: MealsViewModel) {
     var confirmRemove by remember { mutableStateOf<Recipe?>(null) }
     var viewing by rememberSaveable { mutableStateOf<Int?>(null) }
     val ctx = LocalContext.current
+    val openCart by vm.openCart.collectAsState()
+    LaunchedEffect(openCart) {
+        if (openCart) {
+            vm.openCart.value = false
+            openKingSoopersCart(ctx)
+        }
+    }
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (!ok) vm.message.value = "Allow notifications so timers can ring"
     }
@@ -332,22 +341,55 @@ private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) 
     val shown = ids.mapNotNull { all[it] }
     // Fits on one screen: a header plus a 2 x 5 grid that stretches to fill the space.
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
+        val saleOnly by vm.saleOnly.collectAsState()
+        val progress by vm.salesProgress.collectAsState()
+        val cache = vm.salesCache(st)
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("10 ideas", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            FilledTonalButton(onClick = { vm.refreshBrowse() }) {
+            Text(if (saleOnly) "On sale" else "10 ideas", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text("🏷️ Sale", style = MaterialTheme.typography.labelLarge)
+            Switch(
+                checked = saleOnly,
+                onCheckedChange = { vm.setSaleOnly(it) },
+                enabled = progress == null,
+                modifier = Modifier.padding(start = 4.dp, end = 8.dp),
+            )
+            FilledTonalButton(onClick = { vm.refreshBrowse() }, enabled = progress == null) {
                 Icon(Icons.Filled.Refresh, null)
-                Spacer(Modifier.width(6.dp))
-                Text("10 more")
+                Spacer(Modifier.width(4.dp))
+                Text("More")
             }
         }
         Spacer(Modifier.height(6.dp))
+        progress?.let { (done, total) ->
+            Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Checking King Soopers sale prices…", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(12.dp))
+                LinearProgressIndicator(
+                    progress = { if (total == 0) 0f else done.toFloat() / total },
+                    modifier = Modifier.fillMaxWidth(0.8f),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text("$done of $total ingredients", style = MaterialTheme.typography.bodySmall)
+            }
+            return@Column
+        }
+        if (saleOnly && shown.isEmpty()) {
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Text("No meals save \$3 or more at your store today.", textAlign = TextAlign.Center)
+            }
+            return@Column
+        }
         shown.chunked(2).forEach { pair ->
             Row(
                 Modifier.fillMaxWidth().weight(1f).padding(vertical = 3.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 pair.forEach { r ->
-                    RecipeTile(r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) }, Modifier.weight(1f).fillMaxHeight())
+                    RecipeTile(
+                        r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) },
+                        Modifier.weight(1f).fillMaxHeight(),
+                        saleSave = Sales.savings(r, st.servings, cache),
+                    )
                 }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
@@ -360,6 +402,7 @@ private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) 
 private fun RecipeTile(
     r: Recipe, st: UserState, toggleFav: (Recipe) -> Unit,
     onAdd: () -> Unit, onOpen: () -> Unit, modifier: Modifier,
+    saleSave: Double = 0.0,
 ) {
     val inWeek = r.id in st.week
     Card(
@@ -375,7 +418,10 @@ private fun RecipeTile(
                     maxLines = 3, overflow = TextOverflow.Ellipsis,
                 )
             }
-            val badges = Logic.badges(r).take(2)
+            val badges = (
+                (if (saleSave >= Sales.MIN_SAVINGS) listOf("🏷️ Save ~" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
+                    Logic.badges(r)
+                ).take(2)
             if (badges.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     badges.forEach { Badge(it, small = true) }
@@ -396,6 +442,46 @@ private fun RecipeTile(
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
+            }
+        }
+    }
+}
+
+/** "On sale this week" for one recipe's main ingredients. */
+@Composable
+private fun SaleSection(vm: MealsViewModel, st: UserState, r: Recipe) {
+    if (st.kroger.store.id.isEmpty()) return
+    val progress by vm.salesProgress.collectAsState()
+    val cache = vm.salesCache(st)
+    Heading("🏷️ On sale this week")
+    when {
+        !Sales.isChecked(r, st.servings, cache) -> {
+            if (progress != null) {
+                Text("Checking prices…", style = MaterialTheme.typography.bodyMedium)
+            } else {
+                OutlinedButton(onClick = { vm.checkSales(r) }) { Text("Check sales") }
+            }
+        }
+        else -> {
+            val lines = Sales.lines(r, st.servings, cache)
+            if (lines.isEmpty()) {
+                Text("No big savings on this one this week.", style = MaterialTheme.typography.bodyMedium)
+            } else {
+                lines.forEach { l ->
+                    Text(
+                        "• ${l.term.replaceFirstChar { it.uppercase() }}: ${Sales.money(l.sale.promo)}, " +
+                            "was ${Sales.money(l.sale.regular)}" +
+                            (if (l.sale.size.isNotBlank()) " (${l.sale.size})" else "") +
+                            " · save ~${Sales.money(l.savings)}" + (if (l.packages > 1) " for ${l.packages}" else ""),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                Text(
+                    "Save about ${Sales.money(lines.sumOf { it.savings })} on this meal",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
     }
@@ -461,6 +547,7 @@ private fun RecipeScreen(
                 onClick = { vm.addToWeek(id) }, enabled = !inWeek,
                 modifier = Modifier.padding(top = 8.dp),
             ) { Text(if (inWeek) "In your week" else "Add to week") }
+            SaleSection(vm, st, r)
             RecipeDetails(r, st.servings, if (inWeek) side else null, if (inWeek) timerCtl(r) else null)
             Spacer(Modifier.height(24.dp))
         }
@@ -690,5 +777,18 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
             confirmButton = { TextButton(onClick = { vm.deletePastWeek(w); confirmDelete = null }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Keep") } },
         )
+    }
+}
+
+const val KING_SOOPERS_CART = "https://www.kingsoopers.com/cart"
+
+/** Opens the King Soopers cart: in their app if it handles the link, otherwise the browser. */
+fun openKingSoopersCart(ctx: android.content.Context) {
+    try {
+        ctx.startActivity(
+            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(KING_SOOPERS_CART))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    } catch (_: android.content.ActivityNotFoundException) {
     }
 }
