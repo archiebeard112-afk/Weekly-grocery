@@ -353,5 +353,6 @@ object Logic {
         append(p.title)
         if (p.size.isNotBlank()) append(" · ").append(p.size)
         if (p.price != null) append(" · \$").append(String.format("%.2f", p.price))
+        if (p.lowStock) append(" · ⚠️ Low stock")
     }
 }

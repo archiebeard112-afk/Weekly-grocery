@@ -28,6 +28,8 @@ data class CartLine(
     /** The search currently shown (starts as [term]; you can type your own). */
     val search: String = term,
     val searching: Boolean = false,
+    /** A short heads-up, e.g. your usual product is out of stock. */
+    val note: String? = null,
     /** Total amount the recipes need, used to work out how many packages to add. */
     val needAmount: Logic.Need = Logic.Need(),
     val options: List<Product>,
@@ -466,9 +468,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 val lines = groups.map { (term, group) ->
                     val saved = k.choices["term:$term"] ?: group.firstNotNullOfOrNull { k.choices[it.key] }
                     val search = saved?.search?.ifBlank { null } ?: term
-                    val options = runCatching { api.searchProducts(token, k.store.id, search) }
+                    val all = runCatching { api.searchProducts(token, k.store.id, search) }
                         .getOrDefault(emptyList())
+                    // Leave out anything out of stock, not sold here, or not deliverable.
+                    val options = all.filter { it.available }
                     val remembered = saved?.let { c -> options.indexOfFirst { it.upc == c.upc } } ?: -1
+                    val note = if (saved != null && remembered < 0 && all.any { it.upc == saved.upc && !it.available }) {
+                        "Your usual (${saved.label}) isn't available this week"
+                    } else null
                     val needAmount = Logic.needOf(group)
                     val sel = if (remembered >= 0) remembered else 0
                     CartLine(
@@ -479,6 +486,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                         selected = sel,
                         include = options.isNotEmpty(),
                         needAmount = needAmount,
+                        note = note,
                         quantity = Logic.suggestQty(needAmount, options.getOrNull(sel)),
                     )
                 }
@@ -504,14 +512,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val token = api.clientToken(k.clientId, k.clientSecret)
-                val options = api.searchProducts(token, k.store.id, q)
+                val options = api.searchProducts(token, k.store.id, q).filter { it.available }
                 updateLine(index) {
                     it.copy(
                         options = options, selected = 0, include = options.isNotEmpty(), searching = false,
                         quantity = Logic.suggestQty(it.needAmount, options.firstOrNull()),
                     )
                 }
-                if (options.isEmpty()) message.value = "Nothing found for \"$q\""
+                if (options.isEmpty()) message.value = "Nothing available for delivery for \"$q\""
             } catch (e: Exception) {
                 updateLine(index) { it.copy(searching = false) }
                 message.value = e.message ?: "Could not search products"

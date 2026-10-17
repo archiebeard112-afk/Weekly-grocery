@@ -20,7 +20,17 @@ data class Product(
     val price: Double?,
     /** Sale price, when lower than the regular price. */
     val promo: Double? = null,
-)
+    /** Kroger's stock estimate at your store: "HIGH", "LOW", "TEMPORARILY_OUT_OF_STOCK", or null if unknown. */
+    val stock: String? = null,
+    /** Whether it can be delivered from your store; null if Kroger didn't say. */
+    val delivery: Boolean? = null,
+) {
+    /** In stock (or unknown), priced at your store, and deliverable (or unknown). */
+    val available: Boolean
+        get() = price != null && stock != "TEMPORARILY_OUT_OF_STOCK" && delivery != false
+
+    val lowStock: Boolean get() = stock == "LOW"
+}
 
 data class TokenResult(val accessToken: String, val refreshToken: String, val expiresAt: Long)
 
@@ -154,6 +164,10 @@ class KrogerApi {
                     size = item?.optString("size").orEmpty(),
                     price = price,
                     promo = promo,
+                    stock = item?.optJSONObject("inventory")?.optString("stockLevel")?.ifBlank { null },
+                    delivery = item?.optJSONObject("fulfillment")?.let { f ->
+                        if (f.has("delivery")) f.optBoolean("delivery") else null
+                    },
                 )
             }
             out

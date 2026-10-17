@@ -209,6 +209,7 @@ private fun CartLineRow(line: CartLine, update: ((CartLine) -> CartLine) -> Unit
                 Column(Modifier.weight(1f)) {
                     Text(line.term.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.titleSmall)
                     Text("For: ${line.need}", style = MaterialTheme.typography.bodySmall)
+                    line.note?.let { Text("⚠️ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                 }
                 if (line.options.isNotEmpty()) {
                     OutlinedButton(
@@ -222,7 +223,7 @@ private fun CartLineRow(line: CartLine, update: ((CartLine) -> CartLine) -> Unit
             }
             TextButton(onClick = onPick) {
                 Text(
-                    if (line.options.isEmpty()) "No match found. Tap to search"
+                    if (line.options.isEmpty()) "Nothing available at your store. Tap to search"
                     else Logic.productLabel(line.options[line.selected]) + "  ·  ${line.options.size} options",
                     maxLines = 2,
                 )
@@ -293,6 +294,7 @@ private fun ProductPicker(vm: MealsViewModel, index: Int, line: CartLine, onClos
                                 val sub = listOfNotNull(
                                     p.size.ifBlank { null },
                                     p.price?.let { "$" + String.format("%.2f", it) },
+                                    if (p.lowStock) "⚠️ Low stock" else null,
                                 ).joinToString(" · ")
                                 if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall)
                             }

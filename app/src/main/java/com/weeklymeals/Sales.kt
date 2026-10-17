@@ -37,7 +37,7 @@ object Sales {
     const val MAX_PACK_RATIO = 2.0
 
     /** Bump when the saved format changes, so old saved sales are re-checked. */
-    const val CACHE_VERSION = 2
+    const val CACHE_VERSION = 3
 
     fun today(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
@@ -104,7 +104,7 @@ object Sales {
     /** From search results, every relevant product that's on sale (one per size). */
     fun saleOptions(term: String, products: List<Product>): List<SaleItem> =
         products.take(15)
-            .filter { it.price != null && it.promo != null && it.promo < it.price && matches(term, it.title) }
+            .filter { it.available && it.price != null && it.promo != null && it.promo < it.price && matches(term, it.title) }
             .map { SaleItem(term, it.title, it.size, it.price!!, it.promo!!) }
             .distinctBy { it.title + "|" + it.size }
 
