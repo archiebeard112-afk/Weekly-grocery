@@ -13,8 +13,20 @@ android {
         applicationId = "com.weeklymeals"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // Each GitHub build gets a higher number so Android treats it as an update.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "1.$build"
+    }
+
+    // Same key for every build, so new versions install over the old one.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("weeklymeals.keystore")
+            storePassword = "weeklymeals"
+            keyAlias = "weeklymeals"
+            keyPassword = "weeklymeals"
+        }
     }
 
     buildTypes {
