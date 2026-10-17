@@ -46,6 +46,7 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
     var zip by remember { mutableStateOf(k.zip) }
 
     Scaffold(
+        modifier = Modifier.swipeBack(onBack),
         topBar = {
             TopAppBar(
                 title = { Text("King Soopers") },
@@ -117,6 +118,7 @@ fun AddRecipeScreen(vm: MealsViewModel, onBack: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
+        modifier = Modifier.swipeBack(onBack),
         topBar = {
             TopAppBar(
                 title = { Text("Add a recipe") },

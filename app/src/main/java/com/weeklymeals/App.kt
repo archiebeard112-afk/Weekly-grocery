@@ -78,6 +78,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.BadgedBox
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 private enum class Overlay { None, Settings, AddRecipe, History }
@@ -155,25 +157,25 @@ fun App(vm: MealsViewModel) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = tab == 0, onClick = { tab = 0 },
-                        icon = { Icon(Icons.Filled.Search, null) }, label = { Text("Browse") },
+                        icon = { Icon(Icons.Filled.Search, null) }, label = { TabLabel("Browse") },
                     )
                     NavigationBarItem(
                         selected = tab == 1, onClick = { tab = 1 },
-                        icon = { Icon(Icons.Filled.DateRange, null) },
-                        label = { Text("Week (${st.week.size})", maxLines = 1) },
+                        icon = { CountIcon(st.week.size) { Icon(Icons.Filled.DateRange, null) } },
+                        label = { TabLabel("Week") },
                     )
                     NavigationBarItem(
                         selected = tab == 2, onClick = { tab = 2 },
-                        icon = { Icon(Icons.Filled.Favorite, null) }, label = { Text("Favorites", maxLines = 1) },
+                        icon = { Icon(Icons.Filled.Favorite, null) }, label = { TabLabel("Favorites") },
                     )
                     NavigationBarItem(
                         selected = tab == 3, onClick = { tab = 3 },
-                        icon = { Icon(painterResource(R.drawable.ic_snack), null) },
-                        label = { Text(if (st.snacks.isEmpty()) "Snacks" else "Snacks (${st.snacks.size})", maxLines = 1) },
+                        icon = { CountIcon(st.snacks.size) { Icon(painterResource(R.drawable.ic_snack), null) } },
+                        label = { TabLabel("Snacks") },
                     )
                     NavigationBarItem(
                         selected = tab == 4, onClick = { tab = 4 },
-                        icon = { Icon(Icons.Filled.ShoppingCart, null) }, label = { Text("Shop") },
+                        icon = { Icon(Icons.Filled.ShoppingCart, null) }, label = { TabLabel("Shop") },
                     )
                 }
             },
@@ -203,6 +205,19 @@ fun App(vm: MealsViewModel) {
             dismissButton = { TextButton(onClick = { confirmRemove = null }) { Text("Keep") } },
         )
     }
+}
+
+/** Bottom-bar label, always centered on one line. */
+@Composable
+private fun TabLabel(text: String) {
+    Text(text, maxLines = 1, softWrap = false, textAlign = TextAlign.Center)
+}
+
+/** Tab icon with a small number bubble when count > 0. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CountIcon(count: Int, icon: @Composable () -> Unit) {
+    if (count <= 0) icon() else BadgedBox(badge = { androidx.compose.material3.Badge { Text("$count") } }) { icon() }
 }
 
 // ---- Shared pieces ----------------------------------------------------------------
@@ -412,6 +427,7 @@ private fun RecipeScreen(
     val side = st.sides[id]?.let { vm.sideMap[it] }
     val inWeek = id in st.week
     Scaffold(
+        modifier = Modifier.swipeBack(onBack),
         topBar = {
             TopAppBar(
                 title = { },
@@ -601,6 +617,7 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
     val fmt = remember { java.text.SimpleDateFormat("EEE, MMM d, yyyy", java.util.Locale.getDefault()) }
     var confirmDelete by remember { mutableStateOf<PastWeek?>(null) }
     Scaffold(
+        modifier = Modifier.swipeBack(onBack),
         topBar = {
             TopAppBar(
                 title = { Text("History") },

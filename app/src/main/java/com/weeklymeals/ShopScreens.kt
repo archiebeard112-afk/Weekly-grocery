@@ -134,6 +134,7 @@ fun CartReviewScreen(vm: MealsViewModel, review: CartReview) {
         return
     }
     Scaffold(
+        modifier = Modifier.swipeBack({ vm.closeReview() }),
         topBar = { TopAppBar(title = { Text("Review before adding") }) },
         bottomBar = {
             Row(
@@ -232,6 +233,7 @@ private fun ProductPicker(vm: MealsViewModel, index: Int, line: CartLine, onClos
     var query by remember(index) { mutableStateOf(line.search) }
     BackHandler { onClose() }
     Scaffold(
+        modifier = Modifier.swipeBack(onClose),
         topBar = {
             TopAppBar(
                 title = { Text("Choose ${line.term}") },

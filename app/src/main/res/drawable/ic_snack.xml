@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Popcorn bucket, single color so it tints like the other tab icons -->
+<!-- Solid popcorn bucket, same size and weight as the other tab icons -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -8,10 +8,9 @@
     <!-- popcorn puffs -->
     <path
         android:fillColor="#FF000000"
-        android:pathData="M4.8,9.4a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0M8,7a2.5,2.5 0,1 0,5 0a2.5,2.5 0,1 0,-5 0M11.6,7.2a2.4,2.4 0,1 0,4.8 0a2.4,2.4 0,1 0,-4.8 0M14.8,9.4a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0M9.8,4.4a2.2,2.2 0,1 0,4.4 0a2.2,2.2 0,1 0,-4.4 0" />
-    <!-- striped bucket (stripes are cut out) -->
+        android:pathData="M5.2,9a2,2 0,1 0,4 0a2,2 0,1 0,-4 0M8.1,7.2a2.3,2.3 0,1 0,4.6 0a2.3,2.3 0,1 0,-4.6 0M11.3,7.2a2.3,2.3 0,1 0,4.6 0a2.3,2.3 0,1 0,-4.6 0M14.8,9a2,2 0,1 0,4 0a2,2 0,1 0,-4 0M9.9,4.6a2.1,2.1 0,1 0,4.2 0a2.1,2.1 0,1 0,-4.2 0" />
+    <!-- bucket -->
     <path
         android:fillColor="#FF000000"
-        android:fillType="evenOdd"
-        android:pathData="M4.5,10.5L19.5,10.5L17.6,22L6.4,22Z M8.9,12L10.2,12L10.5,20.5L9.4,20.5Z M13.8,12L15.1,12L14.6,20.5L13.5,20.5Z" />
+        android:pathData="M4.5,12L19.5,12L17.2,21.5L6.8,21.5Z" />
 </vector>
