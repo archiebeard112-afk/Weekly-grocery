@@ -180,6 +180,37 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- App updates -----------------------------------------------------------
+
+    val update = MutableStateFlow<UpdateState>(UpdateState.Idle)
+
+    fun checkForUpdate() {
+        if (update.value is UpdateState.Checking || update.value is UpdateState.Downloading) return
+        update.value = UpdateState.Checking
+        viewModelScope.launch {
+            update.value = try {
+                val r = Updater.latest()
+                val mine = Updater.currentVersionCode(getApplication())
+                if (r == null || r.versionCode <= mine) UpdateState.UpToDate else UpdateState.Available(r)
+            } catch (e: Exception) {
+                UpdateState.Error(e.message ?: "Could not check for updates")
+            }
+        }
+    }
+
+    fun downloadUpdate(r: AppRelease) {
+        if (update.value is UpdateState.Downloading) return
+        update.value = UpdateState.Downloading(0)
+        viewModelScope.launch {
+            update.value = try {
+                val f = Updater.download(getApplication(), r) { pct -> update.value = UpdateState.Downloading(pct) }
+                UpdateState.Ready(f)
+            } catch (e: Exception) {
+                UpdateState.Error(e.message ?: "Download failed")
+            }
+        }
+    }
+
     // ---- Open the King Soopers cart ---------------------------------------------
 
     /** Set to true to ask the screen to open the King Soopers cart. */

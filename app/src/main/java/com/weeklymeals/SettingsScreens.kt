@@ -33,6 +33,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,6 +109,9 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                 "Checkout still happens in the King Soopers app or website. This app only fills your cart.",
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            Spacer(Modifier.padding(8.dp))
+            UpdateSection(vm)
         }
     }
 }
@@ -161,6 +170,49 @@ fun AddRecipeScreen(vm: MealsViewModel, onBack: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Save to favorites") }
+        }
+    }
+}
+
+/** "App updates": version, Check for updates, download progress and install. */
+@Composable
+private fun UpdateSection(vm: MealsViewModel) {
+    val ctx = LocalContext.current
+    val state by vm.update.collectAsState()
+    Text("App updates", style = MaterialTheme.typography.titleSmall)
+    Text("Version ${Updater.currentVersionName(ctx)}", style = MaterialTheme.typography.bodyMedium)
+    when (val u = state) {
+        UpdateState.Idle, UpdateState.UpToDate, is UpdateState.Error -> {
+            if (u == UpdateState.UpToDate) Text("You're on the newest version.", style = MaterialTheme.typography.bodySmall)
+            if (u is UpdateState.Error) Text(u.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = { vm.checkForUpdate() }) { Text("Check for updates") }
+        }
+        UpdateState.Checking -> Row(verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(10.dp))
+            Text("Checking…")
+        }
+        is UpdateState.Available -> Button(onClick = { vm.downloadUpdate(u.release) }) {
+            Text("Update to ${u.release.name}")
+        }
+        is UpdateState.Downloading -> Column {
+            Text("Downloading… ${u.percent}%", style = MaterialTheme.typography.bodySmall)
+            LinearProgressIndicator(progress = { u.percent / 100f }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+        }
+        is UpdateState.Ready -> {
+            LaunchedEffect(u.file) {
+                if (Updater.canInstall(ctx)) Updater.install(ctx, u.file)
+            }
+            if (!Updater.canInstall(ctx)) {
+                Text(
+                    "One-time step: allow Weekly Meals to install updates, then come back and tap Install.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(onClick = { Updater.openInstallPermission(ctx) }) { Text("Allow installs") }
+            }
+            Button(onClick = {
+                if (Updater.canInstall(ctx)) Updater.install(ctx, u.file) else Updater.openInstallPermission(ctx)
+            }) { Text("Install") }
         }
     }
 }
