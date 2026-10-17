@@ -74,6 +74,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 
 private enum class Overlay { None, Settings, AddRecipe, History }
@@ -156,14 +159,19 @@ fun App(vm: MealsViewModel) {
                     NavigationBarItem(
                         selected = tab == 1, onClick = { tab = 1 },
                         icon = { Icon(Icons.Filled.DateRange, null) },
-                        label = { Text("My Week (${st.week.size})") },
+                        label = { Text("Week (${st.week.size})", maxLines = 1) },
                     )
                     NavigationBarItem(
                         selected = tab == 2, onClick = { tab = 2 },
-                        icon = { Icon(Icons.Filled.Favorite, null) }, label = { Text("Favorites") },
+                        icon = { Icon(Icons.Filled.Favorite, null) }, label = { Text("Favorites", maxLines = 1) },
                     )
                     NavigationBarItem(
                         selected = tab == 3, onClick = { tab = 3 },
+                        icon = { Text("🍿", style = MaterialTheme.typography.titleMedium) },
+                        label = { Text(if (st.snacks.isEmpty()) "Snacks" else "Snacks (${st.snacks.size})", maxLines = 1) },
+                    )
+                    NavigationBarItem(
+                        selected = tab == 4, onClick = { tab = 4 },
                         icon = { Icon(Icons.Filled.ShoppingCart, null) }, label = { Text("Shop") },
                     )
                 }
@@ -174,6 +182,7 @@ fun App(vm: MealsViewModel) {
                     0 -> BrowseScreen(vm, st, toggleFav) { viewing = it }
                     1 -> WeekScreen(vm, st, toggleFav, timerCtl)
                     2 -> FavoritesScreen(vm, st, toggleFav) { overlay = Overlay.AddRecipe }
+                    3 -> SnacksScreen(vm, st)
                     else -> ShopScreen(vm, st) { overlay = Overlay.Settings }
                 }
             }
@@ -350,6 +359,12 @@ private fun RecipeTile(
                     maxLines = 3, overflow = TextOverflow.Ellipsis,
                 )
             }
+            val badges = Logic.badges(r).take(2)
+            if (badges.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    badges.forEach { Badge(it, small = true) }
+                }
+            }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "⏱ " + Logic.fmtShort(Logic.cookMinutes(r)),
@@ -368,6 +383,20 @@ private fun RecipeTile(
             }
         }
     }
+}
+
+/** A small rounded label like "🍲 Crock-Pot" or "💲 Budget". */
+@Composable
+private fun Badge(text: String, small: Boolean) {
+    Text(
+        text,
+        style = if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
+        maxLines = 1,
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(50))
+            .padding(horizontal = if (small) 6.dp else 10.dp, vertical = if (small) 1.dp else 4.dp),
+    )
 }
 
 /** One recipe on its own page: buttons at the top, then ingredients and steps. */
@@ -397,6 +426,13 @@ private fun RecipeScreen(
                 Text(r.emoji, style = MaterialTheme.typography.displaySmall)
                 Spacer(Modifier.width(12.dp))
                 Text(r.name, style = MaterialTheme.typography.headlineSmall)
+            }
+            val badges = Logic.badges(r)
+            if (badges.isNotEmpty()) {
+                Row(
+                    Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) { badges.forEach { Badge(it, small = false) } }
             }
             Text(
                 "⏱ About ${Logic.fmtMinutes(Logic.cookMinutes(r))} total",

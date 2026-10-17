@@ -53,27 +53,46 @@ import androidx.compose.ui.unit.dp
 fun ShopScreen(vm: MealsViewModel, st: UserState, openSettings: () -> Unit) {
     val items = vm.shopItems(st)
     val busy by vm.busy.collectAsState()
-    if (items.isEmpty()) {
-        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            Text("Your shopping list is empty. Add recipes to your week first.")
-        }
-        return
-    }
+    var askStaples by remember { mutableStateOf(false) }
     val leftCount = items.count { it.key !in st.checked }
+    if (askStaples) {
+        StaplesDialog(
+            vm, st,
+            onDismiss = { askStaples = false },
+            onContinue = { extras ->
+                askStaples = false
+                if (leftCount == 0 && extras.isEmpty()) vm.message.value = "Nothing to add"
+                else vm.startCartReview(extras)
+            },
+        )
+    }
     LazyColumn(contentPadding = PaddingValues(16.dp)) {
         item {
             Text("Shopping list", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.padding(4.dp))
             Button(
                 onClick = {
-                    if (!vm.signedIn) openSettings() else vm.startCartReview()
+                    if (!vm.signedIn) openSettings() else askStaples = true
                 },
-                enabled = !busy && leftCount > 0,
+                enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (vm.signedIn) "Add $leftCount items to King Soopers cart" else "Sign in to King Soopers (Settings)")
+                Text(
+                    when {
+                        !vm.signedIn -> "Sign in to King Soopers (Settings)"
+                        leftCount == 0 -> "Add usual items to King Soopers cart"
+                        else -> "Add $leftCount items to King Soopers cart"
+                    }
+                )
             }
-            TextButton(onClick = { vm.clearChecked() }) { Text("Uncheck all") }
+            if (items.isEmpty()) {
+                Text(
+                    "Your list is empty. Add recipes to your week or pick snacks.",
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            } else {
+                TextButton(onClick = { vm.clearChecked() }) { Text("Uncheck all") }
+            }
         }
         Logic.AISLES.forEach { aisle ->
             val group = items.filter { it.aisle == aisle }

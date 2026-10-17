@@ -104,12 +104,15 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Saves this week to History, then clears it so you can plan the next one. */
     fun finishWeek() = edit { s ->
-        if (s.week.isEmpty()) s else s.copy(
-            history = listOf(PastWeek(System.currentTimeMillis(), s.week, s.sides.filterKeys { it in s.week }, s.servings)) +
-                s.history.take(99),
+        if (s.week.isEmpty() && s.snacks.isEmpty()) s else s.copy(
+            history = if (s.week.isEmpty()) s.history else
+                listOf(PastWeek(System.currentTimeMillis(), s.week, s.sides.filterKeys { it in s.week }, s.servings)) +
+                    s.history.take(99),
             week = emptyList(),
             sides = emptyMap(),
             checked = emptySet(),
+            lastSnacks = if (s.snacks.isEmpty()) s.lastSnacks else s.snacks,
+            snacks = emptySet(),
         )
     }
 
@@ -163,7 +166,40 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Shopping list ---------------------------------------------------------
 
     fun shopItems(st: UserState = state.value): List<ShopItem> =
-        Logic.shopList(st.week, st.sides, recipes(st), sideMap, st.servings)
+        Logic.shopList(st.week, st.sides, recipes(st), sideMap, st.servings) +
+            st.snacks.sorted().map { n ->
+                ShopItem("snack:${n.lowercase()}", n, "", SnackCatalog.find(n).qty, "🍿 Snacks")
+            }
+
+    // ---- Snacks ----------------------------------------------------------------
+
+    fun toggleSnack(name: String) = edit { s ->
+        s.copy(snacks = if (name in s.snacks) s.snacks - name else s.snacks + name)
+    }
+
+    fun addSnacks(names: Set<String>) = edit { s -> s.copy(snacks = s.snacks + names) }
+
+    fun addCustomSnack(name: String) {
+        val n = name.trim().replaceFirstChar { it.uppercase() }
+        if (n.isEmpty()) return
+        edit { s -> s.copy(customSnacks = (s.customSnacks + n).distinct(), snacks = s.snacks + n) }
+    }
+
+    fun removeCustomSnack(name: String) = edit { s ->
+        s.copy(customSnacks = s.customSnacks - name, snacks = s.snacks - name, lastSnacks = s.lastSnacks - name)
+    }
+
+    // ---- Usual items -----------------------------------------------------------
+
+    fun addStaple(name: String) {
+        val n = name.trim().replaceFirstChar { it.uppercase() }
+        if (n.isEmpty()) return
+        edit { s -> if (s.staples.any { it.equals(n, true) }) s else s.copy(staples = s.staples + n) }
+    }
+
+    fun removeStaple(name: String) = edit { s ->
+        s.copy(staples = s.staples - name, lastStaples = s.lastStaples - name)
+    }
 
     fun toggleChecked(key: String) = edit { s ->
         s.copy(checked = if (key in s.checked) s.checked - key else s.checked + key)
@@ -292,14 +328,16 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Looks up King Soopers products for each unchecked item so you can review them. */
-    fun startCartReview() {
+    fun startCartReview(extras: List<String> = emptyList()) {
         val st = state.value
         val k = st.kroger
         if (k.store.id.isEmpty()) {
             message.value = "Pick your store in Settings first"
             return
         }
-        val items = shopItems(st).filter { it.key !in st.checked }
+        edit { it.copy(lastStaples = extras.toSet()) }
+        val items = shopItems(st).filter { it.key !in st.checked } +
+            extras.map { ShopItem("extra:${it.lowercase()}", it, "", 1.0, "🛒 Other") }
         if (items.isEmpty()) {
             message.value = "Nothing left to add"
             return

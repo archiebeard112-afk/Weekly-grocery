@@ -23,6 +23,8 @@ object Logic {
         "🧊 Frozen",
         "🥫 Pantry",
         "🧂 Seasonings & Spices",
+        "🍿 Snacks",
+        "🛒 Other",
     )
 
     /** Things you buy whole (cans, cloves, a bag...) round up to whole numbers. */
@@ -321,6 +323,21 @@ object Logic {
         m % 60 == 0 -> "${m / 60}h"
         else -> "${m / 60}h ${m % 60}m"
     }
+
+    // ---- Badges --------------------------------------------------------------
+
+    private val BADGES = linkedMapOf(
+        "crockpot" to "🍲 Crock-Pot",
+        "instantpot" to "⚡ Instant Pot",
+        "airfryer" to "🌬️ Air Fryer",
+        "sheetpan" to "♨️ Sheet-Pan",
+        "grill" to "🔥 Grill",
+        "onepan" to "🍳 One-Pan",
+        "budget" to "💲 Budget",
+    )
+
+    /** Badge labels for a recipe, cooking method first, then Budget. */
+    fun badges(r: Recipe): List<String> = BADGES.filterKeys { it in r.tags }.values.toList()
 
     fun productLabel(p: Product): String = buildString {
         append(p.title)

@@ -16,6 +16,8 @@ data class Recipe(
     val sides: List<String> = emptyList(),
     /** Recipes you imported or typed in. These always show in Favorites until you remove them. */
     val imported: Boolean = false,
+    /** Cooking method / budget labels, e.g. "crockpot", "instantpot", "budget". */
+    val tags: List<String> = emptyList(),
 )
 
 @Serializable
@@ -70,6 +72,16 @@ data class UserState(
     val history: List<PastWeek> = emptyList(),
     /** Running cooking timers: key -> time it ends (milliseconds). */
     val timers: Map<String, Long> = emptyMap(),
+    /** Snacks picked for this week (by name). */
+    val snacks: Set<String> = emptySet(),
+    /** Snacks picked last week, for quick re-adding. */
+    val lastSnacks: Set<String> = emptySet(),
+    /** Snacks you added yourself. */
+    val customSnacks: List<String> = emptyList(),
+    /** Things you buy most weeks, offered before adding to the cart. */
+    val staples: List<String> = Staples.DEFAULT,
+    /** Usual items you picked last time (pre-checked next time). */
+    val lastStaples: Set<String> = emptySet(),
 )
 
 @Serializable
