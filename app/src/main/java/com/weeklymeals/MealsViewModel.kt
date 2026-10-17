@@ -93,7 +93,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Today's sale prices for your store (empty if stale or another store). */
     fun salesCache(st: UserState = state.value): SalesCache =
-        st.sales.takeIf { it.day == Sales.today() && it.storeId == st.kroger.store.id } ?: SalesCache()
+        st.sales.takeIf {
+            it.day == Sales.today() && it.storeId == st.kroger.store.id && it.version == Sales.CACHE_VERSION
+        } ?: SalesCache()
 
     private suspend fun fetchSales(terms: Collection<String>) {
         val st = state.value
@@ -102,7 +104,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val todo = terms.filter { it !in cache.checked }.distinct()
         if (todo.isEmpty()) return
         val token = api.clientToken(k.clientId, k.clientSecret)
-        val found = ConcurrentHashMap<String, SaleItem>()
+        val found = ConcurrentHashMap<String, List<SaleItem>>()
         val done = AtomicInteger(0)
         salesProgress.value = 0 to todo.size
         try {
@@ -112,7 +114,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                     async {
                         gate.withPermit {
                             runCatching { api.searchProducts(token, k.store.id, t, limit = 15) }.getOrNull()
-                                ?.let { Sales.bestSale(t, it) }
+                                ?.let { Sales.saleOptions(t, it) }
+                                ?.takeIf { it.isNotEmpty() }
                                 ?.let { found[t] = it }
                             salesProgress.value = done.incrementAndGet() to todo.size
                         }
@@ -120,8 +123,15 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 }.awaitAll()
             }
             store.update { s ->
-                val c = s.sales.takeIf { it.day == Sales.today() && it.storeId == k.store.id } ?: SalesCache()
-                s.copy(sales = c.copy(day = Sales.today(), storeId = k.store.id, checked = c.checked + todo, items = c.items + found))
+                val c = s.sales.takeIf {
+                    it.day == Sales.today() && it.storeId == k.store.id && it.version == Sales.CACHE_VERSION
+                } ?: SalesCache()
+                s.copy(
+                    sales = c.copy(
+                        day = Sales.today(), storeId = k.store.id, version = Sales.CACHE_VERSION,
+                        checked = c.checked + todo, options = c.options + found, items = emptyMap(),
+                    ),
+                )
             }
         } finally {
             salesProgress.value = null

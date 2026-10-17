@@ -267,6 +267,16 @@ object Logic {
 
     private val sizeRx = Regex("(\\d+(?:\\.\\d+)?)\\s*(lbs?|oz|ct|count|pk|pack|each|ea)\\b")
 
+    /** Package size from text like "1.5 lb", "16 oz", "3 ct": (amount, isWeightInLb), or null if unknown. */
+    fun packAmount(size: String): Pair<Double, Boolean>? {
+        val m = sizeRx.find(size.lowercase()) ?: return null
+        val v = m.groupValues[1].toDoubleOrNull()?.takeIf { it > 0 } ?: return null
+        return when (val u = m.groupValues[2]) {
+            "oz" -> v / 16.0 to true
+            else -> if (u.startsWith("lb")) v to true else v to false
+        }
+    }
+
     /**
      * Number of packages to add, using the product's size ("1.5 lb", "3 ct", "16 oz").
      * 4 chicken thighs (~1.2 lb) with a 1.5 lb pack -> 1. 3 lemons sold each -> 3.

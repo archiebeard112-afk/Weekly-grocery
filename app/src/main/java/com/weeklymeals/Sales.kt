@@ -22,13 +22,22 @@ data class SalesCache(
     val storeId: String = "",
     /** Search terms already checked today (on sale or not). */
     val checked: Set<String> = emptySet(),
-    /** Terms that are on sale -> the best matching sale product. */
+    /** Older format (one product per term); no longer used. */
     val items: Map<String, SaleItem> = emptyMap(),
+    /** Terms that are on sale -> every matching sale package (different sizes). */
+    val options: Map<String, List<SaleItem>> = emptyMap(),
+    val version: Int = 0,
 )
 
 object Sales {
     /** Only meals that save at least this much count as "on sale". */
     const val MIN_SAVINGS = 3.0
+
+    /** Sale packs more than this many times what a recipe needs are ignored. */
+    const val MAX_PACK_RATIO = 2.0
+
+    /** Bump when the saved format changes, so old saved sales are re-checked. */
+    const val CACHE_VERSION = 2
 
     fun today(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
@@ -54,10 +63,32 @@ object Sales {
     /** What's on sale in this recipe and how much it saves for the amount needed. */
     fun lines(r: Recipe, serv: Int, cache: SalesCache): List<Line> =
         mainItems(r, serv).groupBy { Logic.searchTerm(it.name) }.mapNotNull { (term, group) ->
-            val s = cache.items[term] ?: return@mapNotNull null
-            val packages = Logic.suggestQty(Logic.needOf(group), Product("", s.title, s.size, s.regular))
-            Line(term, s, packages, packages * (s.regular - s.promo))
+            val need = Logic.needOf(group)
+            cache.options[term].orEmpty()
+                .mapNotNull { s -> fit(need, s) }
+                // closest to what you need first, then the bigger saving
+                .sortedWith(compareBy<Pair<Line, Double>> { it.second }.thenByDescending { it.first.savings })
+                .firstOrNull()?.first?.copy(term = term)
         }.sortedByDescending { it.savings }
+
+    /**
+     * How a sale pack fits the amount a recipe needs, or null if the pack is
+     * more than double what you need. Returns the line and the leftover amount.
+     */
+    private fun fit(need: Logic.Need, s: SaleItem): Pair<Line, Double>? {
+        val product = Product("", s.title, s.size, s.regular)
+        val packages = Logic.suggestQty(need, product)
+        val pack = Logic.packAmount(s.size)
+        val wanted = when {
+            pack == null -> null
+            pack.second && need.lb > 0 -> need.lb
+            !pack.second && need.count > 0 -> need.count
+            else -> null
+        }
+        if (pack != null && wanted != null && pack.first > wanted * MAX_PACK_RATIO) return null
+        val leftover = if (pack != null && wanted != null) packages * pack.first - wanted else 0.0
+        return Line(s.term, s, packages, packages * (s.regular - s.promo)) to leftover
+    }
 
     fun savings(r: Recipe, serv: Int, cache: SalesCache): Double = lines(r, serv, cache).sumOf { it.savings }
 
@@ -70,12 +101,12 @@ object Sales {
             .all { t.contains(it) }
     }
 
-    /** From search results, the relevant product with the biggest discount (if any). */
-    fun bestSale(term: String, products: List<Product>): SaleItem? =
+    /** From search results, every relevant product that's on sale (one per size). */
+    fun saleOptions(term: String, products: List<Product>): List<SaleItem> =
         products.take(15)
             .filter { it.price != null && it.promo != null && it.promo < it.price && matches(term, it.title) }
-            .maxByOrNull { it.price!! - it.promo!! }
-            ?.let { SaleItem(term, it.title, it.size, it.price!!, it.promo!!) }
+            .map { SaleItem(term, it.title, it.size, it.price!!, it.promo!!) }
+            .distinctBy { it.title + "|" + it.size }
 
     fun money(v: Double): String = "$" + String.format(Locale.US, "%.2f", v)
 }

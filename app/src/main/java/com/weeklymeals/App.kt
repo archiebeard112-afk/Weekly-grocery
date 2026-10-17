@@ -419,7 +419,7 @@ private fun RecipeTile(
                 )
             }
             val badges = (
-                (if (saleSave >= Sales.MIN_SAVINGS) listOf("🏷️ Save ~" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
+                (if (saleSave >= Sales.MIN_SAVINGS) listOf("🏷️ " + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
                     Logic.badges(r)
                 ).take(2)
             if (badges.isNotEmpty()) {
