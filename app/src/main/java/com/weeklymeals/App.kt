@@ -58,6 +58,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 private enum class Overlay { None, Settings, AddRecipe, History }
@@ -72,6 +79,7 @@ fun App(vm: MealsViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var overlay by rememberSaveable { mutableStateOf(Overlay.None) }
     var confirmRemove by remember { mutableStateOf<Recipe?>(null) }
+    var viewing by rememberSaveable { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(msg) {
         msg?.let {
@@ -82,6 +90,7 @@ fun App(vm: MealsViewModel) {
 
     BackHandler(enabled = review != null) { vm.closeReview() }
     BackHandler(enabled = review == null && overlay != Overlay.None) { overlay = Overlay.None }
+    BackHandler(enabled = review == null && overlay == Overlay.None && viewing != null) { viewing = null }
 
     val toggleFav: (Recipe) -> Unit = { r ->
         if (Logic.isFav(r, st)) confirmRemove = r else vm.addFav(r.id)
@@ -90,6 +99,8 @@ fun App(vm: MealsViewModel) {
     Box(Modifier.fillMaxSize()) {
     if (review != null) {
         CartReviewScreen(vm, review!!)
+    } else if (overlay == Overlay.None && viewing != null) {
+        RecipeScreen(vm, st, viewing!!, toggleFav) { viewing = null }
     } else if (overlay == Overlay.Settings) {
         SettingsScreen(vm, st) { overlay = Overlay.None }
     } else if (overlay == Overlay.History) {
@@ -135,7 +146,7 @@ fun App(vm: MealsViewModel) {
         ) { pad ->
             Column(Modifier.padding(pad).fillMaxSize()) {
                 when (tab) {
-                    0 -> BrowseScreen(vm, st, toggleFav)
+                    0 -> BrowseScreen(vm, st, toggleFav) { viewing = it }
                     1 -> WeekScreen(vm, st, toggleFav)
                     2 -> FavoritesScreen(vm, st, toggleFav) { overlay = Overlay.AddRecipe }
                     else -> ShopScreen(vm, st) { overlay = Overlay.Settings }
@@ -210,44 +221,103 @@ private val cardColors @Composable get() = CardDefaults.cardColors(
 // ---- Browse ------------------------------------------------------------------------
 
 @Composable
-private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit) {
+private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit, onOpen: (Int) -> Unit) {
     val ids by vm.browse.collectAsState()
     val all = vm.recipes(st)
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    val shown = ids.mapNotNull { all[it] }
+    // Fits on one screen: a header plus a 2 x 5 grid that stretches to fill the space.
+    Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("10 ideas", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            FilledTonalButton(onClick = { vm.refreshBrowse() }) {
+                Icon(Icons.Filled.Refresh, null)
+                Spacer(Modifier.width(6.dp))
+                Text("10 more")
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        shown.chunked(2).forEach { pair ->
+            Row(
+                Modifier.fillMaxWidth().weight(1f).padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                pair.forEach { r ->
+                    RecipeTile(r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) }, Modifier.weight(1f).fillMaxHeight())
+                }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+        repeat(5 - (shown.size + 1) / 2) { Spacer(Modifier.weight(1f)) }
+    }
+}
+
+@Composable
+private fun RecipeTile(
+    r: Recipe, st: UserState, toggleFav: (Recipe) -> Unit,
+    onAdd: () -> Unit, onOpen: () -> Unit, modifier: Modifier,
+) {
+    val inWeek = r.id in st.week
+    Card(
+        colors = if (inWeek) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else cardColors,
+        modifier = modifier.clickable(onClick = onOpen),
     ) {
-        item {
+        Column(Modifier.fillMaxSize().padding(start = 10.dp, top = 6.dp, end = 2.dp, bottom = 2.dp)) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    r.name, style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis,
+                )
+            }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("10 ideas", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                FilledTonalButton(onClick = { vm.refreshBrowse() }) {
-                    Icon(Icons.Filled.Refresh, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("10 more")
+                Text(
+                    if (inWeek) "In your week" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                FavButton(r, st, toggleFav)
+                IconButton(onClick = onAdd, enabled = !inWeek) {
+                    Icon(
+                        if (inWeek) Icons.Filled.Check else Icons.Filled.Add,
+                        contentDescription = if (inWeek) "In your week" else "Add to week",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
                 }
             }
         }
-        items(ids, key = { it }) { id ->
-            val r = all[id] ?: return@items
-            var open by remember { mutableStateOf(false) }
-            Card(colors = cardColors, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(r.emoji, style = MaterialTheme.typography.headlineMedium)
-                        Spacer(Modifier.width(10.dp))
-                        Text(r.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        FavButton(r, st, toggleFav)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val inWeek = id in st.week
-                        Button(onClick = { vm.addToWeek(id) }, enabled = !inWeek) {
-                            Text(if (inWeek) "In your week" else "Add to week")
-                        }
-                        TextButton(onClick = { open = !open }) { Text(if (open) "Hide" else "Details") }
-                    }
-                    if (open) RecipeDetails(r, st.servings, null)
+    }
+}
+
+/** One recipe on its own page: buttons at the top, then ingredients and steps. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecipeScreen(vm: MealsViewModel, st: UserState, id: Int, toggleFav: (Recipe) -> Unit, onBack: () -> Unit) {
+    val r = vm.recipes(st)[id]
+    if (r == null) { onBack(); return }
+    val side = st.sides[id]?.let { vm.sideMap[it] }
+    val inWeek = id in st.week
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(r.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
+                actions = { FavButton(r, st, toggleFav) },
+            )
+        },
+    ) { pad ->
+        Column(
+            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(r.emoji, style = MaterialTheme.typography.displaySmall)
+                Spacer(Modifier.width(12.dp))
+                Button(onClick = { vm.addToWeek(id) }, enabled = !inWeek) {
+                    Text(if (inWeek) "In your week" else "Add to week")
                 }
             }
+            RecipeDetails(r, st.servings, if (inWeek) side else null)
         }
     }
 }
