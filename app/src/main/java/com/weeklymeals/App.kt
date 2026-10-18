@@ -217,6 +217,8 @@ fun App(vm: MealsViewModel) {
         AddRecipeScreen(vm, linkMode = addLinkMode, startLink = addFromLink) { overlay = Overlay.None; addFromLink = null }
     } else {
         Scaffold(
+            // Ignore the keyboard here so it slides over the tabs instead of shrinking them.
+            contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
             topBar = {
                 TopAppBar(
                     title = { Text("Weekly Meals") },
@@ -252,7 +254,7 @@ fun App(vm: MealsViewModel) {
                 }
             },
         ) { pad ->
-            Column(Modifier.padding(pad).fillMaxSize()) {
+            Column(Modifier.padding(pad).fillMaxSize().keepFullHeight()) {
                 when (tab) {
                     0 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 })
                     1 -> BrowseScreen(

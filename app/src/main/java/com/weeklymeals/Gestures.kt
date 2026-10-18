@@ -5,6 +5,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -26,5 +29,25 @@ fun Modifier.swipeBack(onBack: () -> Unit): Modifier = composed {
             total += dx
             change.consume()
         }
+    }
+}
+
+/**
+ * Keeps this at the tallest height it has had (for the current width), so when the
+ * keyboard opens and the space shrinks, the content keeps its size and the keyboard
+ * simply covers the bottom instead of squishing everything.
+ */
+fun Modifier.keepFullHeight(): Modifier = composed {
+    val tallest = remember { IntArray(2) } // [width, height]
+    this.clipToBounds().layout { measurable, constraints ->
+        if (!constraints.hasBoundedHeight) {
+            val p = measurable.measure(constraints)
+            return@layout layout(p.width, p.height) { p.place(0, 0) }
+        }
+        if (tallest[0] != constraints.maxWidth) { tallest[0] = constraints.maxWidth; tallest[1] = 0 }
+        tallest[1] = maxOf(tallest[1], constraints.maxHeight)
+        val h = tallest[1]
+        val p = measurable.measure(constraints.copy(minHeight = h, maxHeight = h))
+        layout(p.width, constraints.maxHeight) { p.place(0, 0) }
     }
 }
