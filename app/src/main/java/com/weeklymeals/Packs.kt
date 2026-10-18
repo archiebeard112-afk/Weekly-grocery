@@ -17,7 +17,7 @@ object Packs {
     data class Pack(val lb: Double, val perLb: Boolean, val source: Source)
 
     private val regular = listOf(
-        "bone-in skin-on chicken thigh" to 2.5, "chicken breast" to 2.5, "chicken thigh" to 2.0,
+        "bone-in skin-on chicken thigh" to 2.5, "chicken breast" to 4.7, "chicken thigh" to 2.0,
         "chicken tenderloin" to 1.5, "chicken wing" to 2.5, "drumstick" to 2.5, "whole chicken" to 4.5,
         "ground beef" to 1.0, "ground turkey" to 1.0, "ground chicken" to 1.0, "ground pork" to 1.0,
         "chuck roast" to 3.0, "beef chuck" to 3.0, "stew meat" to 1.5, "sirloin" to 1.0, "flank steak" to 1.5,
@@ -26,7 +26,7 @@ object Packs {
         "salmon" to 1.0, "cod" to 1.0, "tilapia" to 1.0, "white fish" to 1.0, "shrimp" to 1.0, "chicken" to 3.0,
     )
     private val valuePack = listOf(
-        "chicken breast" to 3.5, "chicken thigh" to 4.0, "chicken wing" to 4.0, "chicken tenderloin" to 3.0,
+        "chicken breast" to 4.7, "chicken thigh" to 4.0, "chicken wing" to 4.0, "chicken tenderloin" to 3.0,
         "drumstick" to 4.0, "ground beef" to 3.0, "ground turkey" to 3.0, "ground chicken" to 3.0,
         "pork chop" to 3.0, "stew meat" to 3.0, "steak" to 2.5,
     )
@@ -67,7 +67,8 @@ object Packs {
         "pork chop" to "Pork chops", "steak" to "Steaks", "salmon" to "Salmon fillets",
     )
     private val pieceLbs = mapOf(
-        "chicken breast" to 0.6, "chicken thigh" to 0.3, "pork chop" to 0.45, "steak" to 0.6, "salmon" to 0.4,
+        // Your usual pack: 6 breasts, ≈4.7 lb (≈$14 at $2.99/lb).
+        "chicken breast" to 0.78, "chicken thigh" to 0.3, "pork chop" to 0.45, "steak" to 0.6, "salmon" to 0.4,
     )
 
     /** The whole cut this shopping item is (from the ones you cook whole), or null. */

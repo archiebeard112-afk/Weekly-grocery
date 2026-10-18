@@ -22,7 +22,7 @@ object Prices {
         "ground beef" to lb(5.49), "ground turkey" to lb(4.99), "ground chicken" to lb(4.99), "ground pork" to lb(4.49),
         "chuck roast" to lb(7.99), "beef chuck" to lb(7.99), "stew meat" to lb(7.49), "sirloin" to lb(9.99),
         "flank steak" to lb(10.99), "skirt steak" to lb(11.99), "ribeye" to lb(14.99), "cube steak" to lb(6.99), "steak" to lb(10.99),
-        "bone-in skin-on chicken thigh" to lb(1.99), "chicken thigh" to lb(2.99), "chicken breast" to lb(3.99),
+        "bone-in skin-on chicken thigh" to lb(1.99), "chicken thigh" to lb(2.99), "chicken breast" to lb(2.99),
         "chicken tenderloin" to lb(4.99), "chicken wing" to lb(3.99), "cooked chicken" to P(6.99, 567.0), "chicken" to lb(3.49),
         "pork chop" to lb(3.99), "pork loin" to lb(2.99), "pork tenderloin" to lb(4.49), "pork shoulder" to lb(2.49),
         "bacon" to P(6.99, 340.0), "breakfast sausage" to P(4.49, 454.0), "italian sausage" to P(5.49, 540.0),
