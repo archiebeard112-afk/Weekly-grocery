@@ -120,6 +120,10 @@ fun App(vm: MealsViewModel) {
     val shopListState = rememberLazyListState()
     // Same for Favorites, so going back from a recipe returns to the same spot.
     val favGridState = rememberLazyGridState()
+    // Search text, filters and scroll kept here so Back from a recipe returns to the same results.
+    val browseSearch = remember { SearchState() }
+    val favSearch = remember { SearchState() }
+    val browseResults = rememberLazyGridState()
     val msg by vm.message.collectAsState()
     val snack = remember { SnackbarHostState() }
     // Tabs: 0 Week (opens here), 1 Browse, 2 Favorites, 3 Shop.
@@ -259,9 +263,10 @@ fun App(vm: MealsViewModel) {
                     0 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 })
                     1 -> BrowseScreen(
                         vm, st, toggleFav,
+                        browseSearch, browseResults,
                         onWeb = { webViewing = it }, onSettings = { overlay = Overlay.Settings },
                     ) { viewing = it }
-                    2 -> FavoritesScreen(vm, st, toggleFav, favGridState, onOpen = { viewing = it }) { askAddMode = true }
+                    2 -> FavoritesScreen(vm, st, toggleFav, favGridState, favSearch, onOpen = { viewing = it }) { askAddMode = true }
                     else -> ShopScreen(vm, st, shopListState) { overlay = Overlay.Settings }
                 }
             }
@@ -502,6 +507,7 @@ private val cardColors @Composable get() = CardDefaults.cardColors(
 @Composable
 private fun BrowseScreen(
     vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit,
+    search: SearchState, resultsState: LazyGridState,
     onWeb: (String) -> Unit, onSettings: () -> Unit, onOpen: (Int) -> Unit,
 ) {
     val ids by vm.browse.collectAsState()
@@ -509,8 +515,8 @@ private fun BrowseScreen(
     val progress by vm.salesProgress.collectAsState()
     val all = vm.recipes(st)
     val cache = vm.salesCache(st)
-    var query by rememberSaveable { mutableStateOf("") }
-    var filters by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var query by search.query
+    var filters by search.filters
     val searching = query.isNotBlank() || filters.isNotEmpty()
     val scope = rememberCoroutineScope()
     val offset = remember { Animatable(0f) }
@@ -595,6 +601,7 @@ private fun BrowseScreen(
             }.sortedBy { it.name }
             val showWeb = query.trim().length >= 3 && RecipeSources.effective(st) != RecipeSources.OFF
             LazyVerticalGrid(
+                state = resultsState,
                 columns = GridCells.Fixed(2),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -927,10 +934,10 @@ private val FAV_FILTERS = listOf(
 @Composable
 private fun FavoritesScreen(
     vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit,
-    gridState: LazyGridState, onOpen: (Int) -> Unit, onAdd: () -> Unit,
+    gridState: LazyGridState, search: SearchState, onOpen: (Int) -> Unit, onAdd: () -> Unit,
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
-    var filters by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var query by search.query
+    var filters by search.filters
     val cache = vm.salesCache(st)
     val favs = vm.recipes(st).values.filter { Logic.isFav(it, st) }.sortedBy { it.name }
     val q = query.trim().lowercase()
@@ -1097,4 +1104,10 @@ fun openKingSoopersCart(ctx: android.content.Context) {
         )
     } catch (_: android.content.ActivityNotFoundException) {
     }
+}
+
+/** A search box's text and filter chips, kept while you open a recipe and come back. */
+class SearchState {
+    val query = androidx.compose.runtime.mutableStateOf("")
+    val filters = androidx.compose.runtime.mutableStateOf(listOf<String>())
 }
