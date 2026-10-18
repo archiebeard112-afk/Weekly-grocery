@@ -1,0 +1,122 @@
+package com.weeklymeals
+
+import android.text.Html
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+
+/** A recipe read from a web page, ready to review on the Add recipe form. */
+data class ImportedRecipe(
+    val name: String,
+    val emoji: String,
+    val serves: Int?,
+    val ingredients: List<String>,
+    val steps: List<String>,
+)
+
+/**
+ * Reads recipes from web pages. Most recipe sites include the recipe in a standard
+ * format (schema.org "Recipe" data) for search engines; this finds and reads that.
+ */
+object Importer {
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .build()
+
+    private val scriptRx = Regex(
+        "<script[^>]*type\\s*=\\s*[\"']application/ld\\+json[\"'][^>]*>(.*?)</script>",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+    )
+
+    /** First web address in shared text, e.g. from Chrome's Share menu. */
+    fun findUrl(text: String): String? = Regex("https?://\\S+").find(text)?.value?.trimEnd(')', '.', ',')
+
+    suspend fun fromUrl(url: String): ImportedRecipe = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(url.trim())
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Mobile Safari/537.36")
+            .header("Accept", "text/html")
+            .build()
+        val html = http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw Exception("That site said ${resp.code}")
+            resp.body?.string().orEmpty()
+        }
+        fromHtml(html) ?: throw Exception("Couldn't read this page. Paste the ingredients and steps instead.")
+    }
+
+    fun fromHtml(html: String): ImportedRecipe? {
+        for (m in scriptRx.findAll(html)) {
+            val raw = m.groupValues[1].trim()
+            val parsed = runCatching { if (raw.startsWith("[")) JSONArray(raw) else JSONObject(raw) }.getOrNull() ?: continue
+            val recipe = findRecipe(parsed) ?: continue
+            val name = clean(recipe.optString("name"))
+            val ings = strings(recipe.opt("recipeIngredient") ?: recipe.opt("ingredients")).map { clean(it) }.filter { it.isNotBlank() }
+            val steps = instructions(recipe.opt("recipeInstructions")).map { clean(it) }.filter { it.isNotBlank() }
+            if (name.isBlank() || ings.isEmpty()) continue
+            return ImportedRecipe(name, emojiFor(name), serves(recipe.opt("recipeYield")), ings, steps)
+        }
+        return null
+    }
+
+    /** Finds the node whose @type is (or includes) "Recipe", searching arrays and @graph. */
+    private fun findRecipe(node: Any?): JSONObject? = when (node) {
+        is JSONArray -> (0 until node.length()).firstNotNullOfOrNull { findRecipe(node.opt(it)) }
+        is JSONObject -> {
+            val type = node.opt("@type")
+            val isRecipe = when (type) {
+                is String -> type.equals("Recipe", true)
+                is JSONArray -> (0 until type.length()).any { type.optString(it).equals("Recipe", true) }
+                else -> false
+            }
+            if (isRecipe) node else findRecipe(node.opt("@graph")) ?: findRecipe(node.opt("mainEntity"))
+        }
+        else -> null
+    }
+
+    private fun strings(v: Any?): List<String> = when (v) {
+        is JSONArray -> (0 until v.length()).mapNotNull { v.opt(it)?.toString() }
+        is String -> v.split("\n")
+        else -> emptyList()
+    }
+
+    /** Steps can be text, a list of text, a list of HowToStep {text}, or HowToSection groups. */
+    private fun instructions(v: Any?): List<String> = when (v) {
+        is String -> v.split(Regex("\\n+|(?<=\\.)\\s{2,}"))
+        is JSONArray -> (0 until v.length()).flatMap { instructions(v.opt(it)) }
+        is JSONObject -> when {
+            v.has("itemListElement") -> instructions(v.opt("itemListElement"))
+            v.has("text") -> listOf(v.optString("text"))
+            v.has("name") -> listOf(v.optString("name"))
+            else -> emptyList()
+        }
+        else -> emptyList()
+    }
+
+    private fun serves(v: Any?): Int? {
+        val s = when (v) {
+            is JSONArray -> (0 until v.length()).map { v.opt(it).toString() }.firstOrNull { Regex("\\d").containsMatchIn(it) }
+            null -> null
+            else -> v.toString()
+        } ?: return null
+        return Regex("\\d+").find(s)?.value?.toIntOrNull()?.takeIf { it in 1..50 }
+    }
+
+    /** Removes HTML tags and entities (&amp;, &#39;, ...) and extra spaces. */
+    private fun clean(s: String): String =
+        Html.fromHtml(s, Html.FROM_HTML_MODE_LEGACY).toString().replace(Regex("\\s+"), " ").trim()
+
+    fun emojiFor(name: String): String {
+        val n = name.lowercase()
+        return listOf(
+            "soup" to "🥣", "stew" to "🍲", "chili" to "🌶️", "taco" to "🌮", "burrito" to "🌯", "enchilada" to "🫔",
+            "pizza" to "🍕", "burger" to "🍔", "salad" to "🥗", "curry" to "🍛", "pasta" to "🍝", "spaghetti" to "🍝",
+            "lasagna" to "🍝", "noodle" to "🍜", "ramen" to "🍜", "rice" to "🍚", "shrimp" to "🍤", "salmon" to "🐟",
+            "fish" to "🐟", "cod" to "🐟", "chicken" to "🍗", "steak" to "🥩", "beef" to "🥩", "pork" to "🍖",
+            "sandwich" to "🥪", "egg" to "🍳", "pancake" to "🥞", "waffle" to "🧇", "potato" to "🥔", "pie" to "🥧",
+        ).firstOrNull { n.contains(it.first) }?.second ?: "🍽️"
+    }
+}

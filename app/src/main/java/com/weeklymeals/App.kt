@@ -83,6 +83,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.Switch
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.unit.dp
 
 private enum class Overlay { None, Settings, AddRecipe, History }
@@ -101,6 +108,20 @@ fun App(vm: MealsViewModel) {
     var confirmRemove by remember { mutableStateOf<Recipe?>(null) }
     var viewing by rememberSaveable { mutableStateOf<Int?>(null) }
     var cooking by rememberSaveable { mutableStateOf<Int?>(null) }
+    var addFromLink by rememberSaveable { mutableStateOf<String?>(null) }
+    var addLinkMode by rememberSaveable { mutableStateOf(false) }
+    var askAddMode by remember { mutableStateOf(false) }
+    val sharedLink by vm.sharedLink.collectAsState()
+    LaunchedEffect(sharedLink) {
+        sharedLink?.let {
+            addFromLink = it
+            addLinkMode = true
+            viewing = null
+            cooking = null
+            overlay = Overlay.AddRecipe
+            vm.sharedLink.value = null
+        }
+    }
     val ctx = LocalContext.current
     val openCart by vm.openCart.collectAsState()
     LaunchedEffect(openCart) {
@@ -151,7 +172,7 @@ fun App(vm: MealsViewModel) {
     } else if (overlay == Overlay.History) {
         HistoryScreen(vm, st) { overlay = Overlay.None }
     } else if (overlay == Overlay.AddRecipe) {
-        AddRecipeScreen(vm) { overlay = Overlay.None }
+        AddRecipeScreen(vm, linkMode = addLinkMode, startLink = addFromLink) { overlay = Overlay.None; addFromLink = null }
     } else {
         Scaffold(
             topBar = {
@@ -193,13 +214,31 @@ fun App(vm: MealsViewModel) {
                 when (tab) {
                     0 -> BrowseScreen(vm, st, toggleFav) { viewing = it }
                     1 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 0 })
-                    2 -> FavoritesScreen(vm, st, toggleFav) { overlay = Overlay.AddRecipe }
+                    2 -> FavoritesScreen(vm, st, toggleFav, onOpen = { viewing = it }) { askAddMode = true }
                     else -> ShopScreen(vm, st, shopListState) { overlay = Overlay.Settings }
                 }
             }
         }
     }
     SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
+    }
+
+    if (askAddMode) {
+        AlertDialog(
+            onDismissRequest = { askAddMode = false },
+            title = { Text("Add a recipe") },
+            text = { Text("Import it from a recipe website, or type it in yourself.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    askAddMode = false; addLinkMode = true; addFromLink = null; overlay = Overlay.AddRecipe
+                }) { Text("From a link") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    askAddMode = false; addLinkMode = false; addFromLink = null; overlay = Overlay.AddRecipe
+                }) { Text("Type it in") }
+            },
+        )
     }
 
     confirmRemove?.let { r ->
@@ -578,46 +617,84 @@ private fun RecipeScreen(
 
 // ---- Favorites ---------------------------------------------------------------------
 
+private val FAV_FILTERS = listOf(
+    "crockpot" to "🍲 Crock-Pot", "instantpot" to "⚡ Instapot", "airfryer" to "🌬️ Air Fryer",
+    "sheetpan" to "♨️ Sheet-Pan", "grill" to "🔥 Grill", "onepan" to "🍳 One-Pan",
+    "budget" to "💲 Budget", "quick" to "⏱ Quick",
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FavoritesScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit, onAdd: () -> Unit) {
+private fun FavoritesScreen(
+    vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit,
+    onOpen: (Int) -> Unit, onAdd: () -> Unit,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var filters by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val cache = vm.salesCache(st)
     val favs = vm.recipes(st).values.filter { Logic.isFav(it, st) }.sortedBy { it.name }
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    val q = query.trim().lowercase()
+    val shown = favs.filter { r ->
+        (q.isEmpty() || r.name.lowercase().contains(q) || r.ingredients.any { it.name.lowercase().contains(q) }) &&
+            filters.all { f -> if (f == "quick") Logic.cookMinutes(r) <= 30 else f in r.tags }
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Favorites", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                FilledTonalButton(onClick = onAdd) {
-                    Icon(Icons.Filled.Add, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Add recipe")
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Column(Modifier.padding(horizontal = 4.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Favorites", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    FilledTonalButton(onClick = onAdd) {
+                        Icon(Icons.Filled.Add, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Add recipe")
+                    }
                 }
+                OutlinedTextField(
+                    query, { query = it },
+                    placeholder = { Text("Search favorites or ingredients") },
+                    leadingIcon = { Icon(Icons.Filled.Search, null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, "Clear") }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    FAV_FILTERS.forEach { (key, label) ->
+                        val on = key in filters
+                        FilterChip(
+                            selected = on,
+                            onClick = { filters = if (on) filters - key else filters + key },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+                Text(
+                    when {
+                        favs.isEmpty() -> "No favorites yet. Tap the ♥ on any recipe, or add your own."
+                        shown.size == favs.size -> "${favs.size} favorite${if (favs.size == 1) "" else "s"}"
+                        else -> "${shown.size} of ${favs.size} match"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+                )
             }
         }
-        if (favs.isEmpty()) {
-            item { Text("No favorites yet. Tap the heart on any recipe.", modifier = Modifier.padding(top = 24.dp)) }
-        }
-        items(favs, key = { it.id }) { r ->
-            var open by remember { mutableStateOf(false) }
-            Card(colors = cardColors, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(r.emoji, style = MaterialTheme.typography.headlineMedium)
-                        Spacer(Modifier.width(10.dp))
-                        Text(r.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        FavButton(r, st, toggleFav)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val inWeek = r.id in st.week
-                        Button(onClick = { vm.addToWeek(r.id) }, enabled = !inWeek) {
-                            Text(if (inWeek) "In your week" else "Add to week")
-                        }
-                        TextButton(onClick = { open = !open }) { Text(if (open) "Hide" else "Details") }
-                    }
-                    if (open) RecipeDetails(r, st.servings, null)
-                }
-            }
+        items(shown, key = { it.id }) { r ->
+            RecipeTile(
+                r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) },
+                Modifier.fillMaxWidth().height(124.dp),
+                saleSave = Sales.savings(r, st.servings, cache),
+            )
         }
     }
 }

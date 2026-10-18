@@ -47,6 +47,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handle(intent: Intent?) {
+        // Share → Weekly Meals from a browser: import the recipe link.
+        if (intent?.action == Intent.ACTION_SEND) {
+            intent.getStringExtra(Intent.EXTRA_TEXT)?.let { Importer.findUrl(it) }?.let { vm.sharedLink.value = it }
+            return
+        }
         val data = intent?.data ?: return
         if (data.scheme == "weeklymeals" && data.host == "kroger") vm.handleRedirect(data)
     }

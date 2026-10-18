@@ -138,6 +138,7 @@ object Logic {
         "jar" to "jar", "jars" to "jar",
         "pkg" to "pkg", "package" to "pkg", "packages" to "pkg",
         "box" to "box", "bag" to "bag", "bags" to "bag",
+        "tbs" to "tbsp", "tbsps" to "tbsp", "tsps" to "tsp", "cloves," to "clove",
     )
 
     private fun num(t: String): Double? {
@@ -151,17 +152,20 @@ object Logic {
                 if (a != null && b != null && b != 0.0) return a / b
             }
         }
-        return when (t) {
-            "¼" -> 0.25
-            "½" -> 0.5
-            "¾" -> 0.75
-            else -> null
+        val frac = mapOf('¼' to 0.25, '½' to 0.5, '¾' to 0.75, '⅓' to 1.0 / 3, '⅔' to 2.0 / 3, '⅛' to 0.125)
+        t.lastOrNull()?.let { frac[it] }?.let { f ->
+            val whole = t.dropLast(1)
+            if (whole.isEmpty()) return f
+            whole.toDoubleOrNull()?.let { return it + f } // "1½"
         }
+        return null
     }
 
     /** "1 1/2 cup flour" -> 1.5 cup Flour. "3 eggs" -> 3 Eggs. "salt" -> Salt. */
     fun parseIngredient(line: String): Ingredient? {
-        val t = line.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.toMutableList()
+        // "5 (13.75 ounce) cans broth" -> "5 cans broth"; "1 ½ cups" and "1½ cups" both work.
+        val cleaned = line.replace(Regex("\\(.*?\\)"), " ").replace(Regex("^[-•*▢☐\\s]+"), "")
+        val t = cleaned.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.toMutableList()
         if (t.isEmpty()) return null
         var q = 0.0
         var u = ""

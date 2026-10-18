@@ -39,6 +39,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.input.ImeAction
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -118,13 +123,41 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddRecipeScreen(vm: MealsViewModel, onBack: () -> Unit) {
+fun AddRecipeScreen(vm: MealsViewModel, linkMode: Boolean, startLink: String?, onBack: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var emoji by remember { mutableStateOf("🍽️") }
     var base by remember { mutableStateOf("4") }
     var ings by remember { mutableStateOf("") }
     var steps by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var link by remember { mutableStateOf(startLink.orEmpty()) }
+    var importing by remember { mutableStateOf(false) }
+    var importMsg by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val doImport: () -> Unit = {
+        val url = Importer.findUrl(link) ?: link.trim()
+        if (url.isNotBlank() && !importing) {
+            importing = true
+            importMsg = null
+            scope.launch {
+                try {
+                    val r = Importer.fromUrl(url)
+                    name = r.name
+                    emoji = r.emoji
+                    r.serves?.let { base = it.toString() }
+                    ings = r.ingredients.joinToString("\n")
+                    steps = r.steps.joinToString("\n")
+                    importMsg = "Imported! Check everything below, then save."
+                } catch (e: Exception) {
+                    importMsg = e.message ?: "Couldn't read this page. Paste the ingredients and steps instead."
+                } finally {
+                    importing = false
+                }
+            }
+        }
+    }
+    // Shared from the browser: import right away.
+    LaunchedEffect(startLink) { if (!startLink.isNullOrBlank()) doImport() }
 
     Scaffold(
         modifier = Modifier.swipeBack(onBack),
@@ -141,10 +174,37 @@ fun AddRecipeScreen(vm: MealsViewModel, onBack: () -> Unit) {
             Modifier.padding(pad).imePadding().padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                "Copy the ingredients and directions from any recipe page and paste them here, one per line.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            if (linkMode) {
+                Text("Paste a link to a recipe page.", style = MaterialTheme.typography.bodyMedium)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        link, { link = it }, label = { Text("Recipe link") }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(onGo = { doImport() }),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(onClick = doImport, enabled = !importing && link.isNotBlank()) { Text("Import") }
+                }
+                if (importing) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Reading the recipe…", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                importMsg?.let {
+                    Text(
+                        it, style = MaterialTheme.typography.bodySmall,
+                        color = if (it.startsWith("Imported")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                    )
+                }
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            } else {
+                Text(
+                    "Copy the ingredients and directions from any recipe page and paste them here, one per line.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             OutlinedTextField(name, { name = it }, label = { Text("Recipe name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(emoji, { emoji = it }, label = { Text("Emoji") }, singleLine = true, modifier = Modifier.weight(1f))

@@ -243,7 +243,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Open the King Soopers cart ---------------------------------------------
 
-    /** Set to true to ask the screen to open the King Soopers cart. */
+    /** A recipe link shared to the app from the browser, waiting to be imported. */
+    val sharedLink = MutableStateFlow<String?>(null)
+
+        /** Set to true to ask the screen to open the King Soopers cart. */
     val openCart = MutableStateFlow(false)
 
     private fun edit(block: (UserState) -> UserState) {
