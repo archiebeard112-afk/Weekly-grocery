@@ -23,8 +23,7 @@ object Logic {
         "🧊 Frozen",
         "🥫 Pantry",
         "🧂 Seasonings & Spices",
-        "🍿 Snacks",
-        "🛒 Other",
+        "🛒 Extras",
     )
 
     /** Things you buy whole (cans, cloves, a bag...) round up to whole numbers. */

@@ -85,7 +85,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.unit.dp
 
-private enum class Overlay { None, Settings, AddRecipe, History }
+private enum class Overlay { None, Settings, AddRecipe, History, QuickAdd }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,6 +148,8 @@ fun App(vm: MealsViewModel) {
         RecipeScreen(vm, st, viewing!!, toggleFav, timerCtl, onCook = { cooking = viewing }) { viewing = null }
     } else if (overlay == Overlay.Settings) {
         SettingsScreen(vm, st) { overlay = Overlay.None }
+    } else if (overlay == Overlay.QuickAdd) {
+        QuickAddScreen(vm, st) { overlay = Overlay.None }
     } else if (overlay == Overlay.History) {
         HistoryScreen(vm, st) { overlay = Overlay.None }
     } else if (overlay == Overlay.AddRecipe) {
@@ -184,11 +186,6 @@ fun App(vm: MealsViewModel) {
                     )
                     NavigationBarItem(
                         selected = tab == 3, onClick = { tab = 3 },
-                        icon = { CountIcon(st.snacks.size) { Icon(painterResource(R.drawable.ic_snack), null) } },
-                        label = { TabLabel("Snacks") },
-                    )
-                    NavigationBarItem(
-                        selected = tab == 4, onClick = { tab = 4 },
                         icon = { Icon(Icons.Filled.ShoppingCart, null) }, label = { TabLabel("Shop") },
                     )
                 }
@@ -199,8 +196,11 @@ fun App(vm: MealsViewModel) {
                     0 -> BrowseScreen(vm, st, toggleFav) { viewing = it }
                     1 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 0 })
                     2 -> FavoritesScreen(vm, st, toggleFav) { overlay = Overlay.AddRecipe }
-                    3 -> SnacksScreen(vm, st)
-                    else -> ShopScreen(vm, st, shopListState) { overlay = Overlay.Settings }
+                    else -> ShopScreen(
+                        vm, st, shopListState,
+                        openSettings = { overlay = Overlay.Settings },
+                        openQuickAdd = { overlay = Overlay.QuickAdd },
+                    )
                 }
             }
         }

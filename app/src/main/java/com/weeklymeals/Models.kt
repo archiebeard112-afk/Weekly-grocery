@@ -88,6 +88,8 @@ data class UserState(
     val pickedStaples: Set<String> = emptySet(),
     /** One-off items typed into the Shop tab this week. */
     val extraItems: List<String> = emptyList(),
+    /** Last week's one-off items, offered as Quick add chips. */
+    val lastExtraItems: List<String> = emptyList(),
     /** Shop items marked "Already have" (by store search term); left out of the cart. */
     val haveTerms: Set<String> = emptySet(),
     /** Today's sale prices for main ingredients. */

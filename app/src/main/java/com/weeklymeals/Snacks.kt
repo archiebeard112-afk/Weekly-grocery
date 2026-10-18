@@ -45,6 +45,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
 import androidx.compose.ui.unit.dp
 
 data class Snack(val name: String, val emoji: String, val qty: Double = 1.0)
@@ -94,68 +98,114 @@ object Staples {
     )
 }
 
-/** The Snacks tab: tap snacks to put them on this week's list. */
+/** Emoji for common usual items. */
+fun stapleEmoji(name: String): String {
+    val n = name.lowercase()
+    return listOf(
+        "milk" to "🥛", "egg" to "🥚", "bread" to "🍞", "butter" to "🧈", "banana" to "🍌", "coffee" to "☕",
+        "cereal" to "🥣", "cheese" to "🧀", "lunch meat" to "🥪", "juice" to "🧃", "toilet" to "🧻",
+        "paper towel" to "🧻", "soap" to "🧼", "trash" to "🗑️", "yogurt" to "🥛", "water" to "💧",
+    ).firstOrNull { n.contains(it.first) }?.second ?: "🛒"
+}
+
+/**
+ * "Quick add" (opened from More… on the Shop tab): usual items and snacks to tap onto the list.
+ * Everything picked here goes in the Shop tab's Extras section.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SnacksScreen(vm: MealsViewModel, st: UserState) {
-    var adding by remember { mutableStateOf(false) }
+fun QuickAddScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
+    var addingSnack by remember { mutableStateOf(false) }
+    var addingUsual by remember { mutableStateOf(false) }
+    var editUsual by remember { mutableStateOf(false) }
     val reAdd = st.lastSnacks - st.snacks
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(104.dp),
-        contentPadding = PaddingValues(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Snacks", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        if (st.snacks.isEmpty()) "Tap to add to this week's list"
-                        else "${st.snacks.size} on this week's list",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                FilledTonalButton(onClick = { adding = true }) {
-                    Icon(Icons.Filled.Add, null)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Add your own")
-                }
-            }
-        }
-        if (reAdd.isNotEmpty()) {
+    Scaffold(
+        modifier = Modifier.swipeBack(onBack),
+        topBar = {
+            TopAppBar(
+                title = { Text("Quick add") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+            )
+        },
+    ) { pad ->
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(104.dp),
+            contentPadding = PaddingValues(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(pad),
+        ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                TextButton(onClick = { vm.addSnacks(reAdd) }) {
-                    Text("↺ Add last week's snacks (${reAdd.size})")
+                Text(
+                    "Tap to add to this week's list. Everything here goes in Extras on the Shop tab.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            // Usual items
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { GroupHeader("🛒 Usual items") }
+                    TextButton(onClick = { editUsual = !editUsual }) { Text(if (editUsual) "Done" else "Edit") }
+                    TextButton(onClick = { addingUsual = true }) { Text("+ Add") }
                 }
             }
-        }
-        if (st.customSnacks.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { GroupHeader("⭐ Mine") }
-            items(st.customSnacks, key = { "c_$it" }) { name ->
-                SnackTile(SnackCatalog.find(name), name in st.snacks, onToggle = { vm.toggleSnack(name) }, onRemove = { vm.removeCustomSnack(name) })
+            items(st.staples, key = { "u_$it" }) { name ->
+                SnackTile(
+                    Snack(name, stapleEmoji(name)), name in st.pickedStaples,
+                    onToggle = { vm.toggleStaple(name) },
+                    onRemove = if (editUsual) ({ vm.removeStaple(name) }) else null,
+                )
             }
-        }
-        SnackCatalog.groups.forEach { (title, list) ->
-            item(span = { GridItemSpan(maxLineSpan) }, key = "h_$title") { GroupHeader(title) }
-            items(list, key = { it.name }) { s ->
-                SnackTile(s, s.name in st.snacks, onToggle = { vm.toggleSnack(s.name) }, onRemove = null)
+            // Snacks
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { GroupHeader("🍿 Snacks") }
+                    TextButton(onClick = { addingSnack = true }) { Text("+ Add your own") }
+                }
+            }
+            if (reAdd.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    TextButton(onClick = { vm.addSnacks(reAdd) }) { Text("↺ Add last week's snacks (${reAdd.size})") }
+                }
+            }
+            if (st.customSnacks.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) { GroupHeader("⭐ Mine") }
+                items(st.customSnacks, key = { "c_$it" }) { name ->
+                    SnackTile(SnackCatalog.find(name), name in st.snacks, onToggle = { vm.toggleSnack(name) }, onRemove = { vm.removeCustomSnack(name) })
+                }
+            }
+            SnackCatalog.groups.forEach { (title, list) ->
+                item(span = { GridItemSpan(maxLineSpan) }, key = "h_$title") { GroupHeader(title) }
+                items(list, key = { it.name }) { sn ->
+                    SnackTile(sn, sn.name in st.snacks, onToggle = { vm.toggleSnack(sn.name) }, onRemove = null)
+                }
             }
         }
     }
-    if (adding) {
+    if (addingSnack || addingUsual) {
         var text by remember { mutableStateOf("") }
+        val done = {
+            if (addingSnack) vm.addCustomSnack(text) else {
+                vm.addStaple(text)
+                val n = text.trim().replaceFirstChar { it.uppercase() }
+                if (n.isNotEmpty() && n !in st.pickedStaples) vm.toggleStaple(n)
+            }
+            addingSnack = false; addingUsual = false
+        }
         AlertDialog(
-            onDismissRequest = { adding = false },
-            title = { Text("Add a snack") },
+            onDismissRequest = { addingSnack = false; addingUsual = false },
+            title = { Text(if (addingSnack) "Add a snack" else "Add a usual item") },
             text = {
                 OutlinedTextField(
-                    text, { text = it }, singleLine = true, label = { Text("e.g. Takis") },
+                    text, { text = it }, singleLine = true,
+                    label = { Text(if (addingSnack) "e.g. Takis" else "e.g. Sparkling water") },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { vm.addCustomSnack(text); adding = false }),
+                    keyboardActions = KeyboardActions(onDone = { done() }),
                 )
             },
-            confirmButton = { TextButton(onClick = { vm.addCustomSnack(text); adding = false }) { Text("Add") } },
-            dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { done() }) { Text("Add") } },
+            dismissButton = { TextButton(onClick = { addingSnack = false; addingUsual = false }) { Text("Cancel") } },
         )
     }
 }
@@ -199,57 +249,4 @@ private fun SnackTile(s: Snack, picked: Boolean, onToggle: () -> Unit, onRemove:
             }
         }
     }
-}
-
-/**
- * "Usual items": things you buy most weeks. Pick the ones you need this week;
- * they're added to the shopping list. Last week's picks are pre-checked.
- */
-@Composable
-fun StaplesDialog(vm: MealsViewModel, st: UserState, onDismiss: () -> Unit, onSave: (Set<String>) -> Unit) {
-    var picked by remember {
-        mutableStateOf(if (st.pickedStaples.isNotEmpty()) st.pickedStaples else st.lastStaples.intersect(st.staples.toSet()))
-    }
-    var newItem by remember { mutableStateOf("") }
-    val addNew = {
-        val n = newItem.trim().replaceFirstChar { it.uppercase() }
-        if (n.isNotEmpty()) {
-            vm.addStaple(n)
-            picked = picked + n
-            newItem = ""
-        }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Usual items") },
-        text = {
-            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
-                Text("Pick what you need this week. Tap ✕ to take one off the list for good.", style = MaterialTheme.typography.bodySmall)
-                st.staples.forEach { item ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { picked = if (item in picked) picked - item else picked + item },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(checked = item in picked, onCheckedChange = { c -> picked = if (c) picked + item else picked - item })
-                        Text(item, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { vm.removeStaple(item); picked = picked - item }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Filled.Close, "Remove $item", modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
-                    OutlinedTextField(
-                        newItem, { newItem = it }, singleLine = true,
-                        label = { Text("Add another usual item") },
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { addNew() }),
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(onClick = { addNew() }) { Icon(Icons.Filled.Add, "Add") }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onSave(picked) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
 }

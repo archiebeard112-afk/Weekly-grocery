@@ -60,6 +60,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilterChip
+import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
@@ -68,7 +75,7 @@ import java.util.Locale
  * Tap "Have it" to leave an item out, tap the product to change it, then Add to cart.
  */
 @Composable
-fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, openSettings: () -> Unit) {
+fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, openSettings: () -> Unit, openQuickAdd: () -> Unit) {
     val ctx = LocalContext.current
     val focus = LocalFocusManager.current
     val products by vm.products.collectAsState()
@@ -80,18 +87,18 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
     val hasStore = st.kroger.store.id.isNotEmpty()
     var menu by remember { mutableStateOf(false) }
     var showHave by remember { mutableStateOf(false) }
-    var askStaples by remember { mutableStateOf(false) }
     var newItem by remember { mutableStateOf("") }
+    val suggestions by vm.suggestions.collectAsState()
+
+    // Search King Soopers as you type (short pause so it doesn't search on every letter).
+    LaunchedEffect(newItem) {
+        delay(350)
+        vm.searchSuggestions(newItem)
+    }
 
     // Look up King Soopers products for anything new on the list.
     LaunchedEffect(groups.map { it.term }.toSet(), hasStore) { vm.loadProducts() }
 
-    if (askStaples) {
-        StaplesDialog(vm, st, onDismiss = { askStaples = false }) { picked ->
-            vm.setPickedStaples(picked)
-            askStaples = false
-        }
-    }
 
     val cart = toBuy.mapNotNull { g -> products[g.term]?.takeIf { it.product != null } }
     val total = cart.sumOf { l -> l.product!!.let { (it.promo ?: it.price ?: 0.0) * l.quantity } }
@@ -133,24 +140,61 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         }
                     }
                 }
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    val add = { vm.addExtraItem(newItem); newItem = ""; focus.clearFocus() }
-                    OutlinedTextField(
-                        newItem, { newItem = it },
-                        placeholder = { Text("+ Add an item…") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { add() }),
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlinedButton(onClick = { askStaples = true }) {
-                        Text(if (st.pickedStaples.isEmpty()) "Usual items" else "Usual items (${st.pickedStaples.size})")
+                val add = { vm.addExtraItem(newItem); newItem = ""; focus.clearFocus() }
+                OutlinedTextField(
+                    newItem, { newItem = it },
+                    placeholder = { Text("+ Add an item…") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { add() }),
+                    trailingIcon = {
+                        if (newItem.isNotEmpty()) {
+                            IconButton(onClick = { newItem = "" }) { Icon(Icons.Filled.Close, "Clear") }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+                // Dropdown of matches while typing.
+                if (newItem.trim().length >= 2) {
+                    Surface(
+                        tonalElevation = 4.dp, shadowElevation = 4.dp,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    ) {
+                        Column {
+                            Text(
+                                "Add \"${newItem.trim()}\"",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.fillMaxWidth().clickable { add() }.padding(horizontal = 14.dp, vertical = 12.dp),
+                            )
+                            suggestions.forEach { p ->
+                                HorizontalDivider()
+                                Column(
+                                    Modifier.fillMaxWidth()
+                                        .clickable { vm.addExtraProduct(p); newItem = ""; focus.clearFocus() }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                ) {
+                                    Text(p.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        listOfNotNull(p.size.ifBlank { null }, (p.promo ?: p.price)?.let { Sales.money(it) },
+                                            if (p.promo != null) "on sale" else null).joinToString(" · "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            if (!hasStore) {
+                                Text(
+                                    "Pick your store in Settings to see King Soopers matches.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
                     }
                 }
+                QuickAddChips(vm, st, openQuickAdd)
                 if (!hasStore) {
                     TextButton(onClick = openSettings) {
                         Text("Pick your King Soopers store in Settings to see products and prices")
@@ -243,6 +287,27 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                 ) { Text(if (vm.signedIn) "Add to cart" else "Sign in") }
             }
         }
+    }
+}
+
+/** Tappable chips under the Add box: usual items, regular snacks, last week's extras, and More…. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickAddChips(vm: MealsViewModel, st: UserState, openQuickAdd: () -> Unit) {
+    data class Chip(val label: String, val on: Boolean, val toggle: () -> Unit)
+    val snacks = (st.lastSnacks + st.customSnacks + st.snacks).distinct()
+    val extras = (st.lastExtraItems + st.extraItems).distinctBy { it.lowercase() }
+    val chips = st.staples.map { n -> Chip("${stapleEmoji(n)} $n", n in st.pickedStaples) { vm.toggleStaple(n) } } +
+        snacks.map { n -> Chip("${SnackCatalog.find(n).emoji} $n", n in st.snacks) { vm.toggleSnack(n) } } +
+        extras.map { n -> Chip("🛒 $n", st.extraItems.any { it.equals(n, true) }) { vm.toggleExtraItem(n) } }
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        chips.forEach { c ->
+            FilterChip(selected = c.on, onClick = c.toggle, label = { Text(c.label, maxLines = 1) })
+        }
+        AssistChip(onClick = openQuickAdd, label = { Text("More…") })
     }
 }
 

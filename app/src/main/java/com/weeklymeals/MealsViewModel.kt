@@ -49,6 +49,9 @@ data class ShopGroup(
     val need: String get() = items.joinToString(", ") { Logic.needText(it).ifBlank { "1" } }
 }
 
+/** The Shop section for everything that isn't from a recipe. */
+const val EXTRAS = "🛒 Extras"
+
 class MealsViewModel(app: Application) : AndroidViewModel(app) {
     private val store = Store(app)
     private val api = KrogerApi()
@@ -294,6 +297,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             snacks = emptySet(),
             lastStaples = if (s.pickedStaples.isEmpty()) s.lastStaples else s.pickedStaples,
             pickedStaples = emptySet(),
+            lastExtraItems = if (s.extraItems.isEmpty()) s.lastExtraItems else s.extraItems,
             extraItems = emptyList(),
             haveTerms = emptySet(),
         )
@@ -351,12 +355,12 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun shopItems(st: UserState = state.value): List<ShopItem> =
         Logic.shopList(st.week, st.sides, recipes(st), sideMap, st.servings) +
             st.snacks.sorted().map { n ->
-                ShopItem("snack:${n.lowercase()}", n, "", SnackCatalog.find(n).qty, "🍿 Snacks")
+                ShopItem("snack:${n.lowercase()}", n, "", SnackCatalog.find(n).qty, EXTRAS)
             } +
             st.staples.filter { it in st.pickedStaples }.map { n ->
-                ShopItem("usual:${n.lowercase()}", n, "", 1.0, Logic.aisle(n))
+                ShopItem("usual:${n.lowercase()}", n, "", 1.0, EXTRAS)
             } +
-            st.extraItems.map { n -> ShopItem("extra:${n.lowercase()}", n, "", 1.0, Logic.aisle(n)) }
+            st.extraItems.map { n -> ShopItem("extra:${n.lowercase()}", n, "", 1.0, EXTRAS) }
 
     /** Shopping list grouped by what you'd buy at the store, in store-section order. */
     fun shopGroups(st: UserState = state.value): List<ShopGroup> {
@@ -394,6 +398,56 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setPickedStaples(picked: Set<String>) = edit { it.copy(pickedStaples = picked) }
+
+    fun toggleStaple(name: String) = edit { s ->
+        s.copy(pickedStaples = if (name in s.pickedStaples) s.pickedStaples - name else s.pickedStaples + name)
+    }
+
+    fun toggleExtraItem(name: String) = edit { s ->
+        if (s.extraItems.any { it.equals(name, true) }) s.copy(extraItems = s.extraItems.filterNot { it.equals(name, true) })
+        else s.copy(extraItems = s.extraItems + name)
+    }
+
+    // ---- Search-as-you-type for the Add box --------------------------------------
+
+    /** King Soopers products matching what's typed in the Add box. */
+    val suggestions = MutableStateFlow<List<Product>>(emptyList())
+    private var cachedToken: Pair<String, Long>? = null
+
+    private suspend fun appToken(k: KrogerState): String {
+        cachedToken?.let { (t, until) -> if (System.currentTimeMillis() < until) return t }
+        val t = api.clientToken(k.clientId, k.clientSecret)
+        cachedToken = t to System.currentTimeMillis() + 20 * 60_000L
+        return t
+    }
+
+    fun searchSuggestions(query: String) {
+        val q = query.trim()
+        val k = state.value.kroger
+        if (q.length < 2 || k.store.id.isEmpty() || k.clientId.isBlank()) {
+            suggestions.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            val found = runCatching { api.searchProducts(appToken(k), k.store.id, q, limit = 12) }.getOrDefault(emptyList())
+            suggestions.value = found.filter { it.available }.take(8)
+        }
+    }
+
+    /** Adds a specific King Soopers product to Extras, already picked. */
+    fun addExtraProduct(p: Product) {
+        val name = p.title.trim()
+        if (name.isEmpty()) return
+        val term = Logic.searchTerm(name)
+        products.update { it + (term to CartLine(term = term, search = name, options = listOf(p), selected = 0, quantity = 1)) }
+        edit { s ->
+            s.copy(
+                extraItems = if (s.extraItems.any { it.equals(name, true) }) s.extraItems else s.extraItems + name,
+                kroger = s.kroger.copy(choices = s.kroger.choices + ("term:$term" to Choice(p.upc, p.title, name))),
+            )
+        }
+        suggestions.value = emptyList()
+    }
 
     // ---- Snacks ----------------------------------------------------------------
 
