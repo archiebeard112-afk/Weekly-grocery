@@ -959,15 +959,6 @@ private fun RecipeScreen(
                 modifier = Modifier.padding(top = 6.dp),
             )
             LaunchedEffect(r.id) { vm.fetchReviewsIfMissing(r) }
-            vm.mealCost(st, r)?.let { c ->
-                Text(
-                    "≈ ${Sales.money(c.total)} for this meal" +
-                        if (c.saved >= 0.5) " · you save ≈ ${Sales.money(c.saved)} with what you have" else "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (c.total <= st.budgetMax) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
             Nutrition.perServing(r)?.let { cal ->
                 val sideCal = if (inWeek) Nutrition.side(side) else null
                 Text(
