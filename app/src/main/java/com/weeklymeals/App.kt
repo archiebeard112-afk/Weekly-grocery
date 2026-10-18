@@ -486,6 +486,7 @@ internal fun Heading(text: String) {
 private fun RecipeDetails(
     r: Recipe, serv: Int, side: Side?, ctl: TimerCtl? = null,
     cost: MealsViewModel.MealCost? = null, budgetMax: Double = 0.0,
+    expired: Map<String, String> = emptyMap(),
 ) {
     // Each shopping item's price shows once, on its first ingredient line.
     val priced = mutableSetOf<String>()
@@ -495,7 +496,16 @@ private fun RecipeDetails(
         val price = cost?.lines?.get(term)
         val first = price != null && priced.add(term)
         Row(verticalAlignment = Alignment.Top) {
-            Text("• " + Logic.ingText(i, serv, base), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text("• " + Logic.ingText(i, serv, base), style = MaterialTheme.typography.bodyMedium)
+                // In the pantry but past its date.
+                expired[term]?.let {
+                    Text(
+                        "   🫙 $it", style = MaterialTheme.typography.labelSmall,
+                        color = if (it == "expired") MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color(0xFFBA7517),
+                    )
+                }
+            }
             if (cost != null) {
                 Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
                     Text(
@@ -997,7 +1007,7 @@ private fun RecipeScreen(
             }
             if (inWeek) WeekControls(vm, st, r, side)
             SaleSection(vm, st, r)
-            RecipeDetails(r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax)
+            RecipeDetails(r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax, expired = vm.expiredTerms(st))
             ReviewsSection(r.id, r.rating, r.ratingCount, r.countLabel, r.reviews)
             Spacer(Modifier.height(24.dp))
         }

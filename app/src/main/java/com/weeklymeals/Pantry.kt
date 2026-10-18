@@ -44,13 +44,52 @@ object Pantry {
         }
     }
 
-    /** Fresh, use soon (past its typical time or best-by within a week), or past its best-by date. */
+    fun isSpice(item: PantryItem): Boolean = item.shelf == "spices"
+
+    /** Spices don't spoil, they just lose flavor: extra days past the jar's date. */
+    private fun spiceGrace(n: String): Int = when {
+        Regex("\\bsalt\\b").containsMatchIn(n) && !n.contains("seasoning") -> 100_000
+        Regex("whole|peppercorn|stick|seed|clove|bay lea|nutmeg|allspice berr|star anise").containsMatchIn(n) -> 900
+        else -> 365
+    }
+
+    /** Typical days food stays good past its sell-by date. */
+    private fun sellByGrace(item: PantryItem, n: String): Int = when {
+        isSpice(item) -> spiceGrace(n)
+        item.kind == "can" || Regex("broth|stock|bouillon").containsMatchIn(n) -> 365
+        Regex("ground (beef|turkey|pork|chicken)|chicken|beef|pork|turkey|fish|salmon|shrimp|sausage|steak").containsMatchIn(n) -> 2
+        Regex("shredded|bread|bun|tortilla").containsMatchIn(n) -> 6
+        Regex("\\bmilk\\b").containsMatchIn(n) && !n.contains("buttermilk") && !n.contains("coconut") -> 7
+        Regex("yogurt|sour cream|cream cheese|heavy cream|whipping cream|half and half|buttermilk").containsMatchIn(n) -> 14
+        Regex("\\beggs?\\b").containsMatchIn(n) -> 28
+        Regex("cheese|cheddar|parmesan|mozzarella").containsMatchIn(n) -> 28
+        isButter(n) -> 60
+        Regex("lemon juice|lime juice").containsMatchIn(n) -> 180
+        Regex("\\b(rice|pasta|spaghetti|penne|macaroni|flour|oats|lentil|beans|noodles)\\b").containsMatchIn(n) -> 180
+        item.shelf == "fridge" || item.shelf == "produce" -> 7
+        else -> 30
+    }
+
+    /** The day it actually stops being good: the package date plus any grace (0 = no date set). */
+    fun goodUntil(item: PantryItem): Long {
+        if (item.bestBy <= 0) return 0L
+        val n = (item.term + " " + item.name).lowercase()
+        val grace = when {
+            item.dateKind == "sell" -> sellByGrace(item, n)
+            isSpice(item) -> spiceGrace(n)
+            else -> 0
+        }
+        return item.bestBy + grace.toLong() * 86_400_000L
+    }
+
+    /** Fresh, use soon (past its typical time or within a week of its date), or past its date. */
     fun freshness(item: PantryItem, now: Long = System.currentTimeMillis()): Fresh {
         val day = 86_400_000L
         if (item.bestBy > 0) {
+            val until = goodUntil(item)
             return when {
-                now > item.bestBy + day -> Fresh.EXPIRED
-                item.bestBy - now < 7 * day -> Fresh.SOON
+                now > until + day -> Fresh.EXPIRED
+                until - now < 7 * day -> Fresh.SOON
                 else -> Fresh.OK
             }
         }

@@ -30,9 +30,13 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
@@ -90,6 +94,58 @@ private val FREEZER = Color(0xFF85B7EB)
 /** A best-by date from the date picker (stored as midnight UTC), e.g. "Mar 4, 2027". */
 private fun bestByText(at: Long): String {
     val f = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault())
+    f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+    return f.format(java.util.Date(at))
+}
+
+/** Shows typed digits as MM/DD/YY: the slashes fill in by themselves. */
+private object DateSlashes : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val d = text.text
+        val out = buildString {
+            append(d.take(2))
+            if (d.length > 2) append("/").append(d.substring(2, minOf(4, d.length)))
+            if (d.length > 4) append("/").append(d.substring(4))
+        }
+        val map = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int =
+                (if (offset <= 2) offset else if (offset <= 4) offset + 1 else offset + 2).coerceAtMost(out.length)
+            override fun transformedToOriginal(offset: Int): Int =
+                (if (offset <= 2) offset else if (offset <= 5) offset - 1 else offset - 2).coerceIn(0, d.length)
+        }
+        return TransformedText(AnnotatedString(out), map)
+    }
+}
+
+/**
+ * Typed digits to a date (midnight UTC): MMDD (the next one coming up), MMDDYY or MMDDYYYY.
+ * Null while it's incomplete or not a real date.
+ */
+private fun parseTypedDate(d: String): Long? {
+    if (d.length != 4 && d.length != 6 && d.length != 8) return null
+    val m = d.substring(0, 2).toInt()
+    val day = d.substring(2, 4).toInt()
+    val utc = java.util.TimeZone.getTimeZone("UTC")
+    val today = java.util.Calendar.getInstance()
+    var year = when (d.length) {
+        4 -> today.get(java.util.Calendar.YEAR)
+        6 -> 2000 + d.substring(4, 6).toInt()
+        else -> d.substring(4, 8).toInt()
+    }
+    fun make(y: Int): Long? {
+        val c = java.util.Calendar.getInstance(utc).apply { isLenient = false; clear(); set(y, m - 1, day) }
+        return try { c.timeInMillis } catch (e: Exception) { null }
+    }
+    if (m !in 1..12 || day !in 1..31 || year !in 2000..2100) return null
+    var ms = make(year) ?: return null
+    // Just month and day: if that's already passed this year, it means next year.
+    if (d.length == 4 && ms < System.currentTimeMillis() - 86_400_000L) { year++; ms = make(year) ?: return null }
+    return ms
+}
+
+/** The digits to show for a saved date (MMDDYY). */
+private fun digitsFor(at: Long): String {
+    val f = java.text.SimpleDateFormat("MMddyy", java.util.Locale.US)
     f.timeZone = java.util.TimeZone.getTimeZone("UTC")
     return f.format(java.util.Date(at))
 }
@@ -360,7 +416,11 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                                     Text(Pantry.amountText(p), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 when (fresh) {
-                                    Pantry.Fresh.EXPIRED -> Text("past best-by", fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
+                                    Pantry.Fresh.EXPIRED -> when {
+                                        p.useAnyway -> Text("past date · using it", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Pantry.isSpice(p) -> Text("may be weak", fontSize = 10.sp, color = LOW)
+                                        else -> Text(if (p.dateKind == "sell") "past sell-by" else "past best-by", fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
+                                    }
                                     Pantry.Fresh.SOON -> Text("use soon", fontSize = 10.sp, color = LOW)
                                     else -> {
                                         if (p.shelf == "produce" && p.addedAt > 0) {
@@ -590,7 +650,8 @@ private fun PantryItemDialog(
     var item by remember(start.id) { mutableStateOf(start) }
     var level by remember(start.id) { mutableDoubleStateOf(start.level) }
     var confirmRemove by remember { mutableStateOf(false) }
-    var pickingDate by remember { mutableStateOf(false) }
+    var dateDigits by remember(start.id) { mutableStateOf(if (start.bestBy > 0) digitsFor(start.bestBy) else "") }
+    val dateBad = dateDigits.isNotEmpty() && parseTypedDate(dateDigits) == null
     val counted = item.measure == Pantry.COUNT
 
     fun setFrom(y: Float, h: Float) {
@@ -660,18 +721,57 @@ private fun PantryItemDialog(
                 } else if (life != null) {
                     Text("Usually good for ${Pantry.lifeText(life)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                val dateWord = if (item.dateKind == "sell") "sell-by" else "best-by"
                 when (fresh) {
-                    Pantry.Fresh.EXPIRED -> Text("Past its best-by date", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                    Pantry.Fresh.SOON -> Text(if (item.bestBy > 0) "Best-by is coming up: use soon" else "Getting old: use soon", style = MaterialTheme.typography.bodySmall, color = LOW)
+                    Pantry.Fresh.EXPIRED -> Text(
+                        if (Pantry.isSpice(item)) "Past its $dateWord: may be weak" else "Past its $dateWord date",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (Pantry.isSpice(item)) LOW else MaterialTheme.colorScheme.error,
+                    )
+                    Pantry.Fresh.SOON -> Text(if (item.bestBy > 0) "Date is coming up: use soon" else "Getting old: use soon", style = MaterialTheme.typography.bodySmall, color = LOW)
                     else -> {}
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedButton(onClick = { pickingDate = true }, contentPadding = PaddingValues(horizontal = 12.dp)) {
-                        Text(if (item.bestBy > 0) "Best by ${bestByText(item.bestBy)}" else "Set best-by date")
+                if (fresh == Pantry.Fresh.EXPIRED) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("I'm fine using it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Switch(checked = item.useAnyway, onCheckedChange = { item = item.copy(useAnyway = it) })
                     }
-                    if (item.bestBy > 0) {
-                        TextButton(onClick = { item = item.copy(bestBy = 0L) }) { Text("Clear") }
+                }
+                // The date off the package: pick which kind, then type it (slashes fill in).
+                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = item.dateKind != "sell", onClick = { item = item.copy(dateKind = "best") }, label = { Text("Best by") })
+                    FilterChip(selected = item.dateKind == "sell", onClick = { item = item.copy(dateKind = "sell") }, label = { Text("Sell by") })
+                }
+                val badNote: (@Composable () -> Unit)? = if (dateBad) { { Text("Not a real date") } } else null
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        dateDigits,
+                        { v ->
+                            dateDigits = v.filter { it.isDigit() }.take(8)
+                            val ms = parseTypedDate(dateDigits)
+                            if (dateDigits.isEmpty()) item = item.copy(bestBy = 0L)
+                            else if (ms != null) item = item.copy(bestBy = ms)
+                        },
+                        label = { Text(if (item.dateKind == "sell") "Sell-by date" else "Best-by date") },
+                        placeholder = { Text("MM/DD/YY") },
+                        singleLine = true,
+                        isError = dateBad,
+                        supportingText = badNote,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = DateSlashes,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (dateDigits.isNotEmpty()) {
+                        TextButton(onClick = { dateDigits = ""; item = item.copy(bestBy = 0L) }) { Text("Clear") }
                     }
+                }
+                if (item.bestBy > 0 && !dateBad) {
+                    val until = Pantry.goodUntil(item)
+                    Text(
+                        if (until > item.bestBy) "Usually good until about ${bestByText(until)}" else "Good until ${bestByText(until)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 if (!isNew) {
                     TextButton(onClick = { item = item.copy(addedAt = System.currentTimeMillis()) }) { Text("Just bought (restart the clock)") }
@@ -711,29 +811,13 @@ private fun PantryItemDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
+            TextButton(enabled = !dateBad, onClick = {
                 val term = item.term.trim().ifEmpty { Logic.searchTerm(item.name) }
                 onSave(if (counted) item.copy(term = term) else item.copy(term = term, left = level * item.full))
             }) { Text(if (isNew) "Add" else "Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
-
-    if (pickingDate) {
-        val state = rememberDatePickerState(
-            initialSelectedDateMillis = if (item.bestBy > 0) item.bestBy else System.currentTimeMillis(),
-        )
-        DatePickerDialog(
-            onDismissRequest = { pickingDate = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.selectedDateMillis?.let { item = item.copy(bestBy = it) }
-                    pickingDate = false
-                }) { Text("OK") }
-            },
-            dismissButton = { TextButton(onClick = { pickingDate = false }) { Text("Cancel") } },
-        ) { DatePicker(state = state, title = { Text("Best-by date", Modifier.padding(start = 24.dp, top = 16.dp)) }) }
-    }
 
     if (confirmRemove) {
         AlertDialog(

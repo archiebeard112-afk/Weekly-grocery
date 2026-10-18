@@ -1224,12 +1224,26 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         return total
     }
 
-    enum class PantryStatus { COVERED, LOW }
+    enum class PantryStatus { COVERED, LOW, EXPIRED }
+
+    /** Past its date and you haven't said you're fine using it. */
+    fun isExpired(item: PantryItem): Boolean =
+        !item.useAnyway && Pantry.freshness(item) == Pantry.Fresh.EXPIRED
+
+    /** Ingredients on a recipe page that are past their date in the pantry: term -> label. */
+    fun expiredTerms(st: UserState): Map<String, String> =
+        st.pantry.filter { isExpired(it) }.associate { it.term to if (Pantry.isSpice(it)) "may be weak" else "expired" }
+
+    /** Keep using an item past its date (or stop). */
+    fun setUseAnyway(term: String, on: Boolean) = edit { s ->
+        s.copy(pantry = s.pantry.map { if (it.term == term) it.copy(useAnyway = on) else it })
+    }
 
     /** Whether the pantry covers this item for the week, is short, or doesn't have it (null). */
     fun pantryStatus(st: UserState, g: ShopGroup): PantryStatus? {
         if (g.aisle == EXTRAS) return null
         val item = pantryItem(st, g.term) ?: return null
+        if (isExpired(item)) return PantryStatus.EXPIRED
         val n = need(item, g)
         val enough = if (n != null && item.measure != "") item.left + 1e-6 >= n else !Pantry.isLow(item)
         return if (enough) PantryStatus.COVERED else PantryStatus.LOW
@@ -1259,7 +1273,12 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** Adds or updates a pantry item. */
     fun savePantryItem(item: PantryItem) = edit { s ->
         val exists = s.pantry.any { it.id == item.id }
-        val saved = if (item.addedAt == 0L) item.copy(addedAt = System.currentTimeMillis()) else item
+        val old = s.pantry.firstOrNull { it.id == item.id }
+        var saved = if (item.addedAt == 0L) item.copy(addedAt = System.currentTimeMillis()) else item
+        // A new date (or "Just bought") means it's fresh again: stop the "use anyway".
+        if (old != null && (old.bestBy != saved.bestBy || old.dateKind != saved.dateKind || old.addedAt != saved.addedAt)) {
+            saved = saved.copy(useAnyway = false)
+        }
         s.copy(pantry = if (exists) s.pantry.map { if (it.id == item.id) saved else it } else s.pantry + saved)
     }
 
@@ -1327,7 +1346,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             if (i >= 0) {
                 val cur = out[i]
                 out[i] = if (cur.measure == "") {
-                    cur.copy(left = cur.full, upc = p.upc, size = p.size.ifBlank { cur.size }, addedAt = System.currentTimeMillis(), bestBy = 0L)
+                    cur.copy(left = cur.full, upc = p.upc, size = p.size.ifBlank { cur.size }, addedAt = System.currentTimeMillis(), bestBy = 0L, useAnyway = false, useAnyway = false)
                 } else {
                     val (m, pack) = Pantry.measureFor(cur.term + " " + p.title, cur.kind, p.size)
                     val add = (if (m == cur.measure) pack else cur.full) * l.quantity

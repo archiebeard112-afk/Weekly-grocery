@@ -182,8 +182,12 @@ data class PantryItem(
     val left: Double = 1.0,
     /** When it was bought (for freshness), 0 = unknown. */
     val addedAt: Long = 0L,
-    /** Best-by date from the package (0 = not set). */
+    /** Date from the package (0 = not set): a best-by or sell-by date, see [dateKind]. */
     val bestBy: Long = 0L,
+    /** "best" (best-by) or "sell" (sell-by). */
+    val dateKind: String = "best",
+    /** You chose to keep using it past its date (cleared when the date changes or it's refilled). */
+    val useAnyway: Boolean = false,
 ) {
     val level: Double get() = if (full <= 0) 0.0 else (left / full).coerceIn(0.0, 1.0)
 }

@@ -243,7 +243,15 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                     }
                     items(section, key = { "g_" + it.term }) { g ->
                         val inFridge = st.pantry.any { it.term == g.term && it.shelf == "fridge" }
-                        val pantryNote = when (vm.pantryStatus(st, g)) {
+                        val status = vm.pantryStatus(st, g)
+                        val pantryNote = when (status) {
+                            MealsViewModel.PantryStatus.EXPIRED -> {
+                                val item = vm.pantryItem(st, g.term)
+                                val place = if (inFridge) "fridge" else "pantry"
+                                val date = if (item?.dateKind == "sell") "sell-by" else "best-by"
+                                if (item != null && Pantry.isSpice(item)) "⚠ Pantry jar is past its $date and may be weak · get more"
+                                else "⚠ The one in your $place is past its $date · get more"
+                            }
                             MealsViewModel.PantryStatus.LOW -> if (inFridge) "🥛 Low in fridge" else "🫙 Low in pantry"
                             MealsViewModel.PantryStatus.COVERED -> if (inFridge) "🥛 In fridge · buying anyway" else "🫙 In pantry · buying anyway"
                             null -> null
@@ -257,7 +265,10 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                             else if (f.byCount) "🧊 ${f.count} in freezer · need ${Logic.fmt(more)} more"
                             else "🧊 ${Logic.fmt(f.lb)} lb in freezer · need ${Logic.fmt(Math.round(more * 4) / 4.0)} lb more"
                         }
-                        ShopRow(vm, g, products[g.term], hasStore, pantryNote, vm.shopPack(st, g), freezerNote)
+                        ShopRow(
+                            vm, g, products[g.term], hasStore, pantryNote, vm.shopPack(st, g), freezerNote,
+                            usePantry = if (status == MealsViewModel.PantryStatus.EXPIRED) ({ vm.setUseAnyway(g.term, true) }) else null,
+                        )
                     }
                 }
             }
@@ -383,6 +394,7 @@ private fun ShopRow(
     vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore: Boolean, pantryNote: String? = null,
     meat: MealsViewModel.MeatPack? = null,
     freezerNote: String? = null,
+    usePantry: (() -> Unit)? = null,
 ) {
     var editPack by remember { mutableStateOf(false) }
     val highlight = MaterialTheme.colorScheme.primary
@@ -400,7 +412,15 @@ private fun ShopRow(
             TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Have it") }
         }
         pantryNote?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFBA7517))
+            if (usePantry != null) {
+                // Past its date: buy more, or say you're fine using what you have.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
+                    TextButton(onClick = usePantry) { Text("Use pantry") }
+                }
+            } else {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFBA7517))
+            }
         }
         // Meat sold by the pound: which pack, what's left over. Tap to set the real pack weight.
         freezerNote?.let {
