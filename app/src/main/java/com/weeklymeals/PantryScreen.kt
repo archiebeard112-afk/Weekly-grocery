@@ -32,6 +32,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -161,22 +163,30 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
 
     Scaffold(
         modifier = Modifier.swipeBack(onBack),
-        topBar = {
-            TopAppBar(
-                title = { Text("Pantry") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
-                actions = { IconButton(onClick = { adding = "" }) { Icon(Icons.Filled.Add, "Add item") } },
-            )
-        },
     ) { pad ->
-        LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = 14.dp)) {
+        LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
+            item {
+                // Same title spot and button style as Favorites' "Add recipe".
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Pantry", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    FilledTonalButton(
+                        onClick = { adding = "" },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        modifier = Modifier.height(34.dp),
+                    ) {
+                        Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add item")
+                    }
+                }
+            }
             item {
                 Text(
                     if (st.pantry.isEmpty()) "Your pantry is empty. Tap + to scan or search for what you have."
                     else "${st.pantry.size} item${if (st.pantry.size == 1) "" else "s"}" + if (lowCount > 0) " · $lowCount low" else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp),
+                    modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 8.dp),
                 )
             }
             Pantry.SHELVES.forEach { (key, label) ->

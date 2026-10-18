@@ -221,12 +221,6 @@ fun App(vm: MealsViewModel) {
         ) { webViewing = null; sideWebFor = null }
     } else if (overlay == Overlay.None && viewing != null) {
         RecipeScreen(vm, st, viewing!!, toggleFav, timerCtl, onCook = { cooking = viewing }) { viewing = null }
-    } else if (overlay == Overlay.Settings) {
-        SettingsScreen(vm, st) { overlay = Overlay.None }
-    } else if (overlay == Overlay.Pantry) {
-        PantryScreen(vm, st) { overlay = Overlay.None }
-    } else if (overlay == Overlay.History) {
-        HistoryScreen(vm, st) { overlay = Overlay.None }
     } else if (overlay == Overlay.AddRecipe) {
         AddRecipeScreen(vm, linkMode = addLinkMode, startLink = addFromLink) { overlay = Overlay.None; addFromLink = null }
     } else {
@@ -237,42 +231,46 @@ fun App(vm: MealsViewModel) {
                 TopAppBar(
                     title = { Text("Weekly Meals") },
                     actions = {
-                        IconButton(onClick = { overlay = Overlay.Pantry }) {
-                            Icon(PantryIcon, contentDescription = "Pantry")
-                        }
-                        IconButton(onClick = { overlay = Overlay.History }) {
-                            Icon(Icons.Filled.List, contentDescription = "History")
-                        }
-                        IconButton(onClick = { overlay = Overlay.Settings }) {
-                            Icon(Icons.Filled.Settings, contentDescription = "Settings")
-                        }
+                        // Tap to open below the bar (highlighted); tap again to close.
+                        val toggle: (Overlay) -> Unit = { o -> overlay = if (overlay == o) Overlay.None else o }
+                        TopIcon(PantryIcon, "Pantry", overlay == Overlay.Pantry) { toggle(Overlay.Pantry) }
+                        TopIcon(Icons.Filled.List, "History", overlay == Overlay.History) { toggle(Overlay.History) }
+                        TopIcon(Icons.Filled.Settings, "Settings", overlay == Overlay.Settings) { toggle(Overlay.Settings) }
+                        Spacer(Modifier.width(4.dp))
                     },
                 )
             },
             bottomBar = {
                 NavigationBar {
                     NavigationBarItem(
-                        selected = tab == 0, onClick = { tab = 0 },
+                        selected = tab == 0 && overlay == Overlay.None, onClick = { tab = 0; overlay = Overlay.None },
                         icon = { CountIcon(st.week.size) { Icon(Icons.Filled.DateRange, null) } },
                         label = { TabLabel("Week") },
                     )
                     NavigationBarItem(
-                        selected = tab == 1, onClick = { tab = 1 },
+                        selected = tab == 1 && overlay == Overlay.None, onClick = { tab = 1; overlay = Overlay.None },
                         icon = { Icon(Icons.Filled.Search, null) }, label = { TabLabel("Browse") },
                     )
                     NavigationBarItem(
-                        selected = tab == 2, onClick = { tab = 2 },
+                        selected = tab == 2 && overlay == Overlay.None, onClick = { tab = 2; overlay = Overlay.None },
                         icon = { Icon(Icons.Filled.Favorite, null) }, label = { TabLabel("Favorites") },
                     )
                     NavigationBarItem(
-                        selected = tab == 3, onClick = { tab = 3 },
+                        selected = tab == 3 && overlay == Overlay.None, onClick = { tab = 3; overlay = Overlay.None },
                         icon = { Icon(Icons.Filled.ShoppingCart, null) }, label = { TabLabel("Shop") },
                     )
                 }
             },
         ) { pad ->
-            Column(Modifier.padding(pad).fillMaxSize().keepFullHeight()) {
-                when (tab) {
+            Column(
+                Modifier.padding(pad).fillMaxSize()
+                    .then(if (overlay == Overlay.None) Modifier.keepFullHeight() else Modifier),
+            ) {
+                when {
+                    overlay == Overlay.Pantry -> PantryScreen(vm, st) { overlay = Overlay.None }
+                    overlay == Overlay.History -> HistoryScreen(vm, st) { overlay = Overlay.None }
+                    overlay == Overlay.Settings -> SettingsScreen(vm, st) { overlay = Overlay.None }
+                    else -> when (tab) {
                     0 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 })
                     1 -> BrowseScreen(
                         vm, st, toggleFav,
@@ -281,6 +279,7 @@ fun App(vm: MealsViewModel) {
                     ) { viewing = it }
                     2 -> FavoritesScreen(vm, st, toggleFav, favGridState, favSearch, onHold = { confirmDelete = it }, onOpen = { viewing = it }) { askAddMode = true }
                     else -> ShopScreen(vm, st, shopListState) { overlay = Overlay.Settings }
+                    }
                 }
             }
         }
@@ -1004,20 +1003,16 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
     var confirmDelete by remember { mutableStateOf<PastWeek?>(null) }
     Scaffold(
         modifier = Modifier.swipeBack(onBack),
-        topBar = {
-            TopAppBar(
-                title = { Text("History") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") }
-                },
-            )
-        },
     ) { pad ->
         LazyColumn(
             Modifier.padding(pad).fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
+            // Same margins and title spot as the tabs.
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            item {
+                Text("History", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 4.dp))
+            }
             if (st.history.isEmpty()) {
                 item {
                     Text(
@@ -1099,4 +1094,21 @@ fun openKingSoopersCart(ctx: android.content.Context) {
 class SearchState {
     val query = androidx.compose.runtime.mutableStateOf("")
     val filters = androidx.compose.runtime.mutableStateOf(listOf<String>())
+}
+
+/** A top-bar icon; while its page is open it sits in a highlight pill like the bottom tabs. */
+@Composable
+private fun TopIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.padding(horizontal = 2.dp).size(48.dp, 32.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon, contentDescription = label,
+            tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+        )
+    }
 }

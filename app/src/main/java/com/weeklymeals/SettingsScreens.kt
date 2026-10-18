@@ -78,19 +78,13 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
 
     Scaffold(
         modifier = Modifier.swipeBack(onBack),
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") }
-                },
-            )
-        },
     ) { pad ->
         Column(
-            Modifier.padding(pad).imePadding().padding(16.dp).verticalScroll(rememberScrollState()),
+            // Same margins and title spot as the tabs.
+            Modifier.padding(pad).imePadding().padding(horizontal = 10.dp, vertical = 6.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            Text("Settings", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 4.dp))
             val storeLine = listOf(
                 if (k.store.id.isEmpty()) "No store yet" else k.store.name,
                 if (vm.signedIn) "Signed in" else "Not signed in",
