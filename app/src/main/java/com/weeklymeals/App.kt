@@ -565,21 +565,27 @@ private fun RecipeTile(
         modifier = modifier.clickable(onClick = onOpen),
     ) {
         Column(Modifier.fillMaxSize().padding(start = 10.dp, top = 6.dp, end = 2.dp, bottom = 2.dp)) {
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    r.name, style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 3, overflow = TextOverflow.Ellipsis,
-                )
-            }
             val badges = (
                 (if (saleSave >= Sales.MIN_SAVINGS) listOf("🏷️ " + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
                     Logic.badges(r)
                 ).take(2)
-            if (badges.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    badges.forEach { Badge(it, small = true) }
+            // Emoji on the left; name with badges right under it, so nothing overlaps.
+            Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                    Text(
+                        r.name, style = MaterialTheme.typography.bodyMedium,
+                        maxLines = if (badges.isEmpty()) 2 else 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    if (badges.isNotEmpty()) {
+                        Row(
+                            Modifier.padding(top = 3.dp).horizontalScroll(rememberScrollState(), enabled = false),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            badges.forEach { Badge(it, small = true) }
+                        }
+                    }
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
