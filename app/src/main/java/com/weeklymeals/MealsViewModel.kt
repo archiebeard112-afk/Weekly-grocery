@@ -1317,7 +1317,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun mealCost(st: UserState, r: Recipe): MealCost? {
         val side = if (r.id in st.week) st.sides[r.id] else null
         val prods = products.value
-        val key = listOf(r.id, r.ingredients.hashCode(), side, st.servings, st.pantry, st.haveTerms, prods.size)
+        val sales = salesCache(st)
+        val key = listOf(r.id, r.ingredients.hashCode(), side, st.servings, st.pantry, st.haveTerms, prods.size, sales.day, sales.options.size)
         if (costCache.size > 2000) costCache.clear()
         return costCache.getOrPut(key) {
             val items = Logic.shopList(listOf(r.id), side?.let { mapOf(r.id to it) } ?: emptyMap(), mapOf(r.id to r), sideMap, st.servings)
@@ -1325,8 +1326,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             var saved = 0.0
             var known = 0
             val lines = mutableMapOf<String, Pair<Double, Boolean>>()
+            // Sale prices found for "On sale this week" win over everything else.
+            val onSale = Sales.lines(r, st.servings, sales).associate { it.term to it.sale.promo * it.packages }
             items.groupBy { Logic.searchTerm(it.name) }.forEach { (term, list) ->
-                val c = Prices.cost(term + " " + list.first().name, list, prods[term]?.product) ?: return@forEach
+                val c = onSale[term] ?: Prices.cost(term + " " + list.first().name, list, prods[term]?.product) ?: return@forEach
                 known++
                 val g = ShopGroup(term, list, list.first().aisle, emptyList())
                 val have = term in st.haveTerms || pantryStatus(st, g) == PantryStatus.COVERED

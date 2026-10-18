@@ -126,7 +126,12 @@ object Nutrition {
      * The food an ingredient name is about: the match that ends last (the main noun, so
      * "chicken broth" is broth, not chicken), and the longest one if two end together.
      */
-    private fun find(name: String): N? {
+    private val memo = HashMap<String, N?>()
+
+    /** Remembered per name: matching against every food name is slow to repeat for each tile. */
+    private fun find(name: String): N? = memo.getOrPut(name) { match(name) }
+
+    private fun match(name: String): N? {
         val n = name.lowercase()
         var best: Pair<Int, Int>? = null // (word end, keyword length)
         var pick: N? = null

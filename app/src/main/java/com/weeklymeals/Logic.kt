@@ -224,7 +224,12 @@ object Logic {
     )
 
     /** Turns a recipe ingredient name into what to look for at King Soopers. */
-    fun searchTerm(name: String): String {
+    private val termMemo = HashMap<String, String>()
+
+    /** Store search term for an ingredient name (remembered; it runs for every tile). */
+    fun searchTerm(name: String): String = termMemo.getOrPut(name) { searchTermOf(name) }
+
+    private fun searchTermOf(name: String): String {
         var n = name.lowercase()
             .replace(Regex("\\(.*?\\)"), " ")   // "(drained)"
             .substringBefore(",")                // "lemon, zested"

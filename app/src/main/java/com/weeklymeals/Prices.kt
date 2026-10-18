@@ -105,8 +105,12 @@ object Prices {
             "cayenne|turmeric|coriander|curry powder|garam masala|dry mustard|italian seasoning|nutmeg|dried basil|ground ginger)\\b",
     )
 
-    /** Main-noun match, same rule as calories ("chicken broth" is broth). */
-    private fun find(name: String): P? {
+    private val memo = HashMap<String, P?>()
+
+    /** Main-noun match, same rule as calories ("chicken broth" is broth). Remembered per name. */
+    private fun find(name: String): P? = memo.getOrPut(name) { match(name) }
+
+    private fun match(name: String): P? {
         var best: Pair<Int, Int>? = null
         var pick: P? = null
         for ((rx, len, v) in compiled) {
