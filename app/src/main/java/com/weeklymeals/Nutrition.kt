@@ -20,7 +20,7 @@ object Nutrition {
         "sirloin" to N(180.0, each = 300.0), "flank steak" to N(165.0), "skirt steak" to N(200.0), "ribeye" to N(290.0, each = 340.0),
         "cube steak" to N(160.0, each = 115.0), "steak" to N(200.0, each = 250.0),
         "bone-in skin-on chicken thigh" to N(230.0, each = 170.0), "chicken thigh" to N(177.0, each = 115.0),
-        "chicken breast" to N(120.0, each = 354.0), "chicken tenderloin" to N(110.0, each = 40.0),
+        "chicken breast" to N(120.0, each = 376.0), "chicken tenderloin" to N(110.0, each = 40.0),
         "chicken wing" to N(200.0, each = 45.0), "cooked chicken" to N(165.0, 140.0), "chicken" to N(150.0, 140.0, 150.0),
         "pork chop" to N(200.0, each = 180.0), "pork loin" to N(145.0), "pork tenderloin" to N(120.0, each = 450.0),
         "pork shoulder" to N(250.0), "bacon" to N(300.0, each = 25.0), "breakfast sausage" to N(330.0, each = 25.0, pack = 454.0),
