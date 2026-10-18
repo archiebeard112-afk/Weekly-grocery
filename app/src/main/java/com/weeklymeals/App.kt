@@ -804,13 +804,17 @@ private fun FavoritesScreen(
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(Modifier.padding(horizontal = 4.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Favorites", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.width(10.dp))
+                    Text("Favorites", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    // Same size and style as Browse's More button.
                     FilledTonalButton(
                         onClick = onAdd,
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                        modifier = Modifier.height(32.dp),
-                    ) { Text("+ Add recipe", style = MaterialTheme.typography.labelLarge) }
+                        modifier = Modifier.height(34.dp),
+                    ) {
+                        Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add recipe")
+                    }
                 }
                 CompactSearch(query, { query = it }, Modifier.padding(top = 8.dp))
                 Row(

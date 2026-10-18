@@ -107,6 +107,9 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
 
     val cart = toBuy.mapNotNull { g -> products[g.term]?.takeIf { it.product != null } }
     val total = cart.sumOf { l -> l.product!!.let { (it.promo ?: it.price ?: 0.0) * l.quantity } }
+    val saved = cart.sumOf { l ->
+        l.product!!.let { p -> if (p.promo != null && p.price != null) (p.price - p.promo) * l.quantity else 0.0 }
+    }
 
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -279,8 +282,18 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                 Column(Modifier.weight(1f)) {
                     Text("${toBuy.size} item${if (toBuy.size == 1) "" else "s"}", style = MaterialTheme.typography.titleSmall)
                     if (cart.isNotEmpty()) {
+                        val highlight = MaterialTheme.colorScheme.primary
                         Text(
-                            Sales.money(total) + if (cart.size < toBuy.size) " · ${toBuy.size - cart.size} without a product" else "",
+                            buildAnnotatedString {
+                                append(Sales.money(total))
+                                if (saved >= 0.01) {
+                                    append(" · ")
+                                    withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) {
+                                        append("You save " + Sales.money(saved))
+                                    }
+                                }
+                                if (cart.size < toBuy.size) append(" · ${toBuy.size - cart.size} without a product")
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

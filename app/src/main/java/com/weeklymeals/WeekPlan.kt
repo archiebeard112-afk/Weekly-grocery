@@ -37,6 +37,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
@@ -50,7 +52,12 @@ fun WeekScreen(vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrows
     val all = vm.recipes(st)
     val plan = Logic.dayPlan(st.week, st.days)
     val today = Logic.todayIndex()
-    val stepPx = with(LocalDensity.current) { (ROW_HEIGHT + ROW_GAP).toPx() }
+    val density = LocalDensity.current
+    // A standard week (no extras) fits on one screen; extras make the page scroll.
+    val fits = plan.extras.isEmpty()
+    val gapPx = with(density) { ROW_GAP.toPx() }
+    var rowPx by remember { mutableFloatStateOf(with(density) { ROW_HEIGHT.toPx() }) }
+    val stepPx = rowPx + gapPx
     var dragId by remember { mutableStateOf<Int?>(null) }
     var dragFrom by remember { mutableIntStateOf(0) }
     var dragY by remember { mutableFloatStateOf(0f) }
@@ -62,7 +69,9 @@ fun WeekScreen(vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrows
         plan.slots.mapIndexed { d, id -> Logic.DAY_SHORT[d] to id } + plan.extras.map { "Extra" to it }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp),
+        Modifier.fillMaxSize()
+            .then(if (fits) Modifier else Modifier.verticalScroll(rememberScrollState()))
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -92,7 +101,8 @@ fun WeekScreen(vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrows
             }
             var rowMod = Modifier
                 .fillMaxWidth()
-                .height(ROW_HEIGHT)
+                .then(if (fits) Modifier.weight(1f) else Modifier.height(ROW_HEIGHT))
+                .then(if (index == 0) Modifier.onSizeChanged { rowPx = it.height.toFloat() } else Modifier)
                 .zIndex(if (dragged) 1f else 0f)
                 .graphicsLayer { translationY = if (dragged) dragY else 0f }
                 .then(if (dragged) Modifier.shadow(8.dp, RoundedCornerShape(14.dp)) else Modifier)
@@ -147,11 +157,15 @@ fun WeekScreen(vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrows
         }
 
         if (st.week.isNotEmpty()) {
-            Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
-                OutlinedButton(onClick = { confirmFinish = true }) { Text("Finish week") }
+            Box(Modifier.fillMaxWidth().padding(top = 2.dp), contentAlignment = Alignment.Center) {
+                OutlinedButton(
+                    onClick = { confirmFinish = true },
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                    modifier = Modifier.height(34.dp),
+                ) { Text("Finish week") }
             }
         }
-        Spacer(Modifier.height(12.dp))
+        if (!fits) Spacer(Modifier.height(12.dp))
     }
 
     if (confirmFinish) {
