@@ -1346,7 +1346,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             if (i >= 0) {
                 val cur = out[i]
                 out[i] = if (cur.measure == "") {
-                    cur.copy(left = cur.full, upc = p.upc, size = p.size.ifBlank { cur.size }, addedAt = System.currentTimeMillis(), bestBy = 0L, useAnyway = false, useAnyway = false)
+                    cur.copy(left = cur.full, upc = p.upc, size = p.size.ifBlank { cur.size }, addedAt = System.currentTimeMillis(), bestBy = 0L, useAnyway = false)
                 } else {
                     val (m, pack) = Pantry.measureFor(cur.term + " " + p.title, cur.kind, p.size)
                     val add = (if (m == cur.measure) pack else cur.full) * l.quantity
