@@ -48,6 +48,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -90,11 +96,97 @@ object Cook {
         return ordered.mapIndexed { i, s -> if (i == firstSide) s.copy(startsSide = true) else s }
     }
 
+    // ---- Amounts inside steps: "Sauté garlic [2 cloves]" ----------------------------
+
+    private val skipWords = setOf(
+        "fresh", "large", "small", "medium", "boneless", "skinless", "low-sodium", "extra-virgin",
+        "shredded", "grated", "dried", "frozen", "plain", "whole", "baby", "mild", "hot", "sweet",
+        "red", "green", "white", "black", "yellow", "dry", "light", "dark", "italian", "mexican",
+        "cooked", "crushed", "diced", "sliced", "chopped", "minced", "bulk", "unsweetened", "oil-packed",
+    )
+    private val pluralUnits = mapOf(
+        "clove" to "cloves", "can" to "cans", "cup" to "cups", "bag" to "bags", "jar" to "jars",
+        "pkg" to "pkgs", "box" to "boxes", "bunch" to "bunches",
+    )
+    private val amountBefore = Regex(
+        "\\d[\\d/.½¼¾\\s-]*(cups?|tbsp|tsp|lbs?|oz|cloves?|slices|cans?|pinch)?\\s*(of\\s+)?$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private fun amountText(i: Ingredient): String {
+        val q = Logic.fmt(i.q)
+        val u = if (i.q > 1.0) pluralUnits[i.u] ?: i.u else i.u
+        return listOf(q, u).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    /** Words to look for in the step for an ingredient: full name, then last word, then first word. */
+    private fun phrases(name: String): List<List<String>> {
+        val words = name.lowercase().replace(Regex("\\(.*?\\)"), " ").split(Regex("[^a-z'-]+"))
+            .filter { it.isNotBlank() && it !in skipWords }
+        if (words.isEmpty()) return emptyList()
+        val full = words.dropLast(1).plus(stem(words.last())).joinToString(" ")
+        return listOf(
+            listOf(full),
+            if (words.size > 1) listOf(stem(words.last())) else emptyList(),
+            if (words.size > 1) listOf(stem(words.first())) else emptyList(),
+        )
+    }
+
+    /** "carrots" -> "carrot", "tomatoes" -> "tomato", so singular and plural both match. */
+    private fun stem(w: String): String = when {
+        w.endsWith("oes") -> w.dropLast(2)
+        w.endsWith("s") && !w.endsWith("ss") && w.length > 3 -> w.dropLast(1)
+        else -> w
+    }
+
+    /** A step split into plain text and highlighted amounts. */
+    data class Piece(val text: String, val isAmount: Boolean)
+
+    /**
+     * Adds amounts after the first mention of each ingredient across the steps.
+     * Skips mentions that already have an amount right before them ("3 tbsp butter").
+     */
+    fun withAmounts(steps: List<String>, ings: List<Ingredient>): List<List<Piece>> {
+        val usable = ings.filter { it.q > 0 }
+        val done = mutableSetOf<Int>() // ingredient indexes already shown
+        // Inserts per step: position -> amount text
+        val inserts = steps.map { mutableListOf<Pair<Int, String>>() }
+        val claimed = steps.map { mutableListOf<IntRange>() }
+        for (tier in 0..2) {
+            for ((idx, ing) in usable.withIndex()) {
+                if (idx in done) continue
+                val phrase = phrases(ing.name).getOrNull(tier)?.firstOrNull() ?: continue
+                val rx = Regex("\\b" + Regex.escape(phrase) + "(e?s)?\\b", RegexOption.IGNORE_CASE)
+                for ((si, step) in steps.withIndex()) {
+                    val m = rx.findAll(step).firstOrNull { mm -> claimed[si].none { it.first <= mm.range.last && mm.range.first <= it.last } }
+                        ?: continue
+                    claimed[si] += m.range
+                    done += idx
+                    if (!amountBefore.containsMatchIn(step.substring(0, m.range.first))) {
+                        inserts[si] += (m.range.last + 1) to amountText(ing)
+                    }
+                    break
+                }
+            }
+        }
+        return steps.mapIndexed { si, step ->
+            val pieces = mutableListOf<Piece>()
+            var at = 0
+            inserts[si].sortedBy { it.first }.forEach { (pos, amt) ->
+                pieces += Piece(step.substring(at, pos), false)
+                pieces += Piece(" [$amt]", true)
+                at = pos
+            }
+            pieces += Piece(step.substring(at), false)
+            pieces
+        }
+    }
+
     /** True if the side's first step comes before the main dish's first step. */
     fun sideFirst(steps: List<CookStep>): Boolean = steps.firstOrNull()?.isSide == true
 }
 
-/** Full-screen, one step at a time. Swipe or use Next/Back; ✕ to leave. The screen stays on. */
+/** Full-screen cooking view: ingredients, then every step on one scrolling page. The screen stays on. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CookScreen(vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) -> TimerCtl, onClose: () -> Unit) {
@@ -102,9 +194,14 @@ fun CookScreen(vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) ->
     if (r == null) { onClose(); return }
     val side = if (id in st.week) st.sides[id]?.let { vm.sideMap[it] } else null
     val sideName = side?.label?.substringAfter(" ")
+    val serv = st.servings
     val steps = remember(r, side) { Cook.order(r, side) }
-    val pages = steps.size + 1 // page 0 = ingredients
-    var page by rememberSaveable(id) { mutableIntStateOf(0) }
+    // Amounts scaled to "Cooking for", added after each ingredient's first mention.
+    val mainPieces = remember(r, serv) { Cook.withAmounts(r.steps, r.ingredients.map { Logic.scale(it, serv, r.base) }) }
+    val sidePieces = remember(side, serv) {
+        side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, serv, 4) }) } ?: emptyList()
+    }
+    var finished by remember(id) { mutableStateOf(setOf<Int>()) }
     val mainCtl = timerCtl(r)
     val sideCtl = mainCtl.copy(prefix = mainCtl.prefix + "side", title = sideName ?: "Side")
 
@@ -116,7 +213,6 @@ fun CookScreen(vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) ->
     }
     BackHandler { onClose() }
 
-    val swipePx = with(LocalDensity.current) { 80.dp.toPx() }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -124,81 +220,72 @@ fun CookScreen(vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) ->
                 navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Exit cooking mode") } },
             )
         },
-        bottomBar = {
-            Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(
-                    onClick = { page = (page - 1).coerceAtLeast(0) },
-                    enabled = page > 0,
-                    modifier = Modifier.weight(1f).height(56.dp),
-                ) { Text("Back", fontSize = 18.sp) }
-                Button(
-                    onClick = { if (page < pages - 1) page++ else onClose() },
-                    modifier = Modifier.weight(1f).height(56.dp),
-                ) { Text(if (page == 0) "Start" else if (page < pages - 1) "Next" else "Done", fontSize = 18.sp) }
-            }
-        },
     ) { pad ->
-        Column(
-            Modifier.padding(pad).fillMaxSize()
-                .pointerInput(pages) {
-                    var total = 0f
-                    detectHorizontalDragGestures(
-                        onDragStart = { total = 0f },
-                        onDragEnd = {
-                            if (total < -swipePx && page < pages - 1) page++
-                            else if (total > swipePx && page > 0) page--
-                        },
-                    ) { change, dx -> total += dx; change.consume() }
-                },
-        ) {
-            LinearProgressIndicator(progress = { (page + 1f) / pages }, modifier = Modifier.fillMaxWidth())
-            RunningTimers(st, id, steps, page, mainCtl, sideCtl)
+        Column(Modifier.padding(pad).fillMaxSize()) {
+            RunningTimers(st, steps, mainCtl, sideCtl)
             Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
             ) {
-                if (page == 0) {
-                    IngredientsPage(r, side, sideName, st.servings, steps)
-                } else {
-                    val step = steps[page - 1]
-                    StepTag(step, r, side)
+                IngredientsPage(r, side, sideName, serv, steps)
+                Spacer(Modifier.height(22.dp))
+                Text("Steps", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    "Tap a step when it's done.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                steps.forEachIndexed { n, step ->
+                    val done = n in finished
+                    val pieces = (if (step.isSide) sidePieces else mainPieces).getOrNull(step.stepIndex)
+                        ?: listOf(Cook.Piece(step.text, false))
                     Spacer(Modifier.height(14.dp))
-                    Text(
-                        (if (step.startsSide) "Start the side: " else "") + step.text,
-                        fontSize = 28.sp, lineHeight = 36.sp,
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    if (step.times.isNotEmpty()) {
-                        Spacer(Modifier.height(18.dp))
-                        val ctl = if (step.isSide) sideCtl else mainCtl
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            step.times.forEachIndexed { k, t ->
-                                TimerButton("${ctl.prefix}:${step.stepIndex}:$k", "${ctl.title}: step ${step.stepIndex + 1}", t, ctl)
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .clickable { finished = if (done) finished - n else finished + n }
+                            .alpha(if (done) 0.45f else 1f)
+                            .padding(vertical = 4.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (done) "✓" else "${n + 1}",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.width(34.dp),
+                            )
+                            StepTag(step, r, side)
+                        }
+                        val highlight = MaterialTheme.colorScheme.primary
+                        Text(
+                            buildAnnotatedString {
+                                if (step.startsSide) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Start the side: ") }
+                                pieces.forEach { p ->
+                                    if (p.isAmount) withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.SemiBold)) { append(p.text) }
+                                    else append(p.text)
+                                }
+                            },
+                            fontSize = 20.sp, lineHeight = 28.sp,
+                            textDecoration = if (done) TextDecoration.LineThrough else null,
+                            modifier = Modifier.padding(start = 34.dp, top = 4.dp),
+                        )
+                        if (step.times.isNotEmpty() && !done) {
+                            val ctl = if (step.isSide) sideCtl else mainCtl
+                            Row(
+                                Modifier.padding(start = 34.dp, top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                step.times.forEachIndexed { k, t ->
+                                    TimerButton("${ctl.prefix}:${step.stepIndex}:$k", "${ctl.title}: step ${step.stepIndex + 1}", t, ctl)
+                                }
                             }
                         }
                     }
-                    Spacer(Modifier.height(28.dp))
-                    HorizontalDivider()
-                    Spacer(Modifier.height(12.dp))
-                    val next = steps.getOrNull(page)
-                    Text("Up next", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(4.dp))
-                    if (next == null) {
-                        Text("That's it. Time to eat! 🎉", style = MaterialTheme.typography.titleMedium)
-                    } else {
-                        Text(
-                            "${if (next.isSide) (side?.label?.substringBefore(" ") ?: "🥗") else r.emoji}  " +
-                                (if (next.startsSide) "Start the side: " else "") + next.text,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        "Step $page of ${steps.size}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
                 }
+                Spacer(Modifier.height(24.dp))
+                if (steps.isNotEmpty() && finished.size == steps.size) {
+                    Text("That's it. Time to eat! 🎉", style = MaterialTheme.typography.titleLarge)
+                }
+                Spacer(Modifier.height(40.dp))
             }
         }
     }
@@ -251,14 +338,11 @@ private fun IngredientsPage(r: Recipe, side: Side?, sideName: String?, serv: Int
     if (side != null) group("${side.label} (side)", side.ingredients.map { Logic.ingText(it, serv, 4) })
 }
 
-/** Small strip of any timers running for this meal that aren't on the current step. */
+/** Small strip of every timer running for this meal, so you can see them while scrolling. */
 @Composable
-private fun RunningTimers(st: UserState, id: Int, steps: List<CookStep>, page: Int, mainCtl: TimerCtl, sideCtl: TimerCtl) {
-    val current = steps.getOrNull(page - 1)
-    val currentPrefix = current?.let { "${if (it.isSide) sideCtl.prefix else mainCtl.prefix}:${it.stepIndex}:" }
+private fun RunningTimers(st: UserState, steps: List<CookStep>, mainCtl: TimerCtl, sideCtl: TimerCtl) {
     val running = st.timers.filterKeys { k ->
-        (k.startsWith("${mainCtl.prefix}:") || k.startsWith("${sideCtl.prefix}:")) &&
-            (currentPrefix == null || !k.startsWith(currentPrefix))
+        k.startsWith("${mainCtl.prefix}:") || k.startsWith("${sideCtl.prefix}:")
     }
     if (running.isEmpty()) return
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -271,10 +355,10 @@ private fun RunningTimers(st: UserState, id: Int, steps: List<CookStep>, page: I
     ) {
         running.entries.sortedBy { it.value }.forEach { (key, end) ->
             val isSide = key.startsWith("${sideCtl.prefix}:")
-            val stepNo = key.split(":").getOrNull(1)?.toIntOrNull()?.plus(1) ?: 0
+            val idx = key.split(":").getOrNull(1)?.toIntOrNull()
+            val stepNo = steps.indexOfFirst { it.isSide == isSide && it.stepIndex == idx } + 1
             val left = ((end - now) / 1000).coerceAtLeast(0)
-            val label = (if (isSide) "Side" else "Main") + " step $stepNo · " +
-                if (left > 0) "%d:%02d".format(left / 60, left % 60) else "Done!"
+            val label = "Step $stepNo · " + if (left > 0) "%d:%02d".format(left / 60, left % 60) else "Done!"
             FilledTonalButton(onClick = { (if (isSide) sideCtl else mainCtl).stop(key) }) {
                 Text("⏱ $label  ✕")
             }
