@@ -143,14 +143,14 @@ object Cook {
     data class Piece(val text: String, val isAmount: Boolean)
 
     /**
-     * Adds amounts after the first mention of each ingredient across the steps.
+     * Adds the amount in front of the first mention of each ingredient across the steps.
      * Skips mentions that already have an amount right before them ("3 tbsp butter").
      */
     fun withAmounts(steps: List<String>, ings: List<Ingredient>): List<List<Piece>> {
         val usable = ings.filter { it.q > 0 }
         val done = mutableSetOf<Int>() // ingredient indexes already shown
-        // Inserts per step: position -> amount text
-        val inserts = steps.map { mutableListOf<Pair<Int, String>>() }
+        // Per step: the matched word's range -> amount text
+        val inserts = steps.map { mutableListOf<Pair<IntRange, String>>() }
         val claimed = steps.map { mutableListOf<IntRange>() }
         for (tier in 0..2) {
             for ((idx, ing) in usable.withIndex()) {
@@ -163,7 +163,7 @@ object Cook {
                     claimed[si] += m.range
                     done += idx
                     if (!amountBefore.containsMatchIn(step.substring(0, m.range.first))) {
-                        inserts[si] += (m.range.last + 1) to amountText(ing)
+                        inserts[si] += m.range to amountText(ing)
                     }
                     break
                 }
@@ -172,10 +172,11 @@ object Cook {
         return steps.mapIndexed { si, step ->
             val pieces = mutableListOf<Piece>()
             var at = 0
-            inserts[si].sortedBy { it.first }.forEach { (pos, amt) ->
-                pieces += Piece(step.substring(at, pos), false)
-                pieces += Piece(" [$amt]", true)
-                at = pos
+            // "Sauté garlic" -> "Sauté " + bold("2 cloves garlic")
+            inserts[si].sortedBy { it.first.first }.forEach { (range, amt) ->
+                pieces += Piece(step.substring(at, range.first), false)
+                pieces += Piece("$amt " + step.substring(range.first, range.last + 1), true)
+                at = range.last + 1
             }
             pieces += Piece(step.substring(at), false)
             pieces
@@ -260,11 +261,11 @@ fun CookScreen(vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) ->
                             buildAnnotatedString {
                                 if (step.startsSide) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Start the side: ") }
                                 pieces.forEach { p ->
-                                    if (p.isAmount) withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.SemiBold)) { append(p.text) }
+                                    if (p.isAmount) withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) { append(p.text) }
                                     else append(p.text)
                                 }
                             },
-                            fontSize = 20.sp, lineHeight = 28.sp,
+                            fontSize = 16.sp, lineHeight = 23.sp,
                             textDecoration = if (done) TextDecoration.LineThrough else null,
                             modifier = Modifier.padding(start = 34.dp, top = 4.dp),
                         )

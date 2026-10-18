@@ -574,7 +574,7 @@ private fun RecipeScreen(
             }
             if (inWeek) WeekControls(vm, st, r, side)
             SaleSection(vm, st, r)
-            RecipeDetails(r, st.servings, if (inWeek) side else null, if (inWeek) timerCtl(r) else null)
+            RecipeDetails(r, st.servings, if (inWeek) side else null)
             Spacer(Modifier.height(24.dp))
         }
     }
