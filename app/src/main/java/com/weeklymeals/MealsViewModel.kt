@@ -557,7 +557,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Saves this week to History, then clears it so you can plan the next one. */
     fun finishWeek() = edit { s0 ->
-        val s = if (s0.week.isEmpty()) s0 else s0.copy(pantry = usedUp(s0), freezer = freezerAfterWeek(s0))
+        val s = if (s0.week.isEmpty()) s0 else s0.copy(pantry = binAfterWeek(s0, usedUp(s0)), freezer = freezerAfterWeek(s0))
         if (s.week.isEmpty() && s.snacks.isEmpty()) s else s.copy(
             history = if (s.week.isEmpty()) s.history else
                 listOf(
@@ -1243,7 +1243,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         return PantryItem(
             id = java.util.UUID.randomUUID().toString(), name = title.trim(), term = term,
             shelf = shelf ?: guessShelf, kind = kind, upc = upc, size = size,
-            measure = measure, full = full, left = full,
+            measure = measure, full = full, left = full, addedAt = System.currentTimeMillis(),
         )
     }
 
@@ -1268,11 +1268,47 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Finish week: what's left of bagged produce (potatoes) goes in the Produce bin —
+     * the bag size from King Soopers (or 5 lb) minus what the meals used, if it's ½ lb or more.
+     */
+    private fun binAfterWeek(s: UserState, pantry: List<PantryItem>): List<PantryItem> {
+        val out = pantry.toMutableList()
+        val now = System.currentTimeMillis()
+        for (g in shopGroups(s)) {
+            if (!Pantry.isBinProduce(g.term) || g.term in s.haveTerms) continue
+            val probe = PantryItem("", g.term, g.term, "produce", "bag", measure = Pantry.LB)
+            val need = g.items.sumOf { Pantry.usage(probe, it.qty, it.unit) ?: 0.0 }
+            if (need <= 0) continue
+            val before = s.pantry.firstOrNull { it.term == g.term }?.left ?: 0.0
+            val buy = need - before
+            if (buy <= 1e-6) continue // the bin covered it (already taken out above)
+            val bag = Pantry.sizeLb(products.value[g.term]?.product?.size.orEmpty()) ?: 5.0
+            val bags = kotlin.math.ceil(buy / bag - 1e-6).coerceAtLeast(1.0)
+            val leftover = bags * bag - buy
+            if (leftover < 0.5) continue
+            val i = out.indexOfFirst { it.term == g.term }
+            if (i >= 0) {
+                val cur = out[i]
+                val left = cur.left + leftover
+                out[i] = cur.copy(left = left, full = maxOf(cur.full, bag, left), addedAt = now)
+            } else {
+                out += PantryItem(
+                    java.util.UUID.randomUUID().toString(), g.term.replaceFirstChar { it.uppercase() }, g.term,
+                    shelf = "produce", kind = "bag", measure = Pantry.LB, full = bag, left = leftover, addedAt = now,
+                )
+            }
+        }
+        return out
+    }
+
     /** Pantry items bought through the cart are refilled; new pantry-type items are added. */
     private fun refilled(pantry: List<PantryItem>, lines: List<CartLine>): List<PantryItem> {
         val out = pantry.toMutableList()
         for (l in lines) {
             val p = l.product ?: continue
+            // Potatoes are logged on Finish week instead (what's left of the bag).
+            if (Pantry.isBinProduce(l.term + " " + p.title)) continue
             val i = out.indexOfFirst { it.term == l.term || (p.upc.isNotEmpty() && it.upc == p.upc) }
             if (i >= 0) {
                 val cur = out[i]

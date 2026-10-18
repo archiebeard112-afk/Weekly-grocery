@@ -11,8 +11,23 @@ package com.weeklymeals
 object Pantry {
     const val TSP = "tsp"
     const val COUNT = "count"
+    const val LB = "lb"
 
-    val SHELVES = listOf("spices" to "Spices", "oils" to "Oils and sauces", "baking" to "Baking", "dry" to "Canned and dry")
+    /** Produce kept in the Produce bin (bagged, keeps a few weeks). Just potatoes for now. */
+    fun isBinProduce(name: String): Boolean {
+        val n = name.lowercase()
+        return Regex("\\bpotato").containsMatchIn(n) && !n.contains("sweet potato") && !n.contains("chip")
+    }
+
+    /** Pounds in a bag size like "5 lb" or "80 oz" (null if it doesn't say). */
+    fun sizeLb(size: String): Double? = parseSize(size)?.let { (n, u) ->
+        when (u) { "lb", "lbs" -> n; "oz" -> n / 16; "kg" -> n * 2.2046; "g" -> n / 453.6; else -> null }
+    }
+
+    val SHELVES = listOf(
+        "spices" to "Spices", "oils" to "Oils and sauces", "baking" to "Baking", "dry" to "Canned and dry",
+        "produce" to "Produce bin",
+    )
     val KINDS = listOf("jar" to "Jar", "bottle" to "Bottle", "bag" to "Bag", "can" to "Can", "box" to "Box")
 
     fun shelfLabel(key: String) = SHELVES.firstOrNull { it.first == key }?.second ?: "Canned and dry"
@@ -51,6 +66,7 @@ object Pantry {
     fun classify(name: String): Pair<String, String>? {
         val n = name.lowercase()
         return when {
+            isBinProduce(n) -> "produce" to "bag"
             has(n, listOf("tomato sauce", "tomato paste", "diced tomatoes", "crushed tomatoes", "whole tomatoes",
                 "beans", "chickpeas", "garbanzo", "tuna", "coconut milk", "green chiles", "enchilada sauce",
                 "soup", "olives", "corn kernels", "canned", "pumpkin puree", "evaporated milk", "condensed milk")) -> "dry" to "can"
@@ -88,6 +104,7 @@ object Pantry {
     /** How a new item is measured and how much a full package holds. */
     fun measureFor(name: String, kind: String, size: String): Pair<String, Double> {
         if (kind == "can") return COUNT to 1.0
+        if (isBinProduce(name)) return LB to (sizeLb(size) ?: 5.0)
         val (n, unit) = parseSize(size) ?: return "" to 1.0
         val d = density(name)
         val tsp = when (unit) {
@@ -119,6 +136,12 @@ object Pantry {
             "lb" -> density(item.term + " " + item.name)?.let { q * 16 * it }
             else -> null
         }
+        // Pounds: weights directly, otherwise through the food's typical weight (1 potato ≈ ½ lb).
+        LB -> when (u) {
+            "lb" -> q
+            "oz" -> q / 16
+            else -> Nutrition.grams(Ingredient(q, u, item.term))?.let { it / 453.6 }
+        }
         else -> null
     }
 
@@ -134,6 +157,7 @@ object Pantry {
             amount < 48 -> "about ${Logic.fmt(Math.round(amount / 3 * 4) / 4.0)} tbsp"
             else -> "about ${Logic.fmt(Math.round(amount / 48 * 4) / 4.0)} cups"
         }
+        LB -> if (amount <= 0.05) "Out" else "${Logic.fmt(Math.round(amount * 4) / 4.0)} lb left"
         else -> levelWord(if (item.full <= 0) 0.0 else amount / item.full)
     }
 

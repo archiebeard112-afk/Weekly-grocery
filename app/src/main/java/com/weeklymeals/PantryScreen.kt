@@ -84,6 +84,11 @@ private val LOW = Color(0xFFBA7517)
 private val SHELF_WOOD = Color(0xFF8B5A2B)
 private val FREEZER = Color(0xFF85B7EB)
 
+private fun boughtAgo(at: Long): String {
+    val days = ((System.currentTimeMillis() - at) / 86_400_000L).toInt()
+    return "bought " + when { days < 1 -> "today"; days < 14 -> "$days d ago"; else -> "${days / 7} wks ago" }
+}
+
 private fun freezerAmount(f: FreezerItem): String =
     if (f.byCount) "${f.count}" else "${Logic.fmt(f.lb)} lb"
 
@@ -301,12 +306,24 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                                 Modifier.width(70.dp).clickable { editing = p; editingNew = false }.padding(bottom = 4.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                ContainerView(p.kind, p.level, Pantry.isLow(p), Modifier.size(52.dp, 62.dp))
+                                // Produce turns amber after 4 weeks: use it soon.
+                                val produceOld = p.shelf == "produce" && p.addedAt > 0 &&
+                                    System.currentTimeMillis() - p.addedAt > 28L * 86_400_000L
+                                ContainerView(p.kind, p.level, Pantry.isLow(p) || produceOld, Modifier.size(52.dp, 62.dp))
                                 Text(
                                     p.term.replaceFirstChar { it.uppercase() },
                                     fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp),
                                 )
+                                if (p.measure == Pantry.LB) {
+                                    Text(Pantry.amountText(p), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (p.shelf == "produce" && p.addedAt > 0) {
+                                    Text(
+                                        if (produceOld) "use soon" else boughtAgo(p.addedAt), fontSize = 10.sp,
+                                        color = if (produceOld) LOW else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                         item {
