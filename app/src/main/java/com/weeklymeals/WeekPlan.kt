@@ -186,7 +186,12 @@ fun WeekScreen(vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrows
         AlertDialog(
             onDismissRequest = { confirmFinish = false },
             title = { Text("Finish this week?") },
-            text = { Text("Your ${st.week.size} meals will be saved to History, and the week and shopping list will be cleared.") },
+            text = {
+                Text(
+                    "Your ${st.week.size} meals will be saved to History, and the week and shopping list will be cleared." +
+                        if (st.pantry.isNotEmpty()) " Your pantry will be updated for what these meals used." else "",
+                )
+            },
             confirmButton = {
                 TextButton(onClick = { vm.finishWeek(); confirmFinish = false }) { Text("Finish week") }
             },

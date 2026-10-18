@@ -199,7 +199,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** The 10 recipes currently on the Browse tab. */
     val browse = MutableStateFlow<List<Int>>(emptyList())
 
-    /** Browse shows only meals with $3+ of savings when this is on. */
+    /** Browse shows only meals saving at least the sale threshold (Settings) when this is on. */
     val saleOnly = MutableStateFlow(false)
 
     /** Sets of 10 shown so far (newest last), so swiping right can go back. */
@@ -276,8 +276,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val st = state.value
         val cache = salesCache(st)
         if (saleOnly.value) {
-            val pool = recipes(st).values.filter { it.id !in st.removed && Sales.savings(it, st.servings, cache) >= Sales.MIN_SAVINGS }.map { it.id }
-            if (pool.isEmpty()) message.value = "No meals save \$3 or more at your store today"
+            val pool = recipes(st).values.filter { it.id !in st.removed && Sales.savings(it, st.servings, cache) >= st.saleMin }.map { it.id }
+            if (pool.isEmpty()) message.value = "No meals save ${Sales.money(st.saleMin)} or more at your store today"
             return pool.shuffled().take(10)
         }
         val cutoff = System.currentTimeMillis() - 21L * 86_400_000L
@@ -289,7 +289,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         // Within each protein, sale meals tend to come first; then take one from each protein in turn.
         val groups = pool.groupBy { protein(it) }.mapValues { (_, list) ->
             list.shuffled().sortedByDescending { r ->
-                if (Sales.savings(r, st.servings, cache) >= Sales.MIN_SAVINGS && Math.random() < 0.6) 1 else 0
+                if (Sales.savings(r, st.servings, cache) >= st.saleMin && Math.random() < 0.6) 1 else 0
             }.toMutableList()
         }
         val order = groups.keys.shuffled()
@@ -511,7 +511,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Saves this week to History, then clears it so you can plan the next one. */
-    fun finishWeek() = edit { s ->
+    fun finishWeek() = edit { s0 ->
+        val s = if (s0.week.isEmpty()) s0 else s0.copy(pantry = usedUp(s0))
         if (s.week.isEmpty() && s.snacks.isEmpty()) s else s.copy(
             history = if (s.week.isEmpty()) s.history else
                 listOf(
@@ -533,6 +534,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             lastExtraItems = if (s.extraItems.isEmpty()) s.lastExtraItems else s.extraItems,
             extraItems = emptyList(),
             haveTerms = emptySet(),
+            pantryBuy = emptySet(),
         )
     }
 
@@ -1147,9 +1149,138 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Lines that will go to the cart: not "Already have", with a product found. */
+    // ---- Pantry -------------------------------------------------------------------
+
+    /** Every ingredient name the recipes use, for matching pantry products ("thyme"). */
+    private val knownTerms: Set<String> by lazy {
+        (bundle.recipes.flatMap { it.ingredients } + bundle.sides.flatMap { it.ingredients })
+            .map { Logic.searchTerm(it.name) }.toSet()
+    }
+
+    fun pantryItem(st: UserState, term: String): PantryItem? = st.pantry.firstOrNull { it.term == term }
+
+    /** How much of a shopping-list group the week needs, in the pantry item's measure (null = can't tell). */
+    private fun need(item: PantryItem, g: ShopGroup): Double? {
+        var total = 0.0
+        for (i in g.items) total += Pantry.usage(item, i.qty, i.unit) ?: return null
+        return total
+    }
+
+    enum class PantryStatus { COVERED, LOW }
+
+    /** Whether the pantry covers this item for the week, is short, or doesn't have it (null). */
+    fun pantryStatus(st: UserState, g: ShopGroup): PantryStatus? {
+        if (g.aisle == EXTRAS) return null
+        val item = pantryItem(st, g.term) ?: return null
+        val n = need(item, g)
+        val enough = if (n != null && item.measure != "") item.left + 1e-6 >= n else !Pantry.isLow(item)
+        return if (enough) PantryStatus.COVERED else PantryStatus.LOW
+    }
+
+    /** Goes in "Already have": you said so, or the pantry has enough (unless you chose to buy it anyway). */
+    fun isHave(st: UserState, g: ShopGroup): Boolean =
+        g.term in st.haveTerms || (g.term !in st.pantryBuy && pantryStatus(st, g) == PantryStatus.COVERED)
+
+    fun togglePantryBuy(term: String) = edit { s ->
+        s.copy(pantryBuy = if (term in s.pantryBuy) s.pantryBuy - term else s.pantryBuy + term)
+    }
+
+    /** A new pantry item from a product name and size (full, on its guessed shelf). */
+    fun pantryDraft(title: String, size: String = "", upc: String = "", shelf: String? = null): PantryItem {
+        val term = Pantry.termFor(title, knownTerms)
+        val (guessShelf, kind) = Pantry.classify(term + " " + title) ?: ("dry" to "box")
+        val (measure, full) = Pantry.measureFor(term + " " + title, kind, size)
+        return PantryItem(
+            id = java.util.UUID.randomUUID().toString(), name = title.trim(), term = term,
+            shelf = shelf ?: guessShelf, kind = kind, upc = upc, size = size,
+            measure = measure, full = full, left = full,
+        )
+    }
+
+    /** Adds or updates a pantry item. */
+    fun savePantryItem(item: PantryItem) = edit { s ->
+        val exists = s.pantry.any { it.id == item.id }
+        s.copy(pantry = if (exists) s.pantry.map { if (it.id == item.id) item else it } else s.pantry + item)
+    }
+
+    fun removePantryItem(id: String) = edit { s -> s.copy(pantry = s.pantry.filterNot { it.id == id }) }
+
+    /** What the week's meals used, taken out of the pantry (on Finish week). */
+    private fun usedUp(s: UserState): List<PantryItem> {
+        val used = Logic.shopList(s.week, s.sides, recipes(s), sideMap, s.servings)
+            .groupBy { Logic.searchTerm(it.name) }
+        return s.pantry.map { item ->
+            val items = used[item.term] ?: return@map item
+            if (item.measure == "") return@map item
+            var total = 0.0
+            for (i in items) total += Pantry.usage(item, i.qty, i.unit) ?: 0.0
+            item.copy(left = (item.left - total).coerceAtLeast(0.0))
+        }
+    }
+
+    /** Pantry items bought through the cart are refilled; new pantry-type items are added. */
+    private fun refilled(pantry: List<PantryItem>, lines: List<CartLine>): List<PantryItem> {
+        val out = pantry.toMutableList()
+        for (l in lines) {
+            val p = l.product ?: continue
+            val i = out.indexOfFirst { it.term == l.term || (p.upc.isNotEmpty() && it.upc == p.upc) }
+            if (i >= 0) {
+                val cur = out[i]
+                out[i] = if (cur.measure == "") {
+                    cur.copy(left = cur.full, upc = p.upc, size = p.size.ifBlank { cur.size })
+                } else {
+                    val (m, pack) = Pantry.measureFor(cur.term + " " + p.title, cur.kind, p.size)
+                    val add = (if (m == cur.measure) pack else cur.full) * l.quantity
+                    val left = cur.left + add
+                    cur.copy(left = left, full = maxOf(cur.full, left), upc = p.upc, size = p.size.ifBlank { cur.size })
+                }
+            } else if (Pantry.classify(l.term + " " + p.title) != null) {
+                val d = pantryDraft(p.title, p.size, p.upc)
+                out += d.copy(term = l.term, left = d.full * l.quantity, full = d.full * maxOf(1, l.quantity))
+            }
+        }
+        return out
+    }
+
+    /** Looks up a scanned barcode: King Soopers first, then Open Food Facts. */
+    suspend fun lookupBarcode(code: String): Product? {
+        val digits = code.filter { it.isDigit() }
+        if (digits.isEmpty()) return null
+        val k = state.value.kroger
+        // Kroger product ids are the UPC without its check digit, padded to 13.
+        val ids = listOf(digits.dropLast(1).padStart(13, '0'), digits.padStart(13, '0')).distinct()
+        if (k.clientId.isNotBlank() && k.store.id.isNotEmpty()) {
+            runCatching { api.productsById(appToken(k), k.store.id, ids) }.getOrNull()?.firstOrNull()?.let { return it }
+        }
+        return runCatching { OpenFoodFacts.lookup(digits) }.getOrNull()
+    }
+
+    // ---- Backup -------------------------------------------------------------------
+
+    /** Everything in the app as one file (sign-in tokens left out). */
+    fun backupText(): String {
+        val s = state.value
+        return store.toJson(
+            s.copy(
+                kroger = s.kroger.copy(accessToken = "", refreshToken = "", expiresAt = 0L, pendingState = ""),
+                timers = emptyMap(),
+            ),
+        )
+    }
+
+    /** Replaces everything with a backup file. Returns false if it isn't a backup. */
+    fun restoreBackup(text: String): Boolean {
+        val restored = runCatching { store.fromJson(text) }.getOrNull() ?: return false
+        viewModelScope.launch { store.update { restored } }
+        message.value = "Backup restored"
+        return true
+    }
+
+    fun setSaleMin(v: Double) = edit { it.copy(saleMin = v) }
+
     fun cartLines(st: UserState = state.value): List<CartLine> {
         val m = products.value
-        return shopGroups(st).filter { it.term !in st.haveTerms }.mapNotNull { g -> m[g.term]?.takeIf { it.product != null } }
+        return shopGroups(st).filter { !isHave(st, it) }.mapNotNull { g -> m[g.term]?.takeIf { it.product != null } }
     }
 
     /** Sends the chosen products to your King Soopers cart. */
@@ -1182,7 +1313,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                         val old = bought[l.term]
                         bought[l.term] = Bought(name, (old?.count ?: 0) + 1, now)
                     }
-                    s.copy(kroger = s.kroger.copy(choices = s.kroger.choices + newChoices), bought = bought)
+                    s.copy(
+                        kroger = s.kroger.copy(choices = s.kroger.choices + newChoices), bought = bought,
+                        pantry = refilled(s.pantry, chosen),
+                    )
                 }
                 message.value = "Added ${chosen.size} items to your King Soopers cart"
                 openCart.value = true

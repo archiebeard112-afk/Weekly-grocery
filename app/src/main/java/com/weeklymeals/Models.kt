@@ -125,6 +125,12 @@ data class UserState(
     val hiddenSides: Set<String> = emptySet(),
     /** Sides taken off a dish's Recommended list (still under More sides). */
     val notForDish: Map<Int, Set<String>> = emptyMap(),
+    /** Your pantry: spices, oils, baking and dry goods with how much is left. */
+    val pantry: List<PantryItem> = emptyList(),
+    /** Shop items you want to buy even though the pantry has enough (cleared each week). */
+    val pantryBuy: Set<String> = emptySet(),
+    /** A meal counts as "on sale" when it saves at least this much. */
+    val saleMin: Double = 2.0,
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */
@@ -139,6 +145,27 @@ data class PastWeek(
     val sides: Map<Int, String> = emptyMap(),
     val servings: Int = 2,
 )
+
+/**
+ * Something on a pantry shelf. [measure] is "tsp" (amounts tracked in teaspoons),
+ * "count" (cans), or "" (no measuring: [left]/[full] is just a level you set).
+ */
+@Serializable
+data class PantryItem(
+    val id: String,
+    val name: String,
+    /** The shopping-list ingredient it covers, e.g. "thyme". */
+    val term: String,
+    val shelf: String,
+    val kind: String,
+    val upc: String = "",
+    val size: String = "",
+    val measure: String = "",
+    val full: Double = 1.0,
+    val left: Double = 1.0,
+) {
+    val level: Double get() = if (full <= 0) 0.0 else (left / full).coerceIn(0.0, 1.0)
+}
 
 /** An extra item you've bought through the app: how often and when. */
 @Serializable

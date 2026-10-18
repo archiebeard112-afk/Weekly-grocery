@@ -150,28 +150,45 @@ class KrogerApi {
             val req = Request.Builder().url(url)
                 .header("Authorization", "Bearer $token")
                 .header("Accept", "application/json").build()
-            val data = JSONObject(call(req)).optJSONArray("data") ?: JSONArray()
-            val out = mutableListOf<Product>()
-            for (n in 0 until data.length()) {
-                val o = data.getJSONObject(n)
-                val item = o.optJSONArray("items")?.optJSONObject(0)
-                val priceObj = item?.optJSONObject("price")
-                val price = priceObj?.let { if (it.has("regular")) it.optDouble("regular") else null }
-                val promo = priceObj?.optDouble("promo", 0.0)?.takeIf { p -> p > 0 && price != null && p < price }
-                out += Product(
-                    upc = o.optString("upc"),
-                    title = o.optString("description"),
-                    size = item?.optString("size").orEmpty(),
-                    price = price,
-                    promo = promo,
-                    stock = item?.optJSONObject("inventory")?.optString("stockLevel")?.ifBlank { null },
-                    delivery = item?.optJSONObject("fulfillment")?.let { f ->
-                        if (f.has("delivery")) f.optBoolean("delivery") else null
-                    },
-                )
-            }
-            out
+            parseProducts(call(req))
         }
+
+    /** Products by Kroger product id (a scanned UPC without its check digit, padded to 13). */
+    suspend fun productsById(token: String, storeId: String, ids: List<String>): List<Product> =
+        withContext(Dispatchers.IO) {
+            val url = Uri.parse("$BASE/products").buildUpon()
+                .appendQueryParameter("filter.productId", ids.joinToString(","))
+                .appendQueryParameter("filter.locationId", storeId)
+                .build().toString()
+            val req = Request.Builder().url(url)
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/json").build()
+            parseProducts(call(req))
+        }
+
+    private fun parseProducts(body: String): List<Product> {
+        val data = JSONObject(body).optJSONArray("data") ?: JSONArray()
+        val out = mutableListOf<Product>()
+        for (n in 0 until data.length()) {
+            val o = data.getJSONObject(n)
+            val item = o.optJSONArray("items")?.optJSONObject(0)
+            val priceObj = item?.optJSONObject("price")
+            val price = priceObj?.let { if (it.has("regular")) it.optDouble("regular") else null }
+            val promo = priceObj?.optDouble("promo", 0.0)?.takeIf { p -> p > 0 && price != null && p < price }
+            out += Product(
+                upc = o.optString("upc"),
+                title = o.optString("description"),
+                size = item?.optString("size").orEmpty(),
+                price = price,
+                promo = promo,
+                stock = item?.optJSONObject("inventory")?.optString("stockLevel")?.ifBlank { null },
+                delivery = item?.optJSONObject("fulfillment")?.let { f ->
+                    if (f.has("delivery")) f.optBoolean("delivery") else null
+                },
+            )
+        }
+        return out
+    }
 
     /** Adds products to the signed-in user's King Soopers cart. */
     suspend fun addToCart(userToken: String, items: List<Pair<String, Int>>) =

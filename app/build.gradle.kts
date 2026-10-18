@@ -65,4 +65,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Google's built-in barcode scanner (no camera permission needed).
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }

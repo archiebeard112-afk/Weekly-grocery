@@ -19,6 +19,11 @@ class Store(private val context: Context) {
         if (text == null) UserState()
         else runCatching { json.decodeFromString(UserState.serializer(), text) }.getOrDefault(UserState())
 
+    fun toJson(s: UserState): String = json.encodeToString(UserState.serializer(), s)
+
+    /** Reads a backup file; throws if it isn't one. */
+    fun fromJson(text: String): UserState = json.decodeFromString(UserState.serializer(), text)
+
     val flow: Flow<UserState> = context.dataStore.data.map { decode(it[key]) }
 
     suspend fun update(block: (UserState) -> UserState) {

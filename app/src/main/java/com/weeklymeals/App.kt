@@ -110,7 +110,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.unit.dp
 
-private enum class Overlay { None, Settings, AddRecipe, History }
+private enum class Overlay { None, Settings, AddRecipe, History, Pantry }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -223,6 +223,8 @@ fun App(vm: MealsViewModel) {
         RecipeScreen(vm, st, viewing!!, toggleFav, timerCtl, onCook = { cooking = viewing }) { viewing = null }
     } else if (overlay == Overlay.Settings) {
         SettingsScreen(vm, st) { overlay = Overlay.None }
+    } else if (overlay == Overlay.Pantry) {
+        PantryScreen(vm, st) { overlay = Overlay.None }
     } else if (overlay == Overlay.History) {
         HistoryScreen(vm, st) { overlay = Overlay.None }
     } else if (overlay == Overlay.AddRecipe) {
@@ -235,6 +237,9 @@ fun App(vm: MealsViewModel) {
                 TopAppBar(
                     title = { Text("Weekly Meals") },
                     actions = {
+                        IconButton(onClick = { overlay = Overlay.Pantry }) {
+                            Icon(PantryIcon, contentDescription = "Pantry")
+                        }
                         IconButton(onClick = { overlay = Overlay.History }) {
                             Icon(Icons.Filled.List, contentDescription = "History")
                         }
@@ -560,7 +565,7 @@ private fun BrowseScreen(
             val q = query.trim().lowercase()
             val matches = all.values.filter { r ->
                 r.id !in st.removed &&
-                matchesFilters(r, q, filters) && (!saleOnly || Sales.savings(r, st.servings, cache) >= Sales.MIN_SAVINGS)
+                matchesFilters(r, q, filters) && (!saleOnly || Sales.savings(r, st.servings, cache) >= st.saleMin)
             }.sortedBy { it.name }
             val showWeb = query.trim().length >= 3 && RecipeSources.effective(st) != RecipeSources.OFF
             LazyVerticalGrid(
@@ -600,7 +605,7 @@ private fun BrowseScreen(
         val shown = ids.mapNotNull { all[it] }
         if (saleOnly && shown.isEmpty()) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text("No meals save \$3 or more at your store today.", textAlign = TextAlign.Center)
+                Text("No meals save ${Sales.money(st.saleMin)} or more at your store today.", textAlign = TextAlign.Center)
             }
             return@Column
         }
@@ -669,7 +674,7 @@ private fun RecipeTile(
         Column(Modifier.fillMaxSize().padding(start = 10.dp, top = 6.dp, end = 2.dp, bottom = 2.dp)) {
             // Icon-only badges so they always fit (full labels are on the recipe page).
             val badges =
-                (if (saleSave >= Sales.MIN_SAVINGS) listOf("🏷️" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
+                (if (saleSave >= st.saleMin) listOf("🏷️" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
                     Logic.badges(r).map { it.substringBefore(" ") }
             // Emoji on the left; name with badges right under it, so nothing overlaps.
             Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -826,17 +831,20 @@ private fun RecipeScreen(
             LaunchedEffect(r.id) { vm.fetchReviewsIfMissing(r) }
             r.rating?.let { Row(Modifier.padding(top = 4.dp)) { RatingLine(it, r.ratingCount, r.countLabel, 16.dp) } }
             // Two equal buttons, labels on one line so they line up.
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val pad = PaddingValues(horizontal = 8.dp)
-                Button(onClick = onCook, contentPadding = pad, modifier = Modifier.weight(1f)) {
-                    Text("▶  Start cooking", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp).height(androidx.compose.foundation.layout.IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                val pad = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                Button(onClick = onCook, contentPadding = pad, modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    Text("▶  Start cooking", textAlign = TextAlign.Center, maxLines = 2)
                 }
-                // One button: adds the meal, or removes it once it's planned.
+                // One button: adds the meal, or removes it once it's planned. Label may wrap, centered.
                 OutlinedButton(
                     onClick = { if (inWeek) vm.removeFromWeek(id) else vm.requestAdd(id) },
-                    contentPadding = pad, modifier = Modifier.weight(1f),
+                    contentPadding = pad, modifier = Modifier.weight(1f).fillMaxHeight(),
                 ) {
-                    Text(if (inWeek) "Remove from week" else "Add to week", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(if (inWeek) "Remove from week" else "Add to week", textAlign = TextAlign.Center, maxLines = 2)
                 }
             }
             if (inWeek) WeekControls(vm, st, r, side)

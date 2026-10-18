@@ -1,5 +1,7 @@
 package com.weeklymeals
 
+import androidx.compose.ui.graphics.Color
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -89,8 +91,9 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
     val loading by vm.productsLoading.collectAsState()
     val busy by vm.busy.collectAsState()
     val groups = vm.shopGroups(st)
-    val toBuy = groups.filter { it.term !in st.haveTerms }
-    val have = groups.filter { it.term in st.haveTerms }
+    // The pantry can cover items too: they go to "Already have" unless you chose to buy them anyway.
+    val toBuy = groups.filter { !vm.isHave(st, it) }
+    val have = groups.filter { vm.isHave(st, it) }
     val hasStore = st.kroger.store.id.isNotEmpty()
     var menu by remember { mutableStateOf(false) }
     var showHave by remember { mutableStateOf(false) }
@@ -237,7 +240,12 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         )
                     }
                     items(section, key = { "g_" + it.term }) { g ->
-                        ShopRow(vm, g, products[g.term], hasStore)
+                        val pantryNote = when (vm.pantryStatus(st, g)) {
+                            MealsViewModel.PantryStatus.LOW -> "🫙 Low in pantry"
+                            MealsViewModel.PantryStatus.COVERED -> "🫙 In pantry · buying anyway"
+                            null -> null
+                        }
+                        ShopRow(vm, g, products[g.term], hasStore, pantryNote)
                     }
                 }
             }
@@ -261,13 +269,18 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                             Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            val fromPantry = g.term !in st.haveTerms
                             Text(
-                                g.term.replaceFirstChar { it.uppercase() },
-                                textDecoration = TextDecoration.LineThrough,
+                                g.term.replaceFirstChar { it.uppercase() } + if (fromPantry) "  · 🫙 in pantry" else "",
+                                textDecoration = if (fromPantry) null else TextDecoration.LineThrough,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Need it") }
+                            if (fromPantry) {
+                                TextButton(onClick = { vm.togglePantryBuy(g.term) }) { Text("Buy anyway") }
+                            } else {
+                                TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Need it") }
+                            }
                         }
                     }
                 }
@@ -351,7 +364,7 @@ private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
 }
 
 @Composable
-private fun ShopRow(vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore: Boolean) {
+private fun ShopRow(vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore: Boolean, pantryNote: String? = null) {
     val highlight = MaterialTheme.colorScheme.primary
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -365,6 +378,9 @@ private fun ShopRow(vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore:
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
             TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Have it") }
+        }
+        pantryNote?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFBA7517))
         }
         if (g.sources.isNotEmpty()) {
             Text(

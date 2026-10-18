@@ -1,4 +1,10 @@
 package com.weeklymeals
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.AlertDialog
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -212,10 +218,23 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     }
                 }
             }
-            // Updates stay open: it's the one you use most.
-            SettingsCard("⬆️", "App updates", "Version ${Updater.currentVersionName(ctx)}", startOpen = true) {
-                UpdateSection(vm)
+            SettingsCard("🏷️", "On sale", "Meals saving ${Sales.money(st.saleMin)} or more") {
+                Text(
+                    "A meal counts as on sale (the Sale filter and 🏷️ on tiles) when it saves at least:",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(1.0, 2.0, 3.0, 5.0).forEach { v ->
+                        FilterChip(selected = st.saleMin == v, onClick = { vm.setSaleMin(v) }, label = { Text(Sales.money(v).substringBefore(".")) })
+                    }
+                }
             }
+            BackupCard(vm)
+
+            // Updates: just a button at the bottom.
+            Spacer(Modifier.height(8.dp))
+            UpdateSection(vm)
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
@@ -338,23 +357,20 @@ fun AddRecipeScreen(vm: MealsViewModel, linkMode: Boolean, startLink: String?, o
 private fun UpdateSection(vm: MealsViewModel) {
     val ctx = LocalContext.current
     val state by vm.update.collectAsState()
+    val full = Modifier.fillMaxWidth()
     when (val u = state) {
-        UpdateState.Idle, UpdateState.UpToDate, is UpdateState.Error -> {
-            if (u == UpdateState.UpToDate) Text("You're on the newest version.", style = MaterialTheme.typography.bodySmall)
-            if (u is UpdateState.Error) Text(u.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            OutlinedButton(onClick = { vm.checkForUpdate() }) { Text("Check for updates") }
-        }
-        UpdateState.Checking -> Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-            Spacer(Modifier.width(10.dp))
+        UpdateState.Idle, UpdateState.UpToDate, is UpdateState.Error ->
+            OutlinedButton(onClick = { vm.checkForUpdate() }, modifier = full) { Text("Check for updates") }
+        UpdateState.Checking -> OutlinedButton(onClick = {}, modifier = full) {
+            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(8.dp))
             Text("Checking…")
         }
-        is UpdateState.Available -> Button(onClick = { vm.downloadUpdate(u.release) }) {
+        is UpdateState.Available -> Button(onClick = { vm.downloadUpdate(u.release) }, modifier = full) {
             Text("Update to ${u.release.name}")
         }
-        is UpdateState.Downloading -> Column {
-            Text("Downloading… ${u.percent}%", style = MaterialTheme.typography.bodySmall)
-            LinearProgressIndicator(progress = { u.percent / 100f }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+        is UpdateState.Downloading -> OutlinedButton(onClick = {}, modifier = full) {
+            Text("Downloading… ${u.percent}%")
         }
         is UpdateState.Ready -> {
             LaunchedEffect(u.file) {
@@ -365,13 +381,30 @@ private fun UpdateSection(vm: MealsViewModel) {
                     "One-time step: allow Weekly Meals to install updates, then come back and tap Install.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                OutlinedButton(onClick = { Updater.openInstallPermission(ctx) }) { Text("Allow installs") }
+                OutlinedButton(onClick = { Updater.openInstallPermission(ctx) }, modifier = full) { Text("Allow installs") }
             }
             Button(onClick = {
                 if (Updater.canInstall(ctx)) Updater.install(ctx, u.file) else Updater.openInstallPermission(ctx)
-            }) { Text("Install") }
+            }, modifier = full) { Text("Install") }
         }
     }
+    if (state is UpdateState.Downloading) {
+        LinearProgressIndicator(
+            progress = { (state as UpdateState.Downloading).percent / 100f },
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+    }
+    Text(
+        "Version ${Updater.currentVersionName(ctx)}" + when (val u = state) {
+            UpdateState.UpToDate -> " · You're on the newest version"
+            is UpdateState.Error -> " · ${u.message}"
+            else -> ""
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = if (state is UpdateState.Error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+    )
 }
 
 /** A tappable settings group: icon, title and one-line summary; tap to open or close. */
@@ -414,5 +447,59 @@ private fun SettingsCard(
                 )
             }
         }
+    }
+}
+
+/** Save everything to a file, or restore from one. */
+@Composable
+private fun BackupCard(vm: MealsViewModel) {
+    val ctx = LocalContext.current
+    var pending by remember { mutableStateOf<String?>(null) }
+    val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            runCatching {
+                ctx.contentResolver.openOutputStream(uri)?.use { it.write(vm.backupText().toByteArray()) }
+            }.onSuccess { vm.message.value = "Backup saved" }
+                .onFailure { vm.message.value = "Couldn't save the backup" }
+        }
+    }
+    val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            pending = runCatching {
+                ctx.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+            }.getOrNull()
+            if (pending == null) vm.message.value = "Couldn't read that file"
+        }
+    }
+    SettingsCard("💾", "Backup and restore", "Save everything to a file") {
+        Text(
+            "Saves your recipes, sides, favorites, pantry, history, this week and settings (including your keys) " +
+                "to one file. Keep it in Google Drive or Downloads. After restoring, sign in to King Soopers again.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Button(
+            onClick = {
+                val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                save.launch("weekly-meals-backup-$day.json")
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Save backup") }
+        OutlinedButton(onClick = { open.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Restore from backup")
+        }
+    }
+    pending?.let { text ->
+        AlertDialog(
+            onDismissRequest = { pending = null },
+            title = { Text("Restore this backup?") },
+            text = { Text("Everything in the app now will be replaced with what's in the backup.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (!vm.restoreBackup(text)) vm.message.value = "That file isn't a Weekly Meals backup"
+                    pending = null
+                }) { Text("Restore", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { pending = null }) { Text("Cancel") } },
+        )
     }
 }
