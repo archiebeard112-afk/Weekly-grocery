@@ -565,10 +565,10 @@ private fun RecipeTile(
         modifier = modifier.clickable(onClick = onOpen),
     ) {
         Column(Modifier.fillMaxSize().padding(start = 10.dp, top = 6.dp, end = 2.dp, bottom = 2.dp)) {
-            val badges = (
-                (if (saleSave >= Sales.MIN_SAVINGS) listOf("🏷️ " + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
-                    Logic.badges(r)
-                ).take(2)
+            // Icon-only badges so they always fit (full labels are on the recipe page).
+            val badges =
+                (if (saleSave >= Sales.MIN_SAVINGS) listOf("🏷️" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
+                    Logic.badges(r).map { it.substringBefore(" ") }
             // Emoji on the left; name with badges right under it, so nothing overlaps.
             Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
@@ -579,10 +579,7 @@ private fun RecipeTile(
                         maxLines = if (badges.isEmpty()) 2 else 1, overflow = TextOverflow.Ellipsis,
                     )
                     if (badges.isNotEmpty()) {
-                        Row(
-                            Modifier.padding(top = 3.dp).horizontalScroll(rememberScrollState(), enabled = false),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
+                        Row(Modifier.padding(top = 3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                             badges.forEach { Badge(it, small = true) }
                         }
                     }
