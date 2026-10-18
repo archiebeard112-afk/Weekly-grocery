@@ -206,8 +206,8 @@ fun App(vm: MealsViewModel) {
     // so search results are still there when you go back from one.
     LaunchedEffect(tab, overlay) {
         listOf(browseSearch, favSearch).forEach { it.query.value = ""; it.filters.value = emptyList() }
-        browseResults.scrollToItem(0)
-        favGridState.scrollToItem(0)
+        launch { runCatching { browseResults.scrollToItem(0) } }
+        launch { runCatching { favGridState.scrollToItem(0) } }
     }
 
     BackHandler(enabled = overlay != Overlay.None) { overlay = Overlay.None }
