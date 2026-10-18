@@ -248,19 +248,61 @@ fun App(vm: MealsViewModel) {
     pickSide?.let { id ->
         val r = vm.recipes(st)[id]
         if (r == null) { vm.sidePicker.value = null } else {
+            var sideQuery by remember(id) { mutableStateOf("") }
+            val found by vm.suggestions.collectAsState()
+            LaunchedEffect(sideQuery) {
+                delay(350)
+                vm.searchSuggestions(sideQuery)
+            }
+            val close = { vm.sidePicker.value = null; vm.suggestions.value = emptyList() }
             AlertDialog(
-                onDismissRequest = { vm.sidePicker.value = null },
+                onDismissRequest = close,
                 title = { Text("Pick a side") },
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
                         Text("${r.emoji} ${r.name}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // Type to search King Soopers for a store-bought side.
+                        CompactSearch(
+                            sideQuery, { sideQuery = it },
+                            Modifier.padding(top = 8.dp),
+                            placeholder = "Add a side",
+                            icon = Icons.Filled.Add,
+                        )
+                        if (sideQuery.trim().length >= 2) {
+                            if (st.kroger.store.id.isEmpty()) {
+                                Text(
+                                    "Pick your store in Settings to see King Soopers matches.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                )
+                            }
+                            found.forEach { p ->
+                                Column(
+                                    Modifier.fillMaxWidth()
+                                        .clickable { vm.addToWeekWithProduct(id, p); close() }
+                                        .padding(vertical = 8.dp),
+                                ) {
+                                    Text(p.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        listOfNotNull(
+                                            p.size.ifBlank { null }, (p.promo ?: p.price)?.let { Sales.money(it) },
+                                            if (p.promo != null) "on sale" else null,
+                                        ).joinToString(" · "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                HorizontalDivider()
+                            }
+                        }
                         Spacer(Modifier.height(6.dp))
-                        r.sides.mapNotNull { vm.sideMap[it] }.forEach { sd ->
+                        vm.sideOptions(st, r).forEach { sd ->
                             Text(
                                 sd.label,
                                 style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.fillMaxWidth()
-                                    .clickable { vm.addToWeek(id, sd.key); vm.sidePicker.value = null }
+                                    .clickable { vm.addToWeek(id, sd.key); close() }
                                     .padding(vertical = 12.dp),
                             )
                             HorizontalDivider()
@@ -270,13 +312,13 @@ fun App(vm: MealsViewModel) {
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.fillMaxWidth()
-                                .clickable { vm.addToWeek(id, null); vm.sidePicker.value = null }
+                                .clickable { vm.addToWeek(id, null); close() }
                                 .padding(vertical = 12.dp),
                         )
                     }
                 },
                 confirmButton = {},
-                dismissButton = { TextButton(onClick = { vm.sidePicker.value = null }) { Text("Cancel") } },
+                dismissButton = { TextButton(onClick = close) { Text("Cancel") } },
             )
         }
     }
@@ -711,7 +753,7 @@ private fun WeekControls(vm: MealsViewModel, st: UserState, r: Recipe, side: Sid
             OutlinedButton(onClick = { menu = true }) { Text(side?.label ?: "None") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("None") }, onClick = { vm.setSide(r.id, null); menu = false })
-                r.sides.mapNotNull { vm.sideMap[it] }.forEach { s ->
+                vm.sideOptions(st, r).forEach { s ->
                     DropdownMenuItem(text = { Text(s.label) }, onClick = { vm.setSide(r.id, s.key); menu = false })
                 }
             }

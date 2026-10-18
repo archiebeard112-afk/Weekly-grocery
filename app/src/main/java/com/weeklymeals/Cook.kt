@@ -382,7 +382,14 @@ private fun StepTag(step: CookStep, r: Recipe, side: Side?) {
 @Composable
 private fun IngredientsPage(r: Recipe, side: Side?, sideName: String?, serv: Int, steps: List<CookStep>) {
     Text("Ingredients", style = MaterialTheme.typography.titleLarge)
-    if (side != null && sideName != null) {
+    if (side != null && isStoreSide(side)) {
+        // Store-bought: nothing to cook, just a reminder.
+        Text(
+            "Side: ${storeSideTitle(side)}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    } else if (side != null && sideName != null) {
         Text(
             if (Cook.sideFirst(steps)) "Start with the $sideName. You'll start ${r.name} partway through."
             else "Start with ${r.name}. You'll start the $sideName partway through.",
@@ -391,7 +398,7 @@ private fun IngredientsPage(r: Recipe, side: Side?, sideName: String?, serv: Int
         )
     }
     IngredientColumns("${r.emoji} ${r.name} (for $serv)", r.ingredients.map { Logic.scale(it, serv, r.base) })
-    if (side != null) IngredientColumns("${side.label} (side)", side.ingredients.map { Logic.scale(it, serv, 4) })
+    if (side != null && !isStoreSide(side)) IngredientColumns("${side.label} (side)", side.ingredients.map { Logic.scale(it, serv, 4) })
 }
 
 /** Compact ingredient list in two columns: bold amount, then the name. */

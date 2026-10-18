@@ -98,7 +98,13 @@ data class UserState(
     val haveTerms: Set<String> = emptySet(),
     /** Today's sale prices for main ingredients. */
     val sales: SalesCache = SalesCache(),
+    /** Store-bought sides you've picked for each recipe (offered again next time). */
+    val storeSides: Map<Int, List<StoreSide>> = emptyMap(),
 )
+
+/** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */
+@Serializable
+data class StoreSide(val upc: String, val title: String)
 
 @Serializable
 data class PastWeek(

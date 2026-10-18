@@ -60,10 +60,28 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     val bundle: RecipeBundle = app.assets.open("recipes.json").bufferedReader().use {
         json.decodeFromString(RecipeBundle.serializer(), it.readText())
     }
-    val sideMap: Map<String, Side> = bundle.sides.associateBy { it.key }
+    private val baseSides: Map<String, Side> = bundle.sides.associateBy { it.key }
 
     val state: StateFlow<UserState> =
         store.flow.stateIn(viewModelScope, SharingStarted.Eagerly, UserState())
+
+    private var sideCache: Pair<Map<Int, List<StoreSide>>, Map<String, Side>>? = null
+
+    /** All sides: the built-in ones plus store-bought sides you've picked ("buy:<upc>"). */
+    val sideMap: Map<String, Side>
+        get() {
+            val ss = state.value.storeSides
+            sideCache?.let { (k, v) -> if (k === ss) return v }
+            val m = baseSides + ss.values.flatten().associate { storeSideKey(it.upc) to storeSide(it) }
+            sideCache = ss to m
+            return m
+        }
+
+    /** The side options for a recipe: its usual sides, then store-bought ones you've used with it. */
+    fun sideOptions(st: UserState, r: Recipe): List<Side> {
+        val all = sideMap
+        return r.sides.mapNotNull { all[it] } + st.storeSides[r.id].orEmpty().mapNotNull { all[storeSideKey(it.upc)] }
+    }
 
     /** One-line messages shown as a snackbar (success or error). */
     val message = MutableStateFlow<String?>(null)
@@ -327,7 +345,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun addToWeek(id: Int) = addToWeek(id, null, useDefaultSide = true)
 
     /** Adds a meal with the chosen side (null = no side). */
-    fun addToWeek(id: Int, side: String?, useDefaultSide: Boolean = false) = edit { s ->
+    fun addToWeek(id: Int, side: String?, useDefaultSide: Boolean = false) = edit { s -> withMeal(s, id, side, useDefaultSide) }
+
+    private fun withMeal(s: UserState, id: Int, side: String?, useDefaultSide: Boolean = false): UserState =
         if (id in s.week) s else {
             val r = recipes(s)[id]
             val chosen = if (useDefaultSide) s.sides[id] ?: r?.sides?.firstOrNull() else side
@@ -339,6 +359,23 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 sides = if (chosen != null) s.sides + (id to chosen) else s.sides - id,
             )
         }
+
+    /** Adds a meal with a King Soopers product as its side; remembers it for that recipe. */
+    fun addToWeekWithProduct(id: Int, p: Product) {
+        val title = p.title.trim()
+        if (title.isEmpty()) return
+        val term = Logic.searchTerm(title)
+        products.update { it + (term to CartLine(term = term, search = title, options = listOf(p), selected = 0, quantity = 1)) }
+        edit { s0 ->
+            val saved = s0.storeSides[id].orEmpty().filterNot { it.upc == p.upc } + StoreSide(p.upc, title)
+            val s = s0.copy(
+                storeSides = s0.storeSides + (id to saved.takeLast(5)),
+                kroger = s0.kroger.copy(choices = s0.kroger.choices + ("term:$term" to Choice(p.upc, title, title))),
+            )
+            if (id in s.week) s.copy(sides = s.sides + (id to storeSideKey(p.upc)))
+            else withMeal(s, id, storeSideKey(p.upc))
+        }
+        suggestions.value = emptyList()
     }
 
     /** The recipe waiting for a side to be picked before it's added (shows the "Pick a side" pop-up). */
@@ -348,7 +385,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun requestAdd(id: Int) {
         val r = recipes()[id] ?: return
         if (id in state.value.week) return
-        if (r.sides.any { it in sideMap }) sidePicker.value = id else addToWeek(id, null)
+        if (sideOptions(state.value, r).isNotEmpty()) sidePicker.value = id else addToWeek(id, null)
     }
 
     fun removeFromWeek(id: Int) = edit { s ->
@@ -457,7 +494,16 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             st.staples.filter { it in st.pickedStaples }.map { n ->
                 ShopItem("usual:${n.lowercase()}", n, "", 1.0, EXTRAS)
             } +
-            st.extraItems.map { n -> ShopItem("extra:${n.lowercase()}", n, "", 1.0, EXTRAS) }
+            st.extraItems.map { n -> ShopItem("extra:${n.lowercase()}", n, "", 1.0, EXTRAS) } +
+            // Store-bought sides: one of the product per meal it goes with.
+            st.week.mapNotNull { id -> st.sides[id]?.takeIf { it.startsWith("buy:") } }
+                .groupingBy { it }.eachCount()
+                .mapNotNull { (key, n) ->
+                    sideMap[key]?.let { sd ->
+                        val title = storeSideTitle(sd)
+                        ShopItem("side:${key.removePrefix("buy:")}", title, "", n.toDouble(), Logic.aisle(title))
+                    }
+                }
 
     /** Shopping list grouped by what you'd buy at the store, in store-section order. */
     fun shopGroups(st: UserState = state.value): List<ShopGroup> {
@@ -467,6 +513,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         for (id in st.week) {
             val r = all[id] ?: continue
             r.ingredients.forEach { from.getOrPut("${it.name}|${it.u}".lowercase()) { mutableSetOf() } += r.name }
+            st.sides[id]?.takeIf { it.startsWith("buy:") }?.let { key ->
+                from.getOrPut("side:${key.removePrefix("buy:")}") { mutableSetOf() } += "for ${r.name}"
+            }
             st.sides[id]?.let { sideMap[it] }?.let { sd ->
                 sd.ingredients.forEach { from.getOrPut("${it.name}|${it.u}".lowercase()) { mutableSetOf() } += sd.label.substringAfter(" ") }
             }
@@ -884,3 +933,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
+
+// ---- Store-bought sides ------------------------------------------------------------
+
+fun storeSideKey(upc: String) = "buy:$upc"
+
+/** A King Soopers product as a side: no ingredients or steps; it's bought ready to go. */
+fun storeSide(s: StoreSide) = Side(storeSideKey(s.upc), "🛒 ${s.title}", emptyList(), emptyList())
+
+fun storeSideTitle(sd: Side) = sd.label.removePrefix("🛒 ")
+
+fun isStoreSide(sd: Side) = sd.key.startsWith("buy:")
