@@ -142,6 +142,12 @@ data class UserState(
     val budgetMax: Double = 15.0,
     /** Pack weights you set for meat sold by the pound (by product UPC, or "term:<name>"), in lb. */
     val packWeights: Map<String, Double> = emptyMap(),
+    /** Pieces per pack you set for cuts cooked whole (by product UPC, or "term:<name>"). */
+    val packCounts: Map<String, Int> = emptyMap(),
+    /** Cuts you cook whole, 1 per person, counted by the piece (e.g. "chicken breast"). */
+    val wholeCuts: Set<String> = setOf("chicken breast"),
+    /** Meat in the freezer. */
+    val freezer: List<FreezerItem> = emptyList(),
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */
@@ -176,6 +182,22 @@ data class PantryItem(
     val left: Double = 1.0,
 ) {
     val level: Double get() = if (full <= 0) 0.0 else (left / full).coerceIn(0.0, 1.0)
+}
+
+/** Meat in the freezer: [count] pieces for cuts cooked whole, otherwise [lb] pounds. */
+@Serializable
+data class FreezerItem(
+    val id: String,
+    val term: String,
+    val name: String,
+    val count: Int = 0,
+    val lb: Double = 0.0,
+    /** When it went in (oldest, if more was added later). */
+    val frozenAt: Long = 0L,
+    /** True when it's counted by the piece. */
+    val byCount: Boolean = false,
+) {
+    fun amount(): Double = if (byCount) count.toDouble() else lb
 }
 
 /** An extra item you've bought through the app: how often and when. */

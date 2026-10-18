@@ -82,6 +82,102 @@ import kotlinx.coroutines.launch
 private val PLENTY = Color(0xFF1D9E75)
 private val LOW = Color(0xFFBA7517)
 private val SHELF_WOOD = Color(0xFF8B5A2B)
+private val FREEZER = Color(0xFF85B7EB)
+
+private fun freezerAmount(f: FreezerItem): String =
+    if (f.byCount) "${f.count}" else "${Logic.fmt(f.lb)} lb"
+
+/** "frozen today", "frozen 2 wks ago", "frozen 4 mo ago". */
+private fun frozenAgo(at: Long): String {
+    if (at <= 0) return ""
+    val days = ((System.currentTimeMillis() - at) / 86_400_000L).toInt()
+    return "frozen " + when {
+        days < 1 -> "today"
+        days < 14 -> "$days d ago"
+        days < 60 -> "${days / 7} wks ago"
+        else -> "${days / 30} mo ago"
+    }
+}
+
+/** A freezer bag with a frosty fill; amber edge when it's been frozen over 3 months. */
+@Composable
+private fun FreezerBag(modifier: Modifier, old: Boolean) {
+    val outline = if (old) LOW else FREEZER
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val bag = RoundRect(w * 0.12f, h * 0.18f, w * 0.88f, h * 0.96f, CornerRadius(w * 0.12f, w * 0.12f))
+        val path = Path().apply { addRoundRect(bag) }
+        drawPath(path, FREEZER.copy(alpha = 0.25f))
+        drawPath(path, outline, style = Stroke(2.dp.toPx()))
+        // Zip seal across the top.
+        drawLine(outline, Offset(w * 0.12f, h * 0.30f), Offset(w * 0.88f, h * 0.30f), strokeWidth = 2.dp.toPx())
+        // Label.
+        drawRoundRect(Color.White.copy(alpha = 0.7f), Offset(w * 0.26f, h * 0.45f), Size(w * 0.48f, h * 0.22f), CornerRadius(3f, 3f))
+    }
+}
+
+/** Add or adjust something in the freezer. */
+@Composable
+private fun FreezerDialog(start: FreezerItem, isNew: Boolean, onSave: (FreezerItem) -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit) {
+    var item by remember(start.id) { mutableStateOf(start) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isNew) "Add to freezer" else item.name) },
+        text = {
+            Column {
+                if (isNew) {
+                    OutlinedTextField(
+                        item.name, { item = item.copy(name = it) },
+                        label = { Text("What is it? (e.g. chicken breast)") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(selected = item.byCount, onClick = { item = item.copy(byCount = true, count = maxOf(item.count, 1)) }, label = { Text("Pieces") })
+                        FilterChip(selected = !item.byCount, onClick = { item = item.copy(byCount = false, lb = maxOf(item.lb, 1.0)) }, label = { Text("Pounds") })
+                    }
+                }
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(onClick = {
+                        item = if (item.byCount) item.copy(count = (item.count - 1).coerceAtLeast(0))
+                        else item.copy(lb = (item.lb - 0.25).coerceAtLeast(0.0))
+                    }) { Text("−") }
+                    Text(
+                        if (item.byCount) "${item.count}" else "${Logic.fmt(item.lb)} lb",
+                        style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    OutlinedButton(onClick = {
+                        item = if (item.byCount) item.copy(count = item.count + 1) else item.copy(lb = item.lb + 0.25)
+                    }) { Text("+") }
+                }
+                if (!isNew) {
+                    Text(
+                        frozenAgo(item.frozenAt), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                    )
+                    TextButton(onClick = onRemove, modifier = Modifier.padding(top = 4.dp)) {
+                        Text("Remove from freezer", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val name = item.name.trim()
+                    if (name.isNotEmpty()) {
+                        onSave(item.copy(name = name.replaceFirstChar { it.uppercase() }, term = item.term.ifEmpty { Logic.searchTerm(name) }))
+                    }
+                },
+            ) { Text(if (isNew) "Add" else "Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
 
 /** Top-bar icon: two shelves with jars, drawn in the same solid style as the other icons. */
 val PantryIcon: ImageVector by lazy {
@@ -159,6 +255,8 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
     var editing by remember { mutableStateOf<PantryItem?>(null) }
     var editingNew by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf<String?>(null) } // shelf key, or "" for any
+    var freezing by remember { mutableStateOf<FreezerItem?>(null) }
+    var freezingNew by remember { mutableStateOf(false) }
     val lowCount = st.pantry.count { Pantry.isLow(it) }
 
     Scaffold(
@@ -226,6 +324,57 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     )
                 }
             }
+            // The freezer: leftover meat, counted by the piece (whole cuts) or by the pound.
+            item(key = "freezer") {
+                Column(
+                    Modifier.fillMaxWidth().padding(top = 4.dp)
+                        .background(FREEZER.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                        .border(1.dp, FREEZER.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .padding(10.dp),
+                ) {
+                    Text("🧊 Freezer", style = MaterialTheme.typography.labelLarge, color = FREEZER)
+                    if (st.freezer.isEmpty()) {
+                        Text(
+                            "Leftover meat goes here when you finish a week.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    LazyRow(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Bottom) {
+                        items(st.freezer, key = { it.id }) { f ->
+                            val old = System.currentTimeMillis() - f.frozenAt > 90L * 86_400_000L
+                            Column(
+                                Modifier.width(76.dp).clickable { freezing = f; freezingNew = false }.padding(bottom = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                FreezerBag(Modifier.size(52.dp, 56.dp), old)
+                                Text(
+                                    f.name, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp),
+                                )
+                                Text(freezerAmount(f), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    frozenAgo(f.frozenAt), fontSize = 10.sp,
+                                    color = if (old) LOW else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        item {
+                            Box(
+                                Modifier.padding(start = 6.dp, bottom = 34.dp).size(50.dp, 56.dp)
+                                    .border(1.dp, FREEZER.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        freezing = FreezerItem(java.util.UUID.randomUUID().toString(), "", "", count = 1,
+                                            frozenAt = System.currentTimeMillis(), byCount = true)
+                                        freezingNew = true
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) { Icon(Icons.Filled.Add, "Add to freezer", tint = FREEZER) }
+                        }
+                    }
+                }
+            }
             item {
                 Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).background(PLENTY, RoundedCornerShape(2.dp)))
@@ -238,6 +387,14 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
         }
     }
 
+    freezing?.let { f ->
+        FreezerDialog(
+            f, isNew = freezingNew,
+            onSave = { vm.saveFreezerItem(it); freezing = null },
+            onRemove = { vm.removeFreezerItem(f.id); freezing = null },
+            onDismiss = { freezing = null },
+        )
+    }
     adding?.let { shelf ->
         PantryAddDialog(
             vm, st, shelf.ifEmpty { null },

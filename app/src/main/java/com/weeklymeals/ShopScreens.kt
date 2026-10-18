@@ -247,7 +247,16 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                             MealsViewModel.PantryStatus.COVERED -> "🫙 In pantry · buying anyway"
                             null -> null
                         }
-                        ShopRow(vm, g, products[g.term], hasStore, pantryNote, vm.shopPack(st, g))
+                        // Some in the freezer but not enough: say how much more to buy.
+                        val frozen = vm.freezerFor(st, g.term)
+                        val freezerNote = frozen?.let { f ->
+                            val need = vm.meatNeed(st, g.term, g.items)
+                            val more = need - f.amount()
+                            if (more <= 0) null
+                            else if (f.byCount) "🧊 ${f.count} in freezer · need ${Logic.fmt(more)} more"
+                            else "🧊 ${Logic.fmt(f.lb)} lb in freezer · need ${Logic.fmt(Math.round(more * 4) / 4.0)} lb more"
+                        }
+                        ShopRow(vm, g, products[g.term], hasStore, pantryNote, vm.shopPack(st, g), freezerNote)
                     }
                 }
             }
@@ -272,8 +281,10 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             val fromPantry = g.term !in st.haveTerms
+                            val fromFreezer = fromPantry && vm.freezerCovers(st, g)
                             Text(
-                                g.term.replaceFirstChar { it.uppercase() } + if (fromPantry) "  · 🫙 in pantry" else "",
+                                g.term.replaceFirstChar { it.uppercase() } +
+                                    if (fromFreezer) "  · 🧊 in freezer" else if (fromPantry) "  · 🫙 in pantry" else "",
                                 textDecoration = if (fromPantry) null else TextDecoration.LineThrough,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.weight(1f),
@@ -369,6 +380,7 @@ private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
 private fun ShopRow(
     vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore: Boolean, pantryNote: String? = null,
     meat: MealsViewModel.MeatPack? = null,
+    freezerNote: String? = null,
 ) {
     var editPack by remember { mutableStateOf(false) }
     val highlight = MaterialTheme.colorScheme.primary
@@ -389,16 +401,32 @@ private fun ShopRow(
             Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFBA7517))
         }
         // Meat sold by the pound: which pack, what's left over. Tap to set the real pack weight.
+        freezerNote?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFF85B7EB))
+        }
         meat?.let { m ->
+            val leftover = when {
+                m.cut != null && m.leftoverPieces > 0 -> " · ${m.leftoverPieces} left over → freezer"
+                m.cut == null && m.leftoverLb > 1.0 -> " · ${Logic.fmt(Math.round(m.leftoverLb * 4) / 4.0)} lb left over → freezer"
+                m.cut == null && m.leftoverLb >= 0.1 -> " · ${Logic.fmt(Math.round(m.leftoverLb * 4) / 4.0)} lb left over"
+                else -> ""
+            }
+            val yours = if (m.cut != null) m.perPackYours else m.pack.source == Packs.Source.YOU
             Text(
                 "🥩 " + (if (m.packs > 1) "${m.packs} × " else "") + Packs.label(m.pack) +
-                    (if (m.leftoverLb >= 0.1) " · ${Logic.fmt(Math.round(m.leftoverLb * 4) / 4.0)} lb left over" else "") +
-                    " · " + (if (m.pack.source == Packs.Source.YOU) "your size" else "tap to set"),
+                    (m.cut?.let { " · ${if (m.perPackYours) "" else "about "}${m.perPack} ${Packs.pieceWord(it, m.perPack)}" } ?: "") +
+                    leftover + " · " + (if (yours) "your size" else "tap to set"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.clickable { editPack = true }.padding(vertical = 2.dp),
             )
-            if (editPack) PackWeightDialog(g.term, m, onSet = { vm.setPackWeight(m.key, it); editPack = false }) { editPack = false }
+            if (editPack) {
+                if (m.cut != null) {
+                    PackCountDialog(g.term, m, onSet = { vm.setPackCount(m.key, it); editPack = false }) { editPack = false }
+                } else {
+                    PackWeightDialog(g.term, m, onSet = { vm.setPackWeight(m.key, it); editPack = false }) { editPack = false }
+                }
+            }
         }
         if (g.sources.isNotEmpty()) {
             Text(
@@ -567,6 +595,40 @@ private fun PackWeightDialog(term: String, m: MealsViewModel.MeatPack, onSet: (D
         dismissButton = {
             Row {
                 if (m.pack.source == Packs.Source.YOU) TextButton(onClick = { onSet(null) }) { Text("Use estimate") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+/** For cuts cooked whole: how many pieces come in one pack (remembered for that product). */
+@Composable
+private fun PackCountDialog(term: String, m: MealsViewModel.MeatPack, onSet: (Int?) -> Unit, onDismiss: () -> Unit) {
+    val cut = m.cut ?: term
+    var n by remember { mutableStateOf(m.perPack) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${term.replaceFirstChar { it.uppercase() }} pack") },
+        text = {
+            Column {
+                Text(
+                    "How many ${Packs.pieceWord(cut, 2)} come in one pack? The app remembers it for this product.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(
+                    Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    (1..10).forEach { v ->
+                        FilterChip(selected = n == v, onClick = { n = v }, label = { Text("$v") })
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSet(n) }) { Text("Save") } },
+        dismissButton = {
+            Row {
+                if (m.perPackYours) TextButton(onClick = { onSet(null) }) { Text("Use estimate") }
                 TextButton(onClick = onDismiss) { Text("Cancel") }
             }
         },

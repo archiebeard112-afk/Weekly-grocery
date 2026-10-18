@@ -61,6 +61,27 @@ object Packs {
         return packs to if (pack.perLb) packs * pack.lb * price else packs * price
     }
 
+    /** Cuts you can choose to cook whole (1 per person), with a typical piece weight. */
+    val WHOLE_CUTS = listOf(
+        "chicken breast" to "Chicken breasts", "chicken thigh" to "Chicken thighs",
+        "pork chop" to "Pork chops", "steak" to "Steaks", "salmon" to "Salmon fillets",
+    )
+    private val pieceLbs = mapOf(
+        "chicken breast" to 0.6, "chicken thigh" to 0.3, "pork chop" to 0.45, "steak" to 0.6, "salmon" to 0.4,
+    )
+
+    /** The whole cut this shopping item is (from the ones you cook whole), or null. */
+    fun wholeCut(term: String, cuts: Set<String>): String? =
+        cuts.filter { term.lowercase().contains(it) }.maxByOrNull { it.length }
+
+    fun pieceLb(cut: String): Double = pieceLbs[cut] ?: 0.5
+
+    /** "breast" / "breasts" for labels. */
+    fun pieceWord(cut: String, n: Int): String {
+        val one = cut.substringAfterLast(" ").let { if (it == "salmon") "fillet" else it }
+        return if (n == 1) one else if (one.endsWith("s")) one else one + "s"
+    }
+
     fun label(pack: Pack): String =
         (if (pack.source == Source.TYPICAL) "≈" else "") + Logic.fmt(pack.lb) + " lb pack"
 }

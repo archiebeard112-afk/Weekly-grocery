@@ -238,8 +238,34 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun recipes(st: UserState = state.value): Map<Int, Recipe> =
-        (bundle.recipes + st.custom).associateBy { it.id }
+    private var recipeMemo: Triple<List<Recipe>, Set<String>, Map<Int, Recipe>>? = null
+
+    /**
+     * All recipes (built-in and yours). Cuts you cook whole become "1 per person" so every
+     * screen, the shopping list and cooking show e.g. "2 chicken breasts" when cooking for 2.
+     */
+    fun recipes(st: UserState = state.value): Map<Int, Recipe> {
+        recipeMemo?.let { (c, w, m) -> if (c === st.custom && w == st.wholeCuts) return m }
+        val m = (bundle.recipes + st.custom).map { wholeCuts(it, st.wholeCuts) }.associateBy { it.id }
+        recipeMemo = Triple(st.custom, st.wholeCuts, m)
+        return m
+    }
+
+    private fun wholeCuts(r: Recipe, cuts: Set<String>): Recipe {
+        if (cuts.isEmpty()) return r
+        var changed = false
+        val ings = r.ingredients.map { i ->
+            if (i.u in setOf("lb", "oz", "") && Packs.wholeCut(Logic.searchTerm(i.name), cuts) != null) {
+                changed = true
+                Ingredient(r.base.toDouble(), "", i.name) // scales to 1 per serving
+            } else i
+        }
+        return if (changed) r.copy(ingredients = ings) else r
+    }
+
+    fun toggleWholeCut(cut: String) = edit { s ->
+        s.copy(wholeCuts = if (cut in s.wholeCuts) s.wholeCuts - cut else s.wholeCuts + cut)
+    }
 
     fun canGoBackBrowse(): Boolean = browseAt > 0
 
@@ -531,7 +557,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Saves this week to History, then clears it so you can plan the next one. */
     fun finishWeek() = edit { s0 ->
-        val s = if (s0.week.isEmpty()) s0 else s0.copy(pantry = usedUp(s0))
+        val s = if (s0.week.isEmpty()) s0 else s0.copy(pantry = usedUp(s0), freezer = freezerAfterWeek(s0))
         if (s.week.isEmpty() && s.snacks.isEmpty()) s else s.copy(
             history = if (s.week.isEmpty()) s.history else
                 listOf(
@@ -1202,7 +1228,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Goes in "Already have": you said so, or the pantry has enough (unless you chose to buy it anyway). */
     fun isHave(st: UserState, g: ShopGroup): Boolean =
-        g.term in st.haveTerms || (g.term !in st.pantryBuy && pantryStatus(st, g) == PantryStatus.COVERED)
+        g.term in st.haveTerms ||
+            (g.term !in st.pantryBuy && (pantryStatus(st, g) == PantryStatus.COVERED || freezerCovers(st, g)))
 
     fun togglePantryBuy(term: String) = edit { s ->
         s.copy(pantryBuy = if (term in s.pantryBuy) s.pantryBuy - term else s.pantryBuy + term)
@@ -1317,13 +1344,19 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     private val costCache = HashMap<List<Any?>, MealCost?>()
 
     /** A meat pack worked out for a shopping item: how many packs, what's left, and the price. */
-    data class MeatPack(val pack: Packs.Pack, val packs: Int, val cost: Double, val leftoverLb: Double, val key: String)
+    data class MeatPack(
+        val pack: Packs.Pack, val packs: Int, val cost: Double, val leftoverLb: Double, val key: String,
+        /** For cuts cooked whole: pieces per pack, whether you set it, and pieces left over. */
+        val perPack: Int = 0, val perPackYours: Boolean = false, val leftoverPieces: Int = 0, val cut: String? = null,
+    )
 
     /**
      * Whole-pack price for meat sold by the pound, for [needLb]. Uses the sale price, then the
      * King Soopers product, then a typical price. Null if this isn't meat sold by weight.
      */
-    fun meatPack(st: UserState, term: String, needLb: Double, product: Product?, sale: SaleItem?): MeatPack? {
+    fun meatPack(st: UserState, term: String, needLb: Double, product: Product?, sale: SaleItem?, pieces: Double = 0.0): MeatPack? {
+        val cut = Packs.wholeCut(term, st.wholeCuts)
+        if (cut != null && pieces > 0) return piecePack(st, term, cut, pieces, product, sale)
         if (needLb <= 0 || !Packs.weighed(term)) return null
         val title = sale?.title ?: product?.title
         val size = sale?.size ?: product?.size
@@ -1338,6 +1371,94 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         return MeatPack(p, packs, cost, (packs * p.lb - needLb).coerceAtLeast(0.0), key)
     }
 
+    /** Whole cuts: how many packs for [pieces], priced by the pack. */
+    private fun piecePack(st: UserState, term: String, cut: String, pieces: Double, product: Product?, sale: SaleItem?): MeatPack? {
+        val title = sale?.title ?: product?.title
+        val size = sale?.size ?: product?.size
+        val upc = product?.upc.orEmpty()
+        val key = if (upc.isNotEmpty()) upc else "term:$term"
+        val pack = Packs.packFor(term, title, size, st.packWeights[key] ?: st.packWeights["term:$term"])
+        val yoursCount = st.packCounts[key] ?: st.packCounts["term:$term"]
+        val perPack = yoursCount ?: Math.round(pack.lb / Packs.pieceLb(cut)).toInt().coerceAtLeast(1)
+        val price = sale?.promo ?: product?.let { it.promo ?: it.price } ?: Prices.perLb(term) ?: return null
+        val p = if (sale == null && product == null) pack.copy(perLb = true) else pack
+        val need = kotlin.math.ceil(pieces - 1e-6).toInt().coerceAtLeast(1)
+        val packs = ((need + perPack - 1) / perPack).coerceAtLeast(1)
+        val cost = packs * (if (p.perLb) p.lb * price else price)
+        return MeatPack(p, packs, cost, 0.0, key, perPack, yoursCount != null, packs * perPack - need, cut)
+    }
+
+    fun setPackCount(key: String, n: Int?) = edit { s ->
+        s.copy(packCounts = if (n == null || n <= 0) s.packCounts - key else s.packCounts + (key to n))
+    }
+
+    // ---- Freezer -------------------------------------------------------------------
+
+    /** How much of a shopping item the week needs: pieces for whole cuts, else pounds. */
+    fun meatNeed(st: UserState, term: String, items: List<ShopItem>): Double =
+        if (Packs.wholeCut(term, st.wholeCuts) != null) items.filter { it.unit == "" }.sumOf { it.qty }
+        else Logic.needOf(items).lb
+
+    fun freezerFor(st: UserState, term: String): FreezerItem? = st.freezer.firstOrNull { it.term == term }
+
+    /** True when the freezer has all the week needs of this item. */
+    fun freezerCovers(st: UserState, g: ShopGroup): Boolean {
+        val f = freezerFor(st, g.term) ?: return false
+        val need = meatNeed(st, g.term, g.items)
+        return need > 0 && f.amount() + 1e-6 >= need
+    }
+
+    fun saveFreezerItem(item: FreezerItem) = edit { s ->
+        val exists = s.freezer.any { it.id == item.id }
+        s.copy(freezer = if (exists) s.freezer.map { if (it.id == item.id) item else it } else s.freezer + item)
+    }
+
+    fun removeFreezerItem(id: String) = edit { s -> s.copy(freezer = s.freezer.filterNot { it.id == id }) }
+
+    /**
+     * Finish week: take what the meals used out of the freezer, then put leftover meat in:
+     * every leftover piece for cuts cooked whole, or more than 1 lb for meat by weight.
+     */
+    private fun freezerAfterWeek(s: UserState): List<FreezerItem> {
+        val out = s.freezer.toMutableList()
+        val now = System.currentTimeMillis()
+        val sales = salesCache(s)
+        for (g in shopGroups(s)) {
+            if (!Packs.weighed(g.term) || g.term in s.haveTerms) continue
+            val cut = Packs.wholeCut(g.term, s.wholeCuts)
+            val need = meatNeed(s, g.term, g.items)
+            if (need <= 0) continue
+            val i = out.indexOfFirst { it.term == g.term }
+            val have = if (i >= 0) out[i].amount() else 0.0
+            val used = minOf(have, need)
+            if (i >= 0) {
+                val left = have - used
+                out[i] = if (out[i].byCount) out[i].copy(count = Math.round(left).toInt()) else out[i].copy(lb = left)
+            }
+            val buy = need - used
+            if (buy <= 1e-6) continue
+            val sale = sales.options[g.term]?.minByOrNull { it.promo }
+            val m = meatPack(s, g.term, if (cut == null) buy else 0.0, products.value[g.term]?.product, sale, if (cut != null) buy else 0.0) ?: continue
+            val extra = if (cut != null) m.leftoverPieces.toDouble() else m.leftoverLb
+            val keep = if (cut != null) extra >= 1 else extra > 1.0
+            if (!keep) continue
+            val j = out.indexOfFirst { it.term == g.term }
+            if (j >= 0) {
+                val f = out[j]
+                out[j] = if (f.byCount) f.copy(count = f.count + Math.round(extra).toInt())
+                else f.copy(lb = f.lb + extra)
+            } else {
+                out += FreezerItem(
+                    java.util.UUID.randomUUID().toString(), g.term, g.term.replaceFirstChar { it.uppercase() },
+                    count = if (cut != null) Math.round(extra).toInt() else 0,
+                    lb = if (cut == null) Math.round(extra * 4) / 4.0 else 0.0,
+                    frozenAt = now, byCount = cut != null,
+                )
+            }
+        }
+        return out.filter { it.amount() > 0.01 }
+    }
+
     fun setPackWeight(key: String, lb: Double?) = edit { s ->
         s.copy(packWeights = if (lb == null || lb <= 0) s.packWeights - key else s.packWeights + (key to lb))
     }
@@ -1350,6 +1471,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val key = listOf(
             r.id, r.ingredients.hashCode(), side, st.servings, st.pantry, st.haveTerms, prods.size,
             sales.day, sales.options.size, st.packWeights, if (r.id in st.week) st.week else null, st.sides,
+            st.freezer, st.wholeCuts, st.packCounts,
         )
         if (costCache.size > 2000) costCache.clear()
         return costCache.getOrPut(key) {
@@ -1364,13 +1486,26 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             // Sale prices found for "On sale this week" win over everything else.
             val onSale = Sales.lines(r, st.servings, sales).associateBy { it.term }
             items.groupBy { Logic.searchTerm(it.name) }.forEach { (term, list) ->
-                val needLb = Logic.needOf(list).lb
                 val sale = onSale[term]?.sale
-                val meat = if (needLb > 0) {
-                    val weekLb = weekItems[term]?.let { Logic.needOf(it).lb }?.takeIf { it > needLb } ?: needLb
-                    meatPack(st, term, weekLb, prods[term]?.product, sale)?.let { m ->
+                val cut = Packs.wholeCut(term, st.wholeCuts)
+                val need = meatNeed(st, term, list) // pieces for whole cuts, else lb
+                var fromFreezer = false
+                val meat = if (need > 0 && Packs.weighed(term)) {
+                    val weekNeed = weekItems[term]?.let { meatNeed(st, term, it) }?.takeIf { it > need } ?: need
+                    val frozen = freezerFor(st, term)?.amount() ?: 0.0
+                    val buy = (weekNeed - frozen).coerceAtLeast(0.0)
+                    fromFreezer = buy <= 1e-6
+                    // Price what you'd still buy (or, if the freezer covers it, what it would have cost).
+                    val amount = if (fromFreezer) weekNeed else buy
+                    meatPack(st, term, if (cut == null) amount else 0.0, prods[term]?.product, sale, if (cut != null) amount else 0.0)?.let { m ->
+                        val note = when {
+                            fromFreezer -> "from the freezer"
+                            else -> (if (weekNeed > need) "share of " else "") + Packs.label(m.pack) +
+                                (m.cut?.let { " · ${m.perPack} ${Packs.pieceWord(it, m.perPack)}" } ?: "") +
+                                (if (frozen > 0) " · rest from freezer" else "")
+                        }
                         // This meal's share of the pack(s) bought for the week.
-                        Triple(m.cost * needLb / weekLb, (if (weekLb > needLb) "share of " else "") + Packs.label(m.pack), m)
+                        Triple(m.cost * need / weekNeed, note, m)
                     }
                 } else null
                 val c = meat?.first
@@ -1379,7 +1514,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                     ?: return@forEach
                 known++
                 val g = ShopGroup(term, list, list.first().aisle, emptyList())
-                val have = term in st.haveTerms || pantryStatus(st, g) == PantryStatus.COVERED
+                val have = term in st.haveTerms || pantryStatus(st, g) == PantryStatus.COVERED || fromFreezer
                 if (have) saved += c else total += c
                 lines[term] = PriceLine(c, have, meat?.second.orEmpty())
             }
@@ -1387,11 +1522,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Pack details for a meat item on the Shop list (the whole week's amount). */
+    /** Pack details for a meat item on the Shop list: what's still to buy after the freezer. */
     fun shopPack(st: UserState, g: ShopGroup): MeatPack? {
-        val needLb = Logic.needOf(g.items).lb
+        val cut = Packs.wholeCut(g.term, st.wholeCuts)
+        val need = meatNeed(st, g.term, g.items)
+        val buy = (need - (freezerFor(st, g.term)?.amount() ?: 0.0)).coerceAtLeast(0.0)
+        if (buy <= 1e-6) return null
         val sale = salesCache(st).options[g.term]?.minByOrNull { it.promo }
-        return meatPack(st, g.term, needLb, products.value[g.term]?.product, sale)
+        return meatPack(st, g.term, if (cut == null) buy else 0.0, products.value[g.term]?.product, sale, if (cut != null) buy else 0.0)
     }
 
     fun isBudget(st: UserState, r: Recipe): Boolean = mealCost(st, r)?.let { it.total <= st.budgetMax } ?: false

@@ -1,4 +1,5 @@
 package com.weeklymeals
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.FilterChip
@@ -180,6 +181,20 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     ) { Text(if (st.spoonKey.isBlank()) "Save key" else "Update key") }
                     if (st.spoonKey.isNotBlank()) {
                         Text("Key saved.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            SettingsCard(
+                "🍗", "Cook whole",
+                if (st.wholeCuts.isEmpty()) "Off" else Packs.WHOLE_CUTS.filter { it.first in st.wholeCuts }.joinToString(", ") { it.second },
+            ) {
+                Text(
+                    "Cuts you cook whole, 1 per person. Recipes, shopping and the freezer count them by the piece instead of by weight.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Packs.WHOLE_CUTS.forEach { (key, label) ->
+                        FilterChip(selected = key in st.wholeCuts, onClick = { vm.toggleWholeCut(key) }, label = { Text(label) })
                     }
                 }
             }
