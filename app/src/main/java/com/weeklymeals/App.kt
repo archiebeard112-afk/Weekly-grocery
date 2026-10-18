@@ -201,6 +201,15 @@ fun App(vm: MealsViewModel) {
         )
     }
 
+    // Leaving Browse or Favorites for another tab (or Pantry/History/Settings) clears the
+    // search, so coming back shows the plain page. Opening a recipe doesn't change the tab,
+    // so search results are still there when you go back from one.
+    LaunchedEffect(tab, overlay) {
+        listOf(browseSearch, favSearch).forEach { it.query.value = ""; it.filters.value = emptyList() }
+        browseResults.scrollToItem(0)
+        favGridState.scrollToItem(0)
+    }
+
     BackHandler(enabled = overlay != Overlay.None) { overlay = Overlay.None }
     BackHandler(enabled = overlay == Overlay.None && viewing != null && cooking == null) { viewing = null }
     BackHandler(enabled = overlay == Overlay.None && viewing == null && webViewing != null) { webViewing = null; sideWebFor = null }
