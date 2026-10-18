@@ -324,18 +324,31 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Week ----------------------------------------------------------------
 
     /** Adds a meal to the next empty day (or "Extra meals" if the week is full). */
-    fun addToWeek(id: Int) = edit { s ->
+    fun addToWeek(id: Int) = addToWeek(id, null, useDefaultSide = true)
+
+    /** Adds a meal with the chosen side (null = no side). */
+    fun addToWeek(id: Int, side: String?, useDefaultSide: Boolean = false) = edit { s ->
         if (id in s.week) s else {
             val r = recipes(s)[id]
-            val firstSide = r?.sides?.firstOrNull()
+            val chosen = if (useDefaultSide) s.sides[id] ?: r?.sides?.firstOrNull() else side
             val plan = Logic.dayPlan(s.week, s.days)
             val free = plan.slots.indexOfFirst { it == null }
             s.copy(
                 week = s.week + id,
                 days = if (free >= 0) plan.asMap() + (id to free) else plan.asMap(),
-                sides = if (firstSide != null && id !in s.sides) s.sides + (id to firstSide) else s.sides,
+                sides = if (chosen != null) s.sides + (id to chosen) else s.sides - id,
             )
         }
+    }
+
+    /** The recipe waiting for a side to be picked before it's added (shows the "Pick a side" pop-up). */
+    val sidePicker = MutableStateFlow<Int?>(null)
+
+    /** Add from a tile or recipe page: asks for a side first if the recipe has any. */
+    fun requestAdd(id: Int) {
+        val r = recipes()[id] ?: return
+        if (id in state.value.week) return
+        if (r.sides.any { it in sideMap }) sidePicker.value = id else addToWeek(id, null)
     }
 
     fun removeFromWeek(id: Int) = edit { s ->

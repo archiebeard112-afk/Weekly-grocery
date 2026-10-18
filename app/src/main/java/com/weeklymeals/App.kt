@@ -106,6 +106,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.launch
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.unit.dp
 
 private enum class Overlay { None, Settings, AddRecipe, History }
@@ -239,6 +240,44 @@ fun App(vm: MealsViewModel) {
         }
     }
     SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
+    }
+
+    // "Pick a side" when adding a meal to the week.
+    val pickSide by vm.sidePicker.collectAsState()
+    pickSide?.let { id ->
+        val r = vm.recipes(st)[id]
+        if (r == null) { vm.sidePicker.value = null } else {
+            AlertDialog(
+                onDismissRequest = { vm.sidePicker.value = null },
+                title = { Text("Pick a side") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text("${r.emoji} ${r.name}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(6.dp))
+                        r.sides.mapNotNull { vm.sideMap[it] }.forEach { sd ->
+                            Text(
+                                sd.label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable { vm.addToWeek(id, sd.key); vm.sidePicker.value = null }
+                                    .padding(vertical = 12.dp),
+                            )
+                            HorizontalDivider()
+                        }
+                        Text(
+                            "No side",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { vm.addToWeek(id, null); vm.sidePicker.value = null }
+                                .padding(vertical = 12.dp),
+                        )
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { vm.sidePicker.value = null }) { Text("Cancel") } },
+            )
+        }
     }
 
     if (askAddMode) {
@@ -489,7 +528,7 @@ private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) 
             ) {
                 items(matches, key = { it.id }) { r ->
                     RecipeTile(
-                        r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) },
+                        r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
                         Modifier.fillMaxWidth().height(96.dp),
                         saleSave = Sales.savings(r, st.servings, cache),
                     )
@@ -540,7 +579,7 @@ private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) 
                 ) {
                     pair.forEach { r ->
                         RecipeTile(
-                            r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) },
+                            r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
                             Modifier.weight(1f).fillMaxHeight(),
                             saleSave = Sales.savings(r, st.servings, cache),
                         )
@@ -725,7 +764,7 @@ private fun RecipeScreen(
             )
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onCook) { Text("▶  Start cooking") }
-                if (!inWeek) OutlinedButton(onClick = { vm.addToWeek(id) }) { Text("Add to week") }
+                if (!inWeek) OutlinedButton(onClick = { vm.requestAdd(id) }) { Text("Add to week") }
             }
             if (inWeek) WeekControls(vm, st, r, side)
             SaleSection(vm, st, r)
@@ -844,7 +883,7 @@ private fun FavoritesScreen(
         }
         items(shown, key = { it.id }) { r ->
             RecipeTile(
-                r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) },
+                r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
                 Modifier.fillMaxWidth().height(96.dp),
                 saleSave = Sales.savings(r, st.servings, cache),
             )
