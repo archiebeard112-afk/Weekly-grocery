@@ -12,6 +12,59 @@ object Pantry {
     const val TSP = "tsp"
     const val COUNT = "count"
     const val LB = "lb"
+    const val STICK = "stick"
+
+    /** Butter: kept in the Fridge, counted in sticks (1 stick = 8 tbsp = ½ cup = 4 oz). */
+    fun isButter(name: String): Boolean {
+        val n = name.lowercase()
+        return Regex("\\bbutter\\b").containsMatchIn(n) && !n.contains("peanut") && !n.contains("buttermilk")
+    }
+
+    /** Items whose leftovers are logged on Finish week (instead of refilled from the cart). */
+    fun loggedLeftovers(name: String): Boolean = isBinProduce(name) || isButter(name)
+
+    /** Sticks in a butter package size like "16 oz" or "1 lb" (null if it doesn't say). */
+    fun sizeSticks(size: String): Double? = sizeLb(size)?.let { it * 4 }
+
+    enum class Fresh { OK, SOON, EXPIRED }
+
+    /** Typical days an item stays good after you buy it (null = doesn't really go bad). */
+    fun shelfLifeDays(item: PantryItem): Int? {
+        val n = (item.term + " " + item.name).lowercase()
+        return when {
+            Regex("\\b(sugar|salt|honey|vinegar)\\b").containsMatchIn(n) && !n.contains("seasoning") -> null
+            isBinProduce(n) -> 28
+            isButter(n) -> 90
+            Regex("lemon juice|lime juice").containsMatchIn(n) -> 180
+            item.shelf == "spices" -> 730
+            item.shelf == "fridge" -> 30
+            item.shelf == "produce" -> 28
+            item.kind == "can" || Regex("\\b(rice|pasta|spaghetti|penne|macaroni|lentil|beans)\\b").containsMatchIn(n) -> 730
+            else -> 365
+        }
+    }
+
+    /** Fresh, use soon (past its typical time or best-by within a week), or past its best-by date. */
+    fun freshness(item: PantryItem, now: Long = System.currentTimeMillis()): Fresh {
+        val day = 86_400_000L
+        if (item.bestBy > 0) {
+            return when {
+                now > item.bestBy + day -> Fresh.EXPIRED
+                item.bestBy - now < 7 * day -> Fresh.SOON
+                else -> Fresh.OK
+            }
+        }
+        val life = shelfLifeDays(item) ?: return Fresh.OK
+        return if (item.addedAt > 0 && now - item.addedAt > life * day) Fresh.SOON else Fresh.OK
+    }
+
+    /** "about 1 year", "about 3 months", "about 4 weeks". */
+    fun lifeText(days: Int): String = when {
+        days >= 700 -> "about ${days / 365} years"
+        days >= 360 -> "about 1 year"
+        days >= 60 -> "about ${days / 30} months"
+        else -> "about ${days / 7} weeks"
+    }
 
     /** Produce kept in the Produce bin (bagged, keeps a few weeks). Just potatoes for now. */
     fun isBinProduce(name: String): Boolean {
@@ -26,7 +79,7 @@ object Pantry {
 
     val SHELVES = listOf(
         "spices" to "Spices", "oils" to "Oils and sauces", "baking" to "Baking", "dry" to "Canned and dry",
-        "produce" to "Produce bin",
+        "fridge" to "Fridge", "produce" to "Produce bin",
     )
     val KINDS = listOf("jar" to "Jar", "bottle" to "Bottle", "bag" to "Bag", "can" to "Can", "box" to "Box")
 
@@ -67,6 +120,8 @@ object Pantry {
         val n = name.lowercase()
         return when {
             isBinProduce(n) -> "produce" to "bag"
+            isButter(n) -> "fridge" to "box"
+            has(n, listOf("lemon juice", "lime juice")) -> "fridge" to "bottle"
             has(n, listOf("tomato sauce", "tomato paste", "diced tomatoes", "crushed tomatoes", "whole tomatoes",
                 "beans", "chickpeas", "garbanzo", "tuna", "coconut milk", "green chiles", "enchilada sauce",
                 "soup", "olives", "corn kernels", "canned", "pumpkin puree", "evaporated milk", "condensed milk")) -> "dry" to "can"
@@ -105,6 +160,7 @@ object Pantry {
     fun measureFor(name: String, kind: String, size: String): Pair<String, Double> {
         if (kind == "can") return COUNT to 1.0
         if (isBinProduce(name)) return LB to (sizeLb(size) ?: 5.0)
+        if (isButter(name)) return STICK to (sizeSticks(size) ?: 4.0)
         val (n, unit) = parseSize(size) ?: return "" to 1.0
         val d = density(name)
         val tsp = when (unit) {
@@ -136,6 +192,16 @@ object Pantry {
             "lb" -> density(item.term + " " + item.name)?.let { q * 16 * it }
             else -> null
         }
+        // Butter sticks: 8 tbsp, ½ cup or 4 oz each.
+        STICK -> when (u) {
+            "tbsp" -> q / 8
+            "tsp" -> q / 24
+            "cup" -> q * 2
+            "oz" -> q / 4
+            "lb" -> q * 4
+            "", "stick", "sticks" -> q
+            else -> null
+        }
         // Pounds: weights directly, otherwise through the food's typical weight (1 potato ≈ ½ lb).
         LB -> when (u) {
             "lb" -> q
@@ -158,6 +224,10 @@ object Pantry {
             else -> "about ${Logic.fmt(Math.round(amount / 48 * 4) / 4.0)} cups"
         }
         LB -> if (amount <= 0.05) "Out" else "${Logic.fmt(Math.round(amount * 4) / 4.0)} lb left"
+        STICK -> {
+            val q = Math.round(amount * 4) / 4.0
+            if (q <= 0) "Out" else "${Logic.fmt(q)} ${if (q == 1.0) "stick" else "sticks"}"
+        }
         else -> levelWord(if (item.full <= 0) 0.0 else amount / item.full)
     }
 

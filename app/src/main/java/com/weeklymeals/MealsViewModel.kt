@@ -223,6 +223,15 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshBrowse()
+        // Pantry items from before freshness tracking start their clock today.
+        viewModelScope.launch {
+            store.update { s ->
+                if (s.pantry.none { it.addedAt == 0L }) s else {
+                    val now = System.currentTimeMillis()
+                    s.copy(pantry = s.pantry.map { if (it.addedAt == 0L) it.copy(addedAt = now) else it })
+                }
+            }
+        }
         // One time: seed Quick add with the snacks and usual items picked before.
         viewModelScope.launch {
             store.update { s ->
@@ -1250,7 +1259,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** Adds or updates a pantry item. */
     fun savePantryItem(item: PantryItem) = edit { s ->
         val exists = s.pantry.any { it.id == item.id }
-        s.copy(pantry = if (exists) s.pantry.map { if (it.id == item.id) item else it } else s.pantry + item)
+        val saved = if (item.addedAt == 0L) item.copy(addedAt = System.currentTimeMillis()) else item
+        s.copy(pantry = if (exists) s.pantry.map { if (it.id == item.id) saved else it } else s.pantry + saved)
     }
 
     fun removePantryItem(id: String) = edit { s -> s.copy(pantry = s.pantry.filterNot { it.id == id }) }
@@ -1276,17 +1286,21 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val out = pantry.toMutableList()
         val now = System.currentTimeMillis()
         for (g in shopGroups(s)) {
-            if (!Pantry.isBinProduce(g.term) || g.term in s.haveTerms) continue
-            val probe = PantryItem("", g.term, g.term, "produce", "bag", measure = Pantry.LB)
+            val butter = Pantry.isButter(g.term)
+            if (!(Pantry.isBinProduce(g.term) || butter) || g.term in s.haveTerms) continue
+            val probe = PantryItem("", g.term, g.term, if (butter) "fridge" else "produce", if (butter) "box" else "bag",
+                measure = if (butter) Pantry.STICK else Pantry.LB)
             val need = g.items.sumOf { Pantry.usage(probe, it.qty, it.unit) ?: 0.0 }
             if (need <= 0) continue
             val before = s.pantry.firstOrNull { it.term == g.term }?.left ?: 0.0
             val buy = need - before
             if (buy <= 1e-6) continue // the bin covered it (already taken out above)
-            val bag = Pantry.sizeLb(products.value[g.term]?.product?.size.orEmpty()) ?: 5.0
+            val size = products.value[g.term]?.product?.size.orEmpty()
+            val bag = if (butter) Pantry.sizeSticks(size) ?: 4.0 else Pantry.sizeLb(size) ?: 5.0
             val bags = kotlin.math.ceil(buy / bag - 1e-6).coerceAtLeast(1.0)
-            val leftover = bags * bag - buy
-            if (leftover < 0.5) continue
+            val leftover = Math.round((bags * bag - buy) * 4) / 4.0
+            // Potatoes under ½ lb aren't worth logging; butter keeps quarter sticks.
+            if (leftover < (if (butter) 0.25 else 0.5)) continue
             val i = out.indexOfFirst { it.term == g.term }
             if (i >= 0) {
                 val cur = out[i]
@@ -1295,7 +1309,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 out += PantryItem(
                     java.util.UUID.randomUUID().toString(), g.term.replaceFirstChar { it.uppercase() }, g.term,
-                    shelf = "produce", kind = "bag", measure = Pantry.LB, full = bag, left = leftover, addedAt = now,
+                    shelf = probe.shelf, kind = probe.kind, measure = probe.measure, full = bag, left = leftover, addedAt = now,
                 )
             }
         }
@@ -1307,18 +1321,21 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val out = pantry.toMutableList()
         for (l in lines) {
             val p = l.product ?: continue
-            // Potatoes are logged on Finish week instead (what's left of the bag).
-            if (Pantry.isBinProduce(l.term + " " + p.title)) continue
+            // Potatoes and butter are logged on Finish week instead (what's left of the package).
+            if (Pantry.loggedLeftovers(l.term + " " + p.title)) continue
             val i = out.indexOfFirst { it.term == l.term || (p.upc.isNotEmpty() && it.upc == p.upc) }
             if (i >= 0) {
                 val cur = out[i]
                 out[i] = if (cur.measure == "") {
-                    cur.copy(left = cur.full, upc = p.upc, size = p.size.ifBlank { cur.size })
+                    cur.copy(left = cur.full, upc = p.upc, size = p.size.ifBlank { cur.size }, addedAt = System.currentTimeMillis(), bestBy = 0L)
                 } else {
                     val (m, pack) = Pantry.measureFor(cur.term + " " + p.title, cur.kind, p.size)
                     val add = (if (m == cur.measure) pack else cur.full) * l.quantity
                     val left = cur.left + add
-                    cur.copy(left = left, full = maxOf(cur.full, left), upc = p.upc, size = p.size.ifBlank { cur.size })
+                    cur.copy(
+                        left = left, full = maxOf(cur.full, left), upc = p.upc, size = p.size.ifBlank { cur.size },
+                        addedAt = System.currentTimeMillis(), bestBy = 0L,
+                    )
                 }
             } else if (Pantry.classify(l.term + " " + p.title) != null) {
                 val d = pantryDraft(p.title, p.size, p.upc)

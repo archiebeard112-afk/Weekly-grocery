@@ -180,8 +180,10 @@ data class PantryItem(
     val measure: String = "",
     val full: Double = 1.0,
     val left: Double = 1.0,
-    /** When it was bought (for produce freshness), 0 = unknown. */
+    /** When it was bought (for freshness), 0 = unknown. */
     val addedAt: Long = 0L,
+    /** Best-by date from the package (0 = not set). */
+    val bestBy: Long = 0L,
 ) {
     val level: Double get() = if (full <= 0) 0.0 else (left / full).coerceIn(0.0, 1.0)
 }

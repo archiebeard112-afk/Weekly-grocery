@@ -242,9 +242,10 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         )
                     }
                     items(section, key = { "g_" + it.term }) { g ->
+                        val inFridge = st.pantry.any { it.term == g.term && it.shelf == "fridge" }
                         val pantryNote = when (vm.pantryStatus(st, g)) {
-                            MealsViewModel.PantryStatus.LOW -> "🫙 Low in pantry"
-                            MealsViewModel.PantryStatus.COVERED -> "🫙 In pantry · buying anyway"
+                            MealsViewModel.PantryStatus.LOW -> if (inFridge) "🥛 Low in fridge" else "🫙 Low in pantry"
+                            MealsViewModel.PantryStatus.COVERED -> if (inFridge) "🥛 In fridge · buying anyway" else "🫙 In pantry · buying anyway"
                             null -> null
                         }
                         // Some in the freezer but not enough: say how much more to buy.
@@ -282,9 +283,10 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         ) {
                             val fromPantry = g.term !in st.haveTerms
                             val fromFreezer = fromPantry && vm.freezerCovers(st, g)
+                            val fromFridge = fromPantry && st.pantry.any { it.term == g.term && it.shelf == "fridge" }
                             Text(
                                 g.term.replaceFirstChar { it.uppercase() } +
-                                    if (fromFreezer) "  · 🧊 in freezer" else if (fromPantry) "  · 🫙 in pantry" else "",
+                                    if (fromFreezer) "  · 🧊 in freezer" else if (fromFridge) "  · 🥛 in fridge" else if (fromPantry) "  · 🫙 in pantry" else "",
                                 textDecoration = if (fromPantry) null else TextDecoration.LineThrough,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.weight(1f),

@@ -30,6 +30,9 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
@@ -83,6 +86,13 @@ private val PLENTY = Color(0xFF1D9E75)
 private val LOW = Color(0xFFBA7517)
 private val SHELF_WOOD = Color(0xFF8B5A2B)
 private val FREEZER = Color(0xFF85B7EB)
+
+/** A best-by date from the date picker (stored as midnight UTC), e.g. "Mar 4, 2027". */
+private fun bestByText(at: Long): String {
+    val f = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault())
+    f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+    return f.format(java.util.Date(at))
+}
 
 private fun boughtAgo(at: Long): String {
     val days = ((System.currentTimeMillis() - at) / 86_400_000L).toInt()
@@ -261,6 +271,36 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
     var editingNew by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf<String?>(null) } // shelf key, or "" for any
     var freezing by remember { mutableStateOf<FreezerItem?>(null) }
+    // Adding opens the barcode scanner first; backing out of it (or a barcode we can't find)
+    // opens the type-it-in dialog instead.
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var lookingUp by remember { mutableStateOf(false) }
+    var addNote by remember { mutableStateOf<String?>(null) }
+    fun scanFirst(shelf: String?) {
+        addNote = null
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E, Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8)
+            .build()
+        GmsBarcodeScanning.getClient(ctx, options).startScan()
+            .addOnSuccessListener { code ->
+                val raw = code.rawValue.orEmpty()
+                lookingUp = true
+                scope.launch {
+                    val p = vm.lookupBarcode(raw)
+                    lookingUp = false
+                    if (p != null) {
+                        editing = vm.pantryDraft(p.title, p.size, p.upc.ifBlank { raw }, shelf)
+                        editingNew = true
+                    } else {
+                        addNote = "Couldn't find that barcode. Type the name instead."
+                        adding = shelf ?: ""
+                    }
+                }
+            }
+            .addOnCanceledListener { adding = shelf ?: "" }
+            .addOnFailureListener { adding = shelf ?: "" }
+    }
     var freezingNew by remember { mutableStateOf(false) }
     val lowCount = st.pantry.count { Pantry.isLow(it) }
 
@@ -275,7 +315,7 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Pantry", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     FilledTonalButton(
-                        onClick = { adding = "" },
+                        onClick = { scanFirst(null) },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                         modifier = Modifier.height(34.dp),
                     ) {
@@ -308,23 +348,25 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                                 Modifier.width(70.dp).clickable { editing = p; editingNew = false }.padding(bottom = 4.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                // Produce turns amber after 4 weeks: use it soon.
-                                val produceOld = p.shelf == "produce" && p.addedAt > 0 &&
-                                    System.currentTimeMillis() - p.addedAt > 28L * 86_400_000L
-                                ContainerView(p.kind, p.level, Pantry.isLow(p) || produceOld, Modifier.size(52.dp, 62.dp))
+                                // Amber when it's low, past its typical time, or near/past its best-by date.
+                                val fresh = Pantry.freshness(p)
+                                ContainerView(p.kind, p.level, Pantry.isLow(p) || fresh != Pantry.Fresh.OK, Modifier.size(52.dp, 62.dp))
                                 Text(
                                     p.term.replaceFirstChar { it.uppercase() },
                                     fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp),
                                 )
-                                if (p.measure == Pantry.LB) {
+                                if (p.measure == Pantry.LB || p.measure == Pantry.STICK) {
                                     Text(Pantry.amountText(p), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                if (p.shelf == "produce" && p.addedAt > 0) {
-                                    Text(
-                                        if (produceOld) "use soon" else boughtAgo(p.addedAt), fontSize = 10.sp,
-                                        color = if (produceOld) LOW else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                                when (fresh) {
+                                    Pantry.Fresh.EXPIRED -> Text("past best-by", fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
+                                    Pantry.Fresh.SOON -> Text("use soon", fontSize = 10.sp, color = LOW)
+                                    else -> {
+                                        if (p.shelf == "produce" && p.addedAt > 0) {
+                                            Text(boughtAgo(p.addedAt), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -332,7 +374,7 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                             Box(
                                 Modifier.padding(start = 6.dp, bottom = 20.dp).size(50.dp, 62.dp)
                                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
-                                    .clickable { adding = key },
+                                    .clickable { scanFirst(key) },
                                 contentAlignment = Alignment.Center,
                             ) { Icon(Icons.Filled.Add, "Add to $label", tint = MaterialTheme.colorScheme.outline) }
                         }
@@ -414,9 +456,17 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
             onDismiss = { freezing = null },
         )
     }
+    if (lookingUp) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Looking it up…") },
+            text = { CircularProgressIndicator() },
+            confirmButton = {},
+        )
+    }
     adding?.let { shelf ->
         PantryAddDialog(
-            vm, st, shelf.ifEmpty { null },
+            vm, st, shelf.ifEmpty { null }, addNote,
             onPicked = { draft -> adding = null; editing = draft; editingNew = true },
             onDismiss = { adding = null },
         )
@@ -434,13 +484,13 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
 /** Scan a barcode or search King Soopers to add an item. */
 @Composable
 private fun PantryAddDialog(
-    vm: MealsViewModel, st: UserState, shelf: String?,
+    vm: MealsViewModel, st: UserState, shelf: String?, note: String?,
     onPicked: (PantryItem) -> Unit, onDismiss: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf(note) }
     var scannedUpc by remember { mutableStateOf("") }
     val found by vm.suggestions.collectAsState()
     LaunchedEffect(query) {
@@ -478,7 +528,7 @@ private fun PantryAddDialog(
                             .addOnFailureListener { e -> status = "Scanner unavailable: ${e.message ?: "try again"}" }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Scan barcode") }
+                ) { Text("Scan again") }
                 status?.let {
                     Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (it.startsWith("Looking")) {
@@ -531,6 +581,7 @@ private fun PantryAddDialog(
 }
 
 /** One item: drag the big container up or down to set how much is left. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PantryItemDialog(
     start: PantryItem, isNew: Boolean,
@@ -539,6 +590,7 @@ private fun PantryItemDialog(
     var item by remember(start.id) { mutableStateOf(start) }
     var level by remember(start.id) { mutableDoubleStateOf(start.level) }
     var confirmRemove by remember { mutableStateOf(false) }
+    var pickingDate by remember { mutableStateOf(false) }
     val counted = item.measure == Pantry.COUNT
 
     fun setFrom(y: Float, h: Float) {
@@ -594,6 +646,37 @@ private fun PantryItemDialog(
                     )
                 }
 
+                // Freshness: how long it's been, how long it usually keeps, and the package's best-by date.
+                val fresh = Pantry.freshness(item)
+                val life = Pantry.shelfLifeDays(item)
+                HorizontalDivider(Modifier.padding(top = 12.dp, bottom = 8.dp))
+                Text("Freshness", style = MaterialTheme.typography.labelLarge)
+                if (!isNew && item.addedAt > 0) {
+                    Text(
+                        boughtAgo(item.addedAt).replaceFirstChar { it.uppercase() } + (life?.let { " · good for ${Pantry.lifeText(it)}" } ?: " · keeps a long time"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else if (life != null) {
+                    Text("Usually good for ${Pantry.lifeText(life)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                when (fresh) {
+                    Pantry.Fresh.EXPIRED -> Text("Past its best-by date", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    Pantry.Fresh.SOON -> Text(if (item.bestBy > 0) "Best-by is coming up: use soon" else "Getting old: use soon", style = MaterialTheme.typography.bodySmall, color = LOW)
+                    else -> {}
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(onClick = { pickingDate = true }, contentPadding = PaddingValues(horizontal = 12.dp)) {
+                        Text(if (item.bestBy > 0) "Best by ${bestByText(item.bestBy)}" else "Set best-by date")
+                    }
+                    if (item.bestBy > 0) {
+                        TextButton(onClick = { item = item.copy(bestBy = 0L) }) { Text("Clear") }
+                    }
+                }
+                if (!isNew) {
+                    TextButton(onClick = { item = item.copy(addedAt = System.currentTimeMillis()) }) { Text("Just bought (restart the clock)") }
+                }
+
                 OutlinedTextField(
                     item.term, { item = item.copy(term = it.lowercase()) },
                     label = { Text("Covers this shopping item") }, singleLine = true,
@@ -635,6 +718,22 @@ private fun PantryItemDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+
+    if (pickingDate) {
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = if (item.bestBy > 0) item.bestBy else System.currentTimeMillis(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickingDate = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { item = item.copy(bestBy = it) }
+                    pickingDate = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { pickingDate = false }) { Text("Cancel") } },
+        ) { DatePicker(state = state, title = { Text("Best-by date", Modifier.padding(start = 24.dp, top = 16.dp)) }) }
+    }
 
     if (confirmRemove) {
         AlertDialog(
