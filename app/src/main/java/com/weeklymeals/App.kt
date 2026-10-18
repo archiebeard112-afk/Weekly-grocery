@@ -1,5 +1,13 @@
 package com.weeklymeals
 
+import androidx.compose.ui.text.font.FontWeight
+
+import androidx.compose.ui.text.withStyle
+
+import androidx.compose.ui.text.buildAnnotatedString
+
+import androidx.compose.ui.text.SpanStyle
+
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.platform.LocalContext
@@ -210,6 +218,21 @@ fun App(vm: MealsViewModel) {
         launch { runCatching { favGridState.scrollToItem(0) } }
     }
 
+    // After adding a meal, jump to Week so you can see it (it flashes once).
+    val added by vm.justAdded.collectAsState()
+    var flashId by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(added) {
+        added?.let { id ->
+            flashId = id
+            tab = 0
+            overlay = Overlay.None
+            viewing = null
+            webViewing = null
+            sideWebFor = null
+            vm.justAdded.value = null
+        }
+    }
+
     BackHandler(enabled = overlay != Overlay.None) { overlay = Overlay.None }
     BackHandler(enabled = overlay == Overlay.None && viewing != null && cooking == null && webViewing == null) { viewing = null }
     // An online preview can sit on top of a recipe page (picking a side from it); Back closes just the preview.
@@ -281,7 +304,7 @@ fun App(vm: MealsViewModel) {
                     overlay == Overlay.History -> HistoryScreen(vm, st) { overlay = Overlay.None }
                     overlay == Overlay.Settings -> SettingsScreen(vm, st) { overlay = Overlay.None }
                     else -> when (tab) {
-                    0 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 })
+                    0 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 }, flashId = flashId) { flashId = null }
                     1 -> BrowseScreen(
                         vm, st, toggleFav,
                         browseSearch, browseResults, onHold = { confirmDelete = it },
@@ -574,7 +597,7 @@ private fun BrowseScreen(
             val q = query.trim().lowercase()
             val matches = all.values.filter { r ->
                 r.id !in st.removed &&
-                matchesFilters(r, q, filters) { vm.mealCalories(st, it) } && (!saleOnly || Sales.savings(r, st.servings, cache) >= st.saleMin)
+                matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }) && (!saleOnly || Sales.savings(r, st.servings, cache) >= st.saleMin)
             }.sortedBy { it.name }
             val showWeb = query.trim().length >= 3 && RecipeSources.effective(st) != RecipeSources.OFF
             LazyVerticalGrid(
@@ -601,6 +624,7 @@ private fun BrowseScreen(
                         saleSave = Sales.savings(r, st.servings, cache),
                         onHold = { onHold(r) },
                         calories = vm.mealCalories(st, r),
+                cost = vm.mealCost(st, r),
                     )
                 }
                 if (showWeb) {
@@ -659,6 +683,7 @@ private fun BrowseScreen(
                             saleSave = Sales.savings(r, st.servings, cache),
                             onHold = { onHold(r) },
                             calories = vm.mealCalories(st, r),
+                cost = vm.mealCost(st, r),
                         )
                     }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -677,6 +702,7 @@ private fun RecipeTile(
     saleSave: Double = 0.0,
     onHold: (() -> Unit)? = null,
     calories: Int? = null,
+    cost: MealsViewModel.MealCost? = null,
 ) {
     val inWeek = r.id in st.week
     Card(
@@ -687,7 +713,7 @@ private fun RecipeTile(
             // Icon-only badges so they always fit (full labels are on the recipe page).
             val badges =
                 (if (saleSave >= st.saleMin) listOf("🏷️" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
-                    Logic.badges(r).map { it.substringBefore(" ") }
+                    Logic.badges(r, cost?.let { it.total <= st.budgetMax } ?: false).map { it.substringBefore(" ") }
             // Emoji on the left; name with badges right under it, so nothing overlaps.
             Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
@@ -696,7 +722,7 @@ private fun RecipeTile(
                     val infoLine = badges.isNotEmpty() || calories != null
                     Text(
                         r.name, style = MaterialTheme.typography.bodyMedium,
-                        maxLines = if (infoLine) 1 else 2, overflow = TextOverflow.Ellipsis,
+                        maxLines = if (infoLine || cost != null) 1 else 2, overflow = TextOverflow.Ellipsis,
                     )
                     if (infoLine) {
                         // Calories first, then the badges.
@@ -714,6 +740,20 @@ private fun RecipeTile(
                             }
                             badges.forEach { Badge(it, small = true) }
                         }
+                    }
+                    // What you'd pay for this meal; green at or under your budget line.
+                    cost?.let { c ->
+                        val cheap = c.total <= st.budgetMax
+                        Text(
+                            buildAnnotatedString {
+                                withStyle(SpanStyle(color = if (cheap) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (cheap) FontWeight.Medium else FontWeight.Normal)) {
+                                    append(Sales.money(c.total))
+                                }
+                                if (c.saved >= 0.5) withStyle(SpanStyle(color = BUDGET_GREEN)) { append(" · pantry") }
+                            },
+                            style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                            modifier = Modifier.padding(top = 1.dp),
+                        )
                     }
                 }
             }
@@ -840,7 +880,7 @@ private fun RecipeScreen(
                 Spacer(Modifier.width(12.dp))
                 Text(r.name, style = MaterialTheme.typography.headlineSmall)
             }
-            val badges = Logic.badges(r)
+            val badges = Logic.badges(r, vm.isBudget(st, r))
             if (badges.isNotEmpty()) {
                 Row(
                     Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
@@ -854,6 +894,15 @@ private fun RecipeScreen(
                 modifier = Modifier.padding(top = 6.dp),
             )
             LaunchedEffect(r.id) { vm.fetchReviewsIfMissing(r) }
+            vm.mealCost(st, r)?.let { c ->
+                Text(
+                    "≈ ${Sales.money(c.total)} for this meal" +
+                        if (c.saved >= 0.5) " · you save ≈ ${Sales.money(c.saved)} with what you have" else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (c.total <= st.budgetMax) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             Nutrition.perServing(r)?.let { cal ->
                 val sideCal = if (inWeek) Nutrition.side(side) else null
                 Text(
@@ -938,13 +987,19 @@ internal fun CompactSearch(
 }
 
 /** Recipes matching a search (name or ingredient) and every selected filter chip. */
-private fun matchesFilters(r: Recipe, q: String, filters: List<String>, calories: (Recipe) -> Int? = { null }): Boolean =
+private val BUDGET_GREEN = androidx.compose.ui.graphics.Color(0xFF5DCAA5)
+
+private fun matchesFilters(
+    r: Recipe, q: String, filters: List<String>,
+    calories: (Recipe) -> Int? = { null }, budget: (Recipe) -> Boolean = { false },
+): Boolean =
     (q.isEmpty() || r.name.lowercase().contains(q) || r.ingredients.any { it.name.lowercase().contains(q) }) &&
         filters.all { f ->
             when (f) {
                 "quick" -> Logic.cookMinutes(r) <= 30
                 // 600 or less per serving, side included; unknown calories don't count.
                 "lowcal" -> calories(r)?.let { it <= LOW_CAL } ?: false
+                "budget" -> budget(r)
                 else -> f in r.tags
             }
         }
@@ -997,7 +1052,7 @@ private fun FavoritesScreen(
     val cache = vm.salesCache(st)
     val favs = vm.recipes(st).values.filter { Logic.isFav(it, st) }.sortedBy { it.name }
     val q = query.trim().lowercase()
-    val shown = favs.filter { r -> matchesFilters(r, q, filters) { vm.mealCalories(st, it) } }
+    val shown = favs.filter { r -> matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }) }
     // Same layout and spacing as Browse so the title, search bar and tiles line up.
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1056,6 +1111,7 @@ private fun FavoritesScreen(
                 saleSave = Sales.savings(r, st.servings, cache),
                 onHold = { onHold(r) },
                 calories = vm.mealCalories(st, r),
+                cost = vm.mealCost(st, r),
             )
         }
     }

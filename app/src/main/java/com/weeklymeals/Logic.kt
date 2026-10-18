@@ -381,7 +381,9 @@ object Logic {
     )
 
     /** Badge labels for a recipe, cooking method first, then Budget. */
-    fun badges(r: Recipe): List<String> = BADGES.filterKeys { it in r.tags }.values.toList()
+    /** Cooking-method badges, then 💲 Budget when [budget] (it depends on prices and what you have). */
+    fun badges(r: Recipe, budget: Boolean = false): List<String> =
+        BADGES.filterKeys { it != "budget" && it in r.tags }.values.toList() + if (budget) listOf("💲 Budget") else emptyList()
 
     fun productLabel(p: Product): String = buildString {
         append(p.title)

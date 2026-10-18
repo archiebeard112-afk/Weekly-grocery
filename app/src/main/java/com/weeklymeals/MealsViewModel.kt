@@ -94,7 +94,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         (baseSides.values.filter { it.key !in st.hiddenSides } + st.customSides).sortedBy { it.label.substringAfter(" ").lowercase() }
 
     /** Adds the meal with this side (or changes its side), and remembers it for the recipe. */
-    fun chooseSide(id: Int, key: String?) = edit { s0 ->
+    /** A meal that was just added to the week: the app jumps to Week and highlights it. */
+    val justAdded = MutableStateFlow<Int?>(null)
+
+    private fun markAdded(id: Int) {
+        if (id !in state.value.week) justAdded.value = id
+    }
+
+    fun chooseSide(id: Int, key: String?) = markAdded(id).let { edit { s0 ->
         val r = recipes(s0)[id]
         val s1 = if (key != null && key in s0.notForDish[id].orEmpty())
             s0.copy(notForDish = s0.notForDish + (id to (s0.notForDish[id].orEmpty() - key))) else s0
@@ -104,7 +111,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         } else s1
         if (id in s.week) s.copy(sides = if (key == null) s.sides - id else s.sides + (id to key))
         else withMeal(s, id, key)
-    }
+    } }
 
     fun isBuiltInSide(key: String) = key in baseSides
 
@@ -452,7 +459,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun addToWeek(id: Int) = addToWeek(id, null, useDefaultSide = true)
 
     /** Adds a meal with the chosen side (null = no side). */
-    fun addToWeek(id: Int, side: String?, useDefaultSide: Boolean = false) = edit { s -> withMeal(s, id, side, useDefaultSide) }
+    fun addToWeek(id: Int, side: String?, useDefaultSide: Boolean = false) {
+        markAdded(id)
+        edit { s -> withMeal(s, id, side, useDefaultSide) }
+    }
 
     private fun withMeal(s: UserState, id: Int, side: String?, useDefaultSide: Boolean = false): UserState =
         if (id in s.week) s else {
@@ -469,6 +479,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Adds a meal with a King Soopers product as its side; remembers it for that recipe. */
     fun addToWeekWithProduct(id: Int, p: Product) {
+        markAdded(id)
         val title = p.title.trim()
         if (title.isEmpty()) return
         val term = Logic.searchTerm(title)
@@ -1289,6 +1300,36 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setSaleMin(v: Double) = edit { it.copy(saleMin = v) }
+
+    fun setBudgetMax(v: Double) = edit { it.copy(budgetMax = v) }
+
+    /** What a meal costs: [total] to buy, and [saved] by what you already have (pantry, Already have). */
+    data class MealCost(val total: Double, val saved: Double)
+
+    private val costCache = HashMap<List<Any?>, MealCost?>()
+
+    /** Cost to make a meal for your Cooking for number, with its side once it's in your week. */
+    fun mealCost(st: UserState, r: Recipe): MealCost? {
+        val side = if (r.id in st.week) st.sides[r.id] else null
+        val prods = products.value
+        val key = listOf(r.id, r.ingredients.hashCode(), side, st.servings, st.pantry, st.haveTerms, prods.size)
+        if (costCache.size > 2000) costCache.clear()
+        return costCache.getOrPut(key) {
+            val items = Logic.shopList(listOf(r.id), side?.let { mapOf(r.id to it) } ?: emptyMap(), mapOf(r.id to r), sideMap, st.servings)
+            var total = 0.0
+            var saved = 0.0
+            var known = 0
+            items.groupBy { Logic.searchTerm(it.name) }.forEach { (term, list) ->
+                val c = Prices.cost(term + " " + list.first().name, list, prods[term]?.product) ?: return@forEach
+                known++
+                val g = ShopGroup(term, list, list.first().aisle, emptyList())
+                if (term in st.haveTerms || pantryStatus(st, g) == PantryStatus.COVERED) saved += c else total += c
+            }
+            if (known == 0) null else MealCost(total, saved)
+        }
+    }
+
+    fun isBudget(st: UserState, r: Recipe): Boolean = mealCost(st, r)?.let { it.total <= st.budgetMax } ?: false
 
     fun cartLines(st: UserState = state.value): List<CartLine> {
         val m = products.value

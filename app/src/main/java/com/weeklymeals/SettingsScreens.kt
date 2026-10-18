@@ -212,7 +212,7 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     }
                 }
             }
-            SettingsCard("🏷️", "On sale", "Meals saving ${Sales.money(st.saleMin)} or more") {
+            SettingsCard("🏷️", "Sales and budget", "Sale ${Sales.money(st.saleMin).substringBefore(".")}+ · Budget ${Sales.money(st.budgetMax).substringBefore(".")} a meal") {
                 Text(
                     "A meal counts as on sale (the Sale filter and 🏷️ on tiles) when it saves at least:",
                     style = MaterialTheme.typography.bodyMedium,
@@ -222,6 +222,20 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                         FilterChip(selected = st.saleMin == v, onClick = { vm.setSaleMin(v) }, label = { Text(Sales.money(v).substringBefore(".")) })
                     }
                 }
+                Text(
+                    "A meal is 💲 Budget (and its price shows green) when what you'd buy for it costs at most:",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(10.0, 15.0, 20.0, 25.0).forEach { v ->
+                        FilterChip(selected = st.budgetMax == v, onClick = { vm.setBudgetMax(v) }, label = { Text(Sales.money(v).substringBefore(".")) })
+                    }
+                }
+                Text(
+                    "Things in your pantry or marked Already have don't count toward the price.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             BackupCard(vm)
 

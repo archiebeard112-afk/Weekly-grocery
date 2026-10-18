@@ -49,7 +49,10 @@ private val ROW_GAP = 6.dp
 
 /** The Week tab: Monday-Sunday, one dinner per day. Hold and drag a meal to move it. */
 @Composable
-fun WeekScreen(vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrowse: () -> Unit) {
+fun WeekScreen(
+    vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrowse: () -> Unit,
+    flashId: Int? = null, onFlashed: () -> Unit = {},
+) {
     val all = vm.recipes(st)
     val plan = Logic.dayPlan(st.week, st.days)
     val today = Logic.todayIndex()
@@ -63,6 +66,17 @@ fun WeekScreen(vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrows
     var dragFrom by remember { mutableIntStateOf(0) }
     var dragY by remember { mutableFloatStateOf(0f) }
     var confirmFinish by remember { mutableStateOf(false) }
+    // A just-added meal flashes once; if it landed in the extras, scroll down to it.
+    val flash = remember { androidx.compose.animation.core.Animatable(0f) }
+    val scroll = rememberScrollState()
+    LaunchedEffect(flashId, st.week) {
+        val id = flashId ?: return@LaunchedEffect
+        if (id !in st.week) return@LaunchedEffect
+        if (id in Logic.dayPlan(st.week, st.days).extras) scroll.animateScrollTo(scroll.maxValue)
+        flash.snapTo(1f)
+        flash.animateTo(0f, androidx.compose.animation.core.tween(1400))
+        onFlashed()
+    }
     val target = if (dragId != null) (dragFrom + (dragY / stepPx).roundToInt()).coerceIn(0, 6) else -1
 
     // Rows: the 7 days, then any extra meals.
@@ -71,7 +85,7 @@ fun WeekScreen(vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrows
 
     Column(
         Modifier.fillMaxSize()
-            .then(if (fits) Modifier else Modifier.verticalScroll(rememberScrollState()))
+            .then(if (fits) Modifier else Modifier.verticalScroll(scroll))
             // Same margins as Browse and Favorites.
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(ROW_GAP),
@@ -107,7 +121,12 @@ fun WeekScreen(vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrows
             val dragged = id != null && id == dragId
             val isTarget = dragId != null && index == target && !dragged
             val isToday = index == today
+            val flashing = id != null && id == flashId && flash.value > 0f
             val bg = when {
+                flashing -> androidx.compose.ui.graphics.lerp(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.55f), flash.value,
+                )
                 isTarget -> MaterialTheme.colorScheme.primaryContainer
                 dragged -> MaterialTheme.colorScheme.secondaryContainer
                 isToday -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)

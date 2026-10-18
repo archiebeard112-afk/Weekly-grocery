@@ -138,6 +138,8 @@ data class UserState(
     val pantryBuy: Set<String> = emptySet(),
     /** A meal counts as "on sale" when it saves at least this much. */
     val saleMin: Double = 2.0,
+    /** A meal is "budget" when what you'd buy for it costs this much or less. */
+    val budgetMax: Double = 15.0,
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */

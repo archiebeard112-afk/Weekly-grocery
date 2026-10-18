@@ -153,7 +153,17 @@ object Nutrition {
             return tsp * 6
         }
         val f = find(n) ?: return null
-        val grams = when (i.u) {
+        val grams = gramsWith(f, i) ?: return null
+        // A cup or more of oil is for frying: only about 15% ends up in the food.
+        val eaten = if (Regex("\\boil\\b").containsMatchIn(n) && i.u == "cup" && i.q >= 1) 0.15 else 1.0
+        return grams * f.kcal100 / 100.0 * eaten
+    }
+
+    /** Grams of food in one ingredient amount (null if we can't tell). */
+    fun grams(i: Ingredient): Double? = find(i.name.lowercase())?.let { gramsWith(it, i) }
+
+    private fun gramsWith(f: N, i: Ingredient): Double? {
+        val one = when (i.u) {
             "lb" -> 453.6
             "oz" -> 28.35
             "cup" -> f.cup.takeIf { it > 0 } ?: 150.0
@@ -171,9 +181,7 @@ object Nutrition {
             "" -> f.each.takeIf { it > 0 } ?: f.pack.takeIf { it > 0 } ?: return null
             else -> return null
         }
-        // A cup or more of oil is for frying: only about 15% ends up in the food.
-        val eaten = if (Regex("\\boil\\b").containsMatchIn(n) && i.u == "cup" && i.q >= 1) 0.15 else 1.0
-        return grams * i.q * f.kcal100 / 100.0 * eaten
+        return one * i.q
     }
 
     private val cache = HashMap<Pair<String, Int>, Int?>()
