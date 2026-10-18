@@ -490,7 +490,7 @@ private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) 
                 items(matches, key = { it.id }) { r ->
                     RecipeTile(
                         r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) },
-                        Modifier.fillMaxWidth().height(124.dp),
+                        Modifier.fillMaxWidth().height(96.dp),
                         saleSave = Sales.savings(r, st.servings, cache),
                     )
                 }
@@ -841,7 +841,7 @@ private fun FavoritesScreen(
         items(shown, key = { it.id }) { r ->
             RecipeTile(
                 r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) },
-                Modifier.fillMaxWidth().height(124.dp),
+                Modifier.fillMaxWidth().height(96.dp),
                 saleSave = Sales.savings(r, st.servings, cache),
             )
         }
