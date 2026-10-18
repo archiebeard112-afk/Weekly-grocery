@@ -202,15 +202,17 @@ private fun SnackTile(s: Snack, picked: Boolean, onToggle: () -> Unit, onRemove:
 }
 
 /**
- * Pop-up before the King Soopers review: "Anything else this week?"
- * Shows your usual items (last week's picks pre-checked) and lets you add or remove items.
+ * "Usual items": things you buy most weeks. Pick the ones you need this week;
+ * they're added to the shopping list. Last week's picks are pre-checked.
  */
 @Composable
-fun StaplesDialog(vm: MealsViewModel, st: UserState, onDismiss: () -> Unit, onContinue: (List<String>) -> Unit) {
-    var picked by remember { mutableStateOf(st.lastStaples.intersect(st.staples.toSet())) }
+fun StaplesDialog(vm: MealsViewModel, st: UserState, onDismiss: () -> Unit, onSave: (Set<String>) -> Unit) {
+    var picked by remember {
+        mutableStateOf(if (st.pickedStaples.isNotEmpty()) st.pickedStaples else st.lastStaples.intersect(st.staples.toSet()))
+    }
     var newItem by remember { mutableStateOf("") }
     val addNew = {
-        val n = newItem.trim()
+        val n = newItem.trim().replaceFirstChar { it.uppercase() }
         if (n.isNotEmpty()) {
             vm.addStaple(n)
             picked = picked + n
@@ -219,10 +221,10 @@ fun StaplesDialog(vm: MealsViewModel, st: UserState, onDismiss: () -> Unit, onCo
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Anything else this week?") },
+        title = { Text("Usual items") },
         text = {
             Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
-                Text("Your usual items. Tap ✕ to take one off the list for good.", style = MaterialTheme.typography.bodySmall)
+                Text("Pick what you need this week. Tap ✕ to take one off the list for good.", style = MaterialTheme.typography.bodySmall)
                 st.staples.forEach { item ->
                     Row(
                         Modifier.fillMaxWidth().clickable { picked = if (item in picked) picked - item else picked + item },
@@ -238,7 +240,7 @@ fun StaplesDialog(vm: MealsViewModel, st: UserState, onDismiss: () -> Unit, onCo
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
                     OutlinedTextField(
                         newItem, { newItem = it }, singleLine = true,
-                        label = { Text("Add another item") },
+                        label = { Text("Add another usual item") },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { addNew() }),
                         modifier = Modifier.weight(1f),
@@ -247,12 +249,7 @@ fun StaplesDialog(vm: MealsViewModel, st: UserState, onDismiss: () -> Unit, onCo
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = {
-                val list = st.staples.filter { it in picked } + picked.filter { it !in st.staples }
-                onContinue(list)
-            }) { Text(if (picked.isEmpty()) "Skip" else "Continue (${picked.size})") }
-        },
+        confirmButton = { TextButton(onClick = { onSave(picked) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -19,30 +20,34 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
-/** One row on the "review before adding to cart" screen. */
+/** The King Soopers product choice for one shopping-list item. */
 data class CartLine(
     /** What gets searched at the store, e.g. "lemons" (also used to remember your pick). */
     val term: String,
-    /** What the recipes call for, e.g. "2 Lemons, 1 tbsp Lemon zest". */
-    val need: String,
     /** The search currently shown (starts as [term]; you can type your own). */
     val search: String = term,
     val searching: Boolean = false,
     /** A short heads-up, e.g. your usual product is out of stock. */
     val note: String? = null,
-    /** Total amount the recipes need, used to work out how many packages to add. */
+    /** Total amount needed when looked up, used to work out how many packages to add. */
     val needAmount: Logic.Need = Logic.Need(),
     val options: List<Product>,
     val selected: Int = 0,
-    val include: Boolean = true,
     val quantity: Int = 1,
-)
+) {
+    val product: Product? get() = options.getOrNull(selected)
+}
 
-data class CartReview(
-    val loading: Boolean = true,
-    val lines: List<CartLine> = emptyList(),
-    val error: String? = null,
-)
+/** One line on the Shop tab: everything bought as the same thing (Lemons + Lemon zest). */
+data class ShopGroup(
+    val term: String,
+    val items: List<ShopItem>,
+    val aisle: String,
+    /** Which meals (or Snacks / Usual items / Added) need it. */
+    val sources: List<String>,
+) {
+    val need: String get() = items.joinToString(", ") { Logic.needText(it).ifBlank { "1" } }
+}
 
 class MealsViewModel(app: Application) : AndroidViewModel(app) {
     private val store = Store(app)
@@ -60,7 +65,16 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** One-line messages shown as a snackbar (success or error). */
     val message = MutableStateFlow<String?>(null)
     val busy = MutableStateFlow(false)
-    val review = MutableStateFlow<CartReview?>(null)
+
+    /** King Soopers products looked up for the Shop tab, by search term. */
+    val products = MutableStateFlow<Map<String, CartLine>>(emptyMap())
+    private var productsStore = ""
+
+    /** (done, total) while products are being looked up; null when idle. */
+    val productsLoading = MutableStateFlow<Pair<Int, Int>?>(null)
+
+    /** The item whose product list is open (search term), or null. */
+    val picking = MutableStateFlow<String?>(null)
 
     /** The 10 recipes currently on the Browse tab. */
     val browse = MutableStateFlow<List<Int>>(emptyList())
@@ -278,6 +292,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             checked = emptySet(),
             lastSnacks = if (s.snacks.isEmpty()) s.lastSnacks else s.snacks,
             snacks = emptySet(),
+            lastStaples = if (s.pickedStaples.isEmpty()) s.lastStaples else s.pickedStaples,
+            pickedStaples = emptySet(),
+            extraItems = emptyList(),
+            haveTerms = emptySet(),
         )
     }
 
@@ -334,7 +352,48 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         Logic.shopList(st.week, st.sides, recipes(st), sideMap, st.servings) +
             st.snacks.sorted().map { n ->
                 ShopItem("snack:${n.lowercase()}", n, "", SnackCatalog.find(n).qty, "🍿 Snacks")
+            } +
+            st.staples.filter { it in st.pickedStaples }.map { n ->
+                ShopItem("usual:${n.lowercase()}", n, "", 1.0, Logic.aisle(n))
+            } +
+            st.extraItems.map { n -> ShopItem("extra:${n.lowercase()}", n, "", 1.0, Logic.aisle(n)) }
+
+    /** Shopping list grouped by what you'd buy at the store, in store-section order. */
+    fun shopGroups(st: UserState = state.value): List<ShopGroup> {
+        val all = recipes(st)
+        // Which meals need each ingredient (same key format as Logic.shopList).
+        val from = mutableMapOf<String, MutableSet<String>>()
+        for (id in st.week) {
+            val r = all[id] ?: continue
+            r.ingredients.forEach { from.getOrPut("${it.name}|${it.u}".lowercase()) { mutableSetOf() } += r.name }
+            st.sides[id]?.let { sideMap[it] }?.let { sd ->
+                sd.ingredients.forEach { from.getOrPut("${it.name}|${it.u}".lowercase()) { mutableSetOf() } += sd.label.substringAfter(" ") }
             }
+        }
+        fun sourceOf(i: ShopItem): List<String> = when {
+            i.key.startsWith("snack:") -> listOf("Snacks")
+            i.key.startsWith("usual:") -> listOf("Usual items")
+            i.key.startsWith("extra:") -> listOf("Added")
+            else -> from[i.key]?.toList().orEmpty()
+        }
+        return shopItems(st).groupBy { Logic.searchTerm(it.name) }.map { (term, items) ->
+            ShopGroup(term, items, items.first().aisle, items.flatMap { sourceOf(it) }.distinct())
+        }.sortedWith(compareBy<ShopGroup>({ Logic.AISLES.indexOf(it.aisle) }, { it.term }))
+    }
+
+    fun toggleHave(term: String) = edit { s ->
+        s.copy(haveTerms = if (term in s.haveTerms) s.haveTerms - term else s.haveTerms + term)
+    }
+
+    fun clearHave() = edit { it.copy(haveTerms = emptySet()) }
+
+    fun addExtraItem(name: String) {
+        val n = name.trim().replaceFirstChar { it.uppercase() }
+        if (n.isEmpty()) return
+        edit { s -> if (s.extraItems.any { it.equals(n, true) }) s else s.copy(extraItems = s.extraItems + n) }
+    }
+
+    fun setPickedStaples(picked: Set<String>) = edit { it.copy(pickedStaples = picked) }
 
     // ---- Snacks ----------------------------------------------------------------
 
@@ -492,104 +551,109 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Looks up King Soopers products for each unchecked item so you can review them. */
-    fun startCartReview(extras: List<String> = emptyList()) {
-        val st = state.value
-        val k = st.kroger
-        if (k.store.id.isEmpty()) {
-            message.value = "Pick your store in Settings first"
-            return
+    /** Looks up King Soopers products for any Shop items that don't have one yet. */
+    fun loadProducts() {
+        val k = state.value.kroger
+        if (k.store.id.isEmpty() || k.clientId.isBlank() || productsLoading.value != null) return
+        if (productsStore != k.store.id) {
+            products.value = emptyMap()
+            productsStore = k.store.id
         }
-        edit { it.copy(lastStaples = extras.toSet()) }
-        val items = shopItems(st).filter { it.key !in st.checked } +
-            extras.map { ShopItem("extra:${it.lowercase()}", it, "", 1.0, "🛒 Other") }
-        if (items.isEmpty()) {
-            message.value = "Nothing left to add"
-            return
-        }
-        review.value = CartReview(loading = true)
+        val todo = shopGroups().filter { it.term !in products.value }
+        if (todo.isEmpty()) return
+        productsLoading.value = 0 to todo.size
         viewModelScope.launch {
+            var ok = false
             try {
                 val token = api.clientToken(k.clientId, k.clientSecret)
-                // Items you'd buy as the same thing (Lemons + Lemon zest) become one line.
-                val groups = items.groupBy { Logic.searchTerm(it.name) }
-                val lines = groups.map { (term, group) ->
-                    val saved = k.choices["term:$term"] ?: group.firstNotNullOfOrNull { k.choices[it.key] }
-                    val search = saved?.search?.ifBlank { null } ?: term
-                    val all = runCatching { api.searchProducts(token, k.store.id, search) }
-                        .getOrDefault(emptyList())
-                    // Leave out anything out of stock, not sold here, or not deliverable.
-                    val options = all.filter { it.available }
-                    val remembered = saved?.let { c -> options.indexOfFirst { it.upc == c.upc } } ?: -1
-                    val note = if (saved != null && remembered < 0 && all.any { it.upc == saved.upc && !it.available }) {
-                        "Your usual (${saved.label}) isn't available this week"
-                    } else null
-                    val needAmount = Logic.needOf(group)
-                    val sel = if (remembered >= 0) remembered else 0
-                    CartLine(
-                        term = term,
-                        need = group.joinToString(", ") { Logic.itemLabel(it) },
-                        search = search,
-                        options = options,
-                        selected = sel,
-                        include = options.isNotEmpty(),
-                        needAmount = needAmount,
-                        note = note,
-                        quantity = Logic.suggestQty(needAmount, options.getOrNull(sel)),
-                    )
+                val done = AtomicInteger(0)
+                coroutineScope {
+                    val gate = Semaphore(4)
+                    todo.map { g ->
+                        async {
+                            gate.withPermit {
+                                val line = lookup(token, k, g)
+                                products.update { it + (g.term to line) }
+                                productsLoading.value = done.incrementAndGet() to todo.size
+                            }
+                        }
+                    }.awaitAll()
                 }
-                review.value = CartReview(loading = false, lines = lines)
+                ok = true
             } catch (e: Exception) {
-                review.value = CartReview(loading = false, error = e.message ?: "Could not search products")
+                message.value = e.message ?: "Could not look up King Soopers products"
+            } finally {
+                productsLoading.value = null
             }
+            // Items added while this was running get looked up next.
+            if (ok && shopGroups().any { it.term !in products.value }) loadProducts()
         }
     }
 
-    fun updateLine(index: Int, block: (CartLine) -> CartLine) {
-        val r = review.value ?: return
-        if (index !in r.lines.indices) return
-        review.value = r.copy(lines = r.lines.toMutableList().also { it[index] = block(it[index]) })
+    private suspend fun lookup(token: String, k: KrogerState, g: ShopGroup): CartLine {
+        val saved = k.choices["term:${g.term}"] ?: g.items.firstNotNullOfOrNull { k.choices[it.key] }
+        val search = saved?.search?.ifBlank { null } ?: g.term
+        val all = runCatching { api.searchProducts(token, k.store.id, search) }.getOrDefault(emptyList())
+        // Leave out anything out of stock, not sold here, or not deliverable.
+        val options = all.filter { it.available }
+        val remembered = saved?.let { c -> options.indexOfFirst { it.upc == c.upc } } ?: -1
+        val note = if (saved != null && remembered < 0 && all.any { it.upc == saved.upc && !it.available }) {
+            "Your usual (${saved.label}) isn't available this week"
+        } else null
+        val needAmount = Logic.needOf(g.items)
+        val sel = if (remembered >= 0) remembered else 0
+        return CartLine(
+            term = g.term, search = search, options = options, selected = sel, needAmount = needAmount,
+            note = note, quantity = Logic.suggestQty(needAmount, options.getOrNull(sel)),
+        )
     }
 
-    /** Searches King Soopers again for one line with your own words (e.g. "jasmine rice"). */
-    fun researchLine(index: Int, query: String) {
+    fun updateLine(term: String, block: (CartLine) -> CartLine) {
+        products.update { m -> m[term]?.let { m + (term to block(it)) } ?: m }
+    }
+
+    fun setQuantity(term: String, q: Int) = updateLine(term) { it.copy(quantity = q.coerceIn(1, 20)) }
+
+    /** Searches King Soopers again for one item with your own words (e.g. "jasmine rice"). */
+    fun researchLine(term: String, query: String) {
         val q = query.trim()
         val k = state.value.kroger
         if (q.isEmpty()) return
-        updateLine(index) { it.copy(search = q, searching = true) }
+        updateLine(term) { it.copy(search = q, searching = true) }
         viewModelScope.launch {
             try {
                 val token = api.clientToken(k.clientId, k.clientSecret)
                 val options = api.searchProducts(token, k.store.id, q).filter { it.available }
-                updateLine(index) {
+                updateLine(term) {
                     it.copy(
-                        options = options, selected = 0, include = options.isNotEmpty(), searching = false,
+                        options = options, selected = 0, searching = false, note = null,
                         quantity = Logic.suggestQty(it.needAmount, options.firstOrNull()),
                     )
                 }
                 if (options.isEmpty()) message.value = "Nothing available for delivery for \"$q\""
             } catch (e: Exception) {
-                updateLine(index) { it.copy(searching = false) }
+                updateLine(term) { it.copy(searching = false) }
                 message.value = e.message ?: "Could not search products"
             }
         }
     }
 
-    /** Picks a different product for a line and recalculates how many packages it needs. */
-    fun selectProduct(index: Int, n: Int) = updateLine(index) {
-        it.copy(selected = n, include = true, quantity = Logic.suggestQty(it.needAmount, it.options.getOrNull(n)))
+    /** Picks a different product and recalculates how many packages it needs. */
+    fun selectProduct(term: String, n: Int) = updateLine(term) {
+        it.copy(selected = n, note = null, quantity = Logic.suggestQty(it.needAmount, it.options.getOrNull(n)))
     }
 
-    fun closeReview() {
-        review.value = null
+    /** Lines that will go to the cart: not "Already have", with a product found. */
+    fun cartLines(st: UserState = state.value): List<CartLine> {
+        val m = products.value
+        return shopGroups(st).filter { it.term !in st.haveTerms }.mapNotNull { g -> m[g.term]?.takeIf { it.product != null } }
     }
 
     /** Sends the chosen products to your King Soopers cart. */
     fun confirmAddToCart() {
-        val r = review.value ?: return
-        val chosen = r.lines.filter { it.include && it.options.isNotEmpty() }
+        val chosen = cartLines()
         if (chosen.isEmpty()) {
-            message.value = "No items selected"
+            message.value = "Nothing to add yet"
             return
         }
         viewModelScope.launch {
@@ -600,15 +664,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                     message.value = "Sign in to King Soopers first (Settings)"
                     return@launch
                 }
-                api.addToCart(token, chosen.map { it.options[it.selected].upc to it.quantity })
+                api.addToCart(token, chosen.map { it.product!!.upc to it.quantity })
                 store.update { s ->
                     val newChoices = chosen.associate {
-                        val p = it.options[it.selected]
+                        val p = it.product!!
                         "term:${it.term}" to Choice(p.upc, p.title, if (it.search != it.term) it.search else "")
                     }
                     s.copy(kroger = s.kroger.copy(choices = s.kroger.choices + newChoices))
                 }
-                review.value = null
                 message.value = "Added ${chosen.size} items to your King Soopers cart"
                 openCart.value = true
             } catch (e: Exception) {

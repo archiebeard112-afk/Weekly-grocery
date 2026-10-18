@@ -84,6 +84,12 @@ data class UserState(
     val staples: List<String> = Staples.DEFAULT,
     /** Usual items you picked last time (pre-checked next time). */
     val lastStaples: Set<String> = emptySet(),
+    /** Usual items picked for this week's list. */
+    val pickedStaples: Set<String> = emptySet(),
+    /** One-off items typed into the Shop tab this week. */
+    val extraItems: List<String> = emptyList(),
+    /** Shop items marked "Already have" (by store search term); left out of the cart. */
+    val haveTerms: Set<String> = emptySet(),
     /** Today's sale prices for main ingredients. */
     val sales: SalesCache = SalesCache(),
 )

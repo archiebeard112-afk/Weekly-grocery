@@ -10,237 +10,319 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 
+/**
+ * The Shop tab: the shopping list and the King Soopers product for each item on one page.
+ * Tap "Have it" to leave an item out, tap the product to change it, then Add to cart.
+ */
 @Composable
-fun ShopScreen(vm: MealsViewModel, st: UserState, openSettings: () -> Unit) {
-    val items = vm.shopItems(st)
+fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, openSettings: () -> Unit) {
+    val ctx = LocalContext.current
+    val focus = LocalFocusManager.current
+    val products by vm.products.collectAsState()
+    val loading by vm.productsLoading.collectAsState()
     val busy by vm.busy.collectAsState()
+    val groups = vm.shopGroups(st)
+    val toBuy = groups.filter { it.term !in st.haveTerms }
+    val have = groups.filter { it.term in st.haveTerms }
+    val hasStore = st.kroger.store.id.isNotEmpty()
+    var menu by remember { mutableStateOf(false) }
+    var showHave by remember { mutableStateOf(false) }
     var askStaples by remember { mutableStateOf(false) }
-    val leftCount = items.count { it.key !in st.checked }
+    var newItem by remember { mutableStateOf("") }
+
+    // Look up King Soopers products for anything new on the list.
+    LaunchedEffect(groups.map { it.term }.toSet(), hasStore) { vm.loadProducts() }
+
     if (askStaples) {
-        StaplesDialog(
-            vm, st,
-            onDismiss = { askStaples = false },
-            onContinue = { extras ->
-                askStaples = false
-                if (leftCount == 0 && extras.isEmpty()) vm.message.value = "Nothing to add"
-                else vm.startCartReview(extras)
-            },
-        )
-    }
-    LazyColumn(contentPadding = PaddingValues(16.dp)) {
-        item {
-            Text("Shopping list", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.padding(4.dp))
-            Button(
-                onClick = {
-                    if (!vm.signedIn) openSettings() else askStaples = true
-                },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    when {
-                        !vm.signedIn -> "Sign in to King Soopers (Settings)"
-                        leftCount == 0 -> "Add usual items to King Soopers cart"
-                        else -> "Add $leftCount items to King Soopers cart"
-                    }
-                )
-            }
-            val ctx = androidx.compose.ui.platform.LocalContext.current
-            OutlinedButton(
-                onClick = { openKingSoopersCart(ctx) },
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-            ) { Text("Open King Soopers cart") }
-            if (items.isEmpty()) {
-                Text(
-                    "Your list is empty. Add recipes to your week or pick snacks.",
-                    modifier = Modifier.padding(top = 16.dp),
-                )
-            } else {
-                TextButton(onClick = { vm.clearChecked() }) { Text("Uncheck all") }
-            }
+        StaplesDialog(vm, st, onDismiss = { askStaples = false }) { picked ->
+            vm.setPickedStaples(picked)
+            askStaples = false
         }
-        Logic.AISLES.forEach { aisle ->
-            val group = items.filter { it.aisle == aisle }
-            if (group.isNotEmpty()) {
-                item(key = "h_$aisle") {
+    }
+
+    val cart = toBuy.mapNotNull { g -> products[g.term]?.takeIf { it.product != null } }
+    val total = cart.sumOf { l -> l.product!!.let { (it.promo ?: it.price ?: 0.0) * l.quantity } }
+
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
+        ) {
+            item(key = "header") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Shopping list", style = MaterialTheme.typography.titleLarge)
+                        val meals = st.week.size
+                        val parts = listOfNotNull(
+                            if (meals > 0) "$meals meal${if (meals == 1) "" else "s"}" else null,
+                            if (st.snacks.isNotEmpty()) "${st.snacks.size} snack${if (st.snacks.size == 1) "" else "s"}" else null,
+                            if (st.pickedStaples.isNotEmpty()) "${st.pickedStaples.size} usual" else null,
+                            if (st.extraItems.isNotEmpty()) "${st.extraItems.size} added" else null,
+                        )
+                        Text(
+                            if (parts.isEmpty()) "Nothing yet" else parts.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Bring back all \"Already have\" items") },
+                                onClick = { vm.clearHave(); menu = false },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Open King Soopers cart") },
+                                onClick = { openKingSoopersCart(ctx); menu = false },
+                            )
+                        }
+                    }
+                }
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val add = { vm.addExtraItem(newItem); newItem = ""; focus.clearFocus() }
+                    OutlinedTextField(
+                        newItem, { newItem = it },
+                        placeholder = { Text("+ Add an item…") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { add() }),
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(onClick = { askStaples = true }) {
+                        Text(if (st.pickedStaples.isEmpty()) "Usual items" else "Usual items (${st.pickedStaples.size})")
+                    }
+                }
+                if (!hasStore) {
+                    TextButton(onClick = openSettings) {
+                        Text("Pick your King Soopers store in Settings to see products and prices")
+                    }
+                }
+                loading?.let { (done, n) ->
+                    Column(Modifier.padding(top = 10.dp)) {
+                        Text("Finding King Soopers products… $done of $n", style = MaterialTheme.typography.bodySmall)
+                        LinearProgressIndicator(
+                            progress = { if (n == 0) 0f else done.toFloat() / n },
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        )
+                    }
+                }
+                if (groups.isEmpty()) {
                     Text(
-                        aisle, style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+                        "Your list is empty. Add meals to your week, pick snacks, or add an item above.",
+                        modifier = Modifier.padding(top = 24.dp),
                     )
                 }
-                items(group, key = { it.key }) { it0 ->
-                    val done = it0.key in st.checked
+            }
+
+            Logic.AISLES.forEach { aisle ->
+                val section = toBuy.filter { it.aisle == aisle }
+                if (section.isNotEmpty()) {
+                    item(key = "h_$aisle") {
+                        Text(
+                            aisle.uppercase(), style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 18.dp, bottom = 2.dp),
+                        )
+                    }
+                    items(section, key = { "g_" + it.term }) { g ->
+                        ShopRow(vm, g, products[g.term], hasStore)
+                    }
+                }
+            }
+
+            if (have.isNotEmpty()) {
+                item(key = "have_header") {
                     Row(
-                        Modifier.fillMaxWidth().clickable { vm.toggleChecked(it0.key) },
+                        Modifier.fillMaxWidth().clickable { showHave = !showHave }.padding(top = 20.dp, bottom = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Checkbox(checked = done, onCheckedChange = { vm.toggleChecked(it0.key) })
                         Text(
-                            Logic.itemLabel(it0),
-                            textDecoration = if (done) TextDecoration.LineThrough else null,
-                            color = if (done) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                            "✓ ALREADY HAVE (${have.size})", style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
                         )
+                        Text(if (showHave) "▴" else "▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (showHave) {
+                    items(have, key = { "have_" + it.term }) { g ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                g.term.replaceFirstChar { it.uppercase() },
+                                textDecoration = TextDecoration.LineThrough,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Need it") }
+                        }
                     }
                 }
             }
         }
-    }
-}
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CartReviewScreen(vm: MealsViewModel, review: CartReview) {
-    val busy by vm.busy.collectAsState()
-    var picking by remember { mutableStateOf<Int?>(null) }
-    // Kept here (outside the list) so the scroll position survives opening the product list.
-    val listState = rememberLazyListState()
-    val pickIdx = picking
-    if (pickIdx != null && pickIdx in review.lines.indices) {
-        ProductPicker(vm, pickIdx, review.lines[pickIdx]) { picking = null }
-        return
-    }
-    Scaffold(
-        modifier = Modifier.swipeBack({ vm.closeReview() }),
-        topBar = { TopAppBar(title = { Text("Review before adding") }) },
-        bottomBar = {
+        // Always-visible bottom bar: count, total, Add to cart.
+        Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
             Row(
-                Modifier.fillMaxWidth().padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedButton(onClick = { vm.closeReview() }, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                Button(
-                    onClick = { vm.confirmAddToCart() },
-                    enabled = !review.loading && !busy && review.lines.any { it.include },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Add to cart (${review.lines.count { it.include }})") }
-            }
-        },
-    ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
-            when {
-                review.loading -> Column(
-                    Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.padding(6.dp))
-                    Text("Finding products at your King Soopers...")
-                }
-                review.error != null -> Text(review.error, modifier = Modifier.padding(20.dp))
-                else -> LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item {
+                Column(Modifier.weight(1f)) {
+                    Text("${toBuy.size} item${if (toBuy.size == 1) "" else "s"}", style = MaterialTheme.typography.titleSmall)
+                    if (cart.isNotEmpty()) {
                         Text(
-                            "Tap a product to see every option or search for something else. " +
-                                "Your choices are remembered for next time.",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                    items(review.lines.size) { idx ->
-                        CartLineRow(
-                            review.lines[idx],
-                            update = { block -> vm.updateLine(idx, block) },
-                            onPick = { picking = idx },
+                            Sales.money(total) + if (cart.size < toBuy.size) " · ${toBuy.size - cart.size} without a product" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
+                Button(
+                    onClick = { if (!vm.signedIn) openSettings() else vm.confirmAddToCart() },
+                    enabled = !busy && loading == null && (cart.isNotEmpty() || !vm.signedIn),
+                ) { Text(if (vm.signedIn) "Add to cart" else "Sign in") }
             }
         }
     }
 }
 
 @Composable
-private fun CartLineRow(line: CartLine, update: ((CartLine) -> CartLine) -> Unit, onPick: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = line.include && line.options.isNotEmpty(),
-                    enabled = line.options.isNotEmpty(),
-                    onCheckedChange = { c -> update { it.copy(include = c) } },
+private fun ShopRow(vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore: Boolean) {
+    val highlight = MaterialTheme.colorScheme.primary
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(g.term.replaceFirstChar { it.uppercase() }) }
+                    withStyle(SpanStyle(color = highlight)) { append("  ·  need ${g.need}") }
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+            TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Have it") }
+        }
+        if (g.sources.isNotEmpty()) {
+            Text(
+                g.sources.joinToString(", "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        line?.note?.let {
+            Text("⚠️ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        if (hasStore) {
+            Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                val p = line?.product
+                Text(
+                    when {
+                        line == null -> "Looking up…"
+                        p == null -> "Nothing available at your store. Tap to search ›"
+                        else -> productLine(p) + "  ›"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (p == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).clickable(enabled = line != null) { vm.picking.value = g.term }
+                        .padding(vertical = 6.dp),
                 )
-                Column(Modifier.weight(1f)) {
-                    Text(line.term.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.titleSmall)
-                    Text("For: ${line.need}", style = MaterialTheme.typography.bodySmall)
-                    line.note?.let { Text("⚠️ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-                }
-                if (line.options.isNotEmpty()) {
+                if (line != null && p != null) {
                     OutlinedButton(
-                        onClick = { update { it.copy(quantity = (it.quantity - 1).coerceAtLeast(1)) } },
+                        onClick = { vm.setQuantity(g.term, line.quantity - 1) },
+                        contentPadding = PaddingValues(0.dp), modifier = Modifier.size(34.dp),
                     ) { Text("−") }
-                    Text("${line.quantity}", modifier = Modifier.padding(horizontal = 8.dp))
+                    Text("${line.quantity}", modifier = Modifier.padding(horizontal = 10.dp))
                     OutlinedButton(
-                        onClick = { update { it.copy(quantity = (it.quantity + 1).coerceAtMost(20)) } },
+                        onClick = { vm.setQuantity(g.term, line.quantity + 1) },
+                        contentPadding = PaddingValues(0.dp), modifier = Modifier.size(34.dp),
                     ) { Text("+") }
                 }
             }
-            TextButton(onClick = onPick) {
-                Text(
-                    if (line.options.isEmpty()) "Nothing available at your store. Tap to search"
-                    else Logic.productLabel(line.options[line.selected]) + "  ·  ${line.options.size} options",
-                    maxLines = 2,
-                )
-            }
         }
+        HorizontalDivider(Modifier.padding(top = 6.dp))
     }
+}
+
+/** "Kroger Yellow Onions · 3 lb · $2.99 (was $3.49) · ⚠️ Low stock" */
+private fun productLine(p: Product): String = buildString {
+    append(p.title)
+    if (p.size.isNotBlank()) append(" · ").append(p.size)
+    val now = p.promo ?: p.price
+    if (now != null) append(" · ").append(Sales.money(now))
+    if (p.promo != null && p.price != null) append(" (was ").append(Sales.money(p.price)).append(")")
+    if (p.lowStock) append(" · ⚠️ Low stock")
 }
 
 /** Full list of King Soopers products for one item, with a search box. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProductPicker(vm: MealsViewModel, index: Int, line: CartLine, onClose: () -> Unit) {
-    var query by remember(index) { mutableStateOf(line.search) }
+fun ProductPicker(vm: MealsViewModel, term: String, onClose: () -> Unit) {
+    val products by vm.products.collectAsState()
+    val line = products[term]
+    if (line == null) { onClose(); return }
+    var query by remember(term) { mutableStateOf(line.search) }
     BackHandler { onClose() }
     Scaffold(
         modifier = Modifier.swipeBack(onClose),
@@ -261,16 +343,11 @@ private fun ProductPicker(vm: MealsViewModel, index: Int, line: CartLine, onClos
                     label = { Text("Search King Soopers") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { vm.researchLine(index, query) }),
+                    keyboardActions = KeyboardActions(onSearch = { vm.researchLine(term, query) }),
                     modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = { vm.researchLine(index, query) }) { Icon(Icons.Filled.Search, "Search") }
+                IconButton(onClick = { vm.researchLine(term, query) }) { Icon(Icons.Filled.Search, "Search") }
             }
-            Text(
-                "For: ${line.need}",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
             if (line.searching) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else if (line.options.isEmpty()) {
@@ -285,7 +362,7 @@ private fun ProductPicker(vm: MealsViewModel, index: Int, line: CartLine, onClos
                         Row(
                             Modifier.fillMaxWidth()
                                 .clickable {
-                                    vm.selectProduct(index, n)
+                                    vm.selectProduct(term, n)
                                     onClose()
                                 }
                                 .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -297,7 +374,8 @@ private fun ProductPicker(vm: MealsViewModel, index: Int, line: CartLine, onClos
                                 Text(p.title, style = MaterialTheme.typography.bodyLarge)
                                 val sub = listOfNotNull(
                                     p.size.ifBlank { null },
-                                    p.price?.let { "$" + String.format("%.2f", it) },
+                                    (p.promo ?: p.price)?.let { String.format(Locale.US, "$%.2f", it) },
+                                    if (p.promo != null && p.price != null) "was " + Sales.money(p.price) else null,
                                     if (p.lowStock) "⚠️ Low stock" else null,
                                 ).joinToString(" · ")
                                 if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall)

@@ -82,6 +82,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.Switch
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.unit.dp
 
 private enum class Overlay { None, Settings, AddRecipe, History }
@@ -90,7 +91,9 @@ private enum class Overlay { None, Settings, AddRecipe, History }
 @Composable
 fun App(vm: MealsViewModel) {
     val st by vm.state.collectAsState()
-    val review by vm.review.collectAsState()
+    val picking by vm.picking.collectAsState()
+    // Kept here so the Shop list keeps its scroll position while a product list is open.
+    val shopListState = rememberLazyListState()
     val msg by vm.message.collectAsState()
     val snack = remember { SnackbarHostState() }
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -129,17 +132,16 @@ fun App(vm: MealsViewModel) {
         }
     }
 
-    BackHandler(enabled = review != null) { vm.closeReview() }
-    BackHandler(enabled = review == null && overlay != Overlay.None) { overlay = Overlay.None }
-    BackHandler(enabled = review == null && overlay == Overlay.None && viewing != null && cooking == null) { viewing = null }
+    BackHandler(enabled = overlay != Overlay.None) { overlay = Overlay.None }
+    BackHandler(enabled = overlay == Overlay.None && viewing != null && cooking == null) { viewing = null }
 
     val toggleFav: (Recipe) -> Unit = { r ->
         if (Logic.isFav(r, st)) confirmRemove = r else vm.addFav(r.id)
     }
 
     Box(Modifier.fillMaxSize()) {
-    if (review != null) {
-        CartReviewScreen(vm, review!!)
+    if (picking != null) {
+        ProductPicker(vm, picking!!) { vm.picking.value = null }
     } else if (overlay == Overlay.None && cooking != null) {
         CookScreen(vm, st, cooking!!, timerCtl) { cooking = null }
     } else if (overlay == Overlay.None && viewing != null) {
@@ -198,7 +200,7 @@ fun App(vm: MealsViewModel) {
                     1 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 0 })
                     2 -> FavoritesScreen(vm, st, toggleFav) { overlay = Overlay.AddRecipe }
                     3 -> SnacksScreen(vm, st)
-                    else -> ShopScreen(vm, st) { overlay = Overlay.Settings }
+                    else -> ShopScreen(vm, st, shopListState) { overlay = Overlay.Settings }
                 }
             }
         }
