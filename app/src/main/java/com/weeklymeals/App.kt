@@ -485,9 +485,9 @@ private fun RecipeDetails(r: Recipe, serv: Int, side: Side?, ctl: TimerCtl? = nu
 }
 
 @Composable
-private fun FavButton(r: Recipe, st: UserState, onToggle: (Recipe) -> Unit) {
+private fun FavButton(r: Recipe, st: UserState, onToggle: (Recipe) -> Unit, modifier: Modifier = Modifier) {
     val fav = Logic.isFav(r, st)
-    IconButton(onClick = { onToggle(r) }) {
+    IconButton(onClick = { onToggle(r) }, modifier = modifier) {
         Icon(
             if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
             contentDescription = if (fav) "Remove from favorites" else "Add to favorites",
@@ -620,7 +620,7 @@ private fun BrowseScreen(
                 items(matches, key = { it.id }) { r ->
                     RecipeTile(
                         r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
-                        Modifier.fillMaxWidth().height(96.dp),
+                        Modifier.fillMaxWidth().height(104.dp),
                         saleSave = Sales.savings(r, st.servings, cache),
                         onHold = { onHold(r) },
                         calories = vm.mealCalories(st, r),
@@ -764,8 +764,9 @@ private fun RecipeTile(
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f),
                 )
-                FavButton(r, st, toggleFav)
-                IconButton(onClick = onAdd, enabled = !inWeek) {
+                // Compact buttons leave room above for name, calories/badges and price.
+                FavButton(r, st, toggleFav, Modifier.size(32.dp))
+                IconButton(onClick = onAdd, enabled = !inWeek, modifier = Modifier.size(32.dp)) {
                     Icon(
                         if (inWeek) Icons.Filled.Check else Icons.Filled.Add,
                         contentDescription = if (inWeek) "In your week" else "Add to week",
@@ -1107,7 +1108,7 @@ private fun FavoritesScreen(
         items(shown, key = { it.id }) { r ->
             RecipeTile(
                 r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
-                Modifier.fillMaxWidth().height(96.dp),
+                Modifier.fillMaxWidth().height(104.dp),
                 saleSave = Sales.savings(r, st.servings, cache),
                 onHold = { onHold(r) },
                 calories = vm.mealCalories(st, r),
