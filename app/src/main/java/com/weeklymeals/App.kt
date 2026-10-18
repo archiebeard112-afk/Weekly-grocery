@@ -1,5 +1,7 @@
 package com.weeklymeals
 
+import androidx.compose.ui.unit.sp
+
 import androidx.compose.foundation.layout.navigationBarsPadding
 
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -766,7 +768,7 @@ private fun RecipeTile(
         colors = if (inWeek) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else cardColors,
         modifier = modifier.combinedClickable(onClick = onOpen, onLongClick = onHold),
     ) {
-        Column(Modifier.fillMaxSize().padding(start = 10.dp, top = 6.dp, end = 2.dp, bottom = 2.dp)) {
+        Column(Modifier.fillMaxSize().padding(start = 10.dp, top = 3.dp, end = 2.dp, bottom = 1.dp)) {
             // Icon-only badges so they always fit (full labels are on the recipe page).
             val badges =
                 (if (saleSave >= st.saleMin) listOf("🏷️" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
@@ -778,13 +780,13 @@ private fun RecipeTile(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                     val infoLine = badges.isNotEmpty() || calories != null
                     Text(
-                        r.name, style = MaterialTheme.typography.bodyMedium,
+                        r.name, style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 18.sp),
                         maxLines = if (infoLine || cost != null) 1 else 2, overflow = TextOverflow.Ellipsis,
                     )
                     if (infoLine) {
                         // Calories first, then the badges.
                         Row(
-                            Modifier.padding(top = 3.dp),
+                            Modifier.padding(top = 1.dp),
                             horizontalArrangement = Arrangement.spacedBy(3.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -808,8 +810,8 @@ private fun RecipeTile(
                                 }
                                 if (c.saved >= 0.5) withStyle(SpanStyle(color = BUDGET_GREEN)) { append(" · pantry") }
                             },
-                            style = MaterialTheme.typography.labelSmall, maxLines = 1,
-                            modifier = Modifier.padding(top = 1.dp),
+                            style = MaterialTheme.typography.labelSmall.copy(lineHeight = 14.sp), maxLines = 1,
+                            modifier = Modifier.padding(top = 0.dp),
                         )
                     }
                 }
@@ -880,12 +882,14 @@ private fun SaleSection(vm: MealsViewModel, st: UserState, r: Recipe) {
 internal fun Badge(text: String, small: Boolean) {
     Text(
         text,
-        style = if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelLarge,
+        // Small (tile) badges are compact so the price line always fits.
+        style = if (small) MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 13.sp)
+        else MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.onSecondaryContainer,
         maxLines = 1,
         modifier = Modifier
             .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(50))
-            .padding(horizontal = if (small) 6.dp else 10.dp, vertical = if (small) 1.dp else 4.dp),
+            .padding(horizontal = if (small) 5.dp else 10.dp, vertical = if (small) 0.dp else 4.dp),
     )
 }
 
