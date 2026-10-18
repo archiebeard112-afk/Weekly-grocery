@@ -85,6 +85,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** Browse shows only meals with $3+ of savings when this is on. */
     val saleOnly = MutableStateFlow(false)
 
+    /** Sets of 10 shown so far (newest last), so swiping right can go back. */
+    private val browseSets = mutableListOf<List<Int>>()
+    private var browseAt = -1
+
     init {
         refreshBrowse()
         // One time: seed Quick add with the snacks and usual items picked before.
@@ -105,17 +109,81 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun recipes(st: UserState = state.value): Map<Int, Recipe> =
         (bundle.recipes + st.custom).associateBy { it.id }
 
+    fun canGoBackBrowse(): Boolean = browseAt > 0
+
+    /** A brand-new set (e.g. after turning Sale on or off), dropping any "forward" sets. */
+    private fun newBrowseSet() {
+        while (browseSets.size > browseAt + 1) browseSets.removeAt(browseSets.size - 1)
+        refreshBrowse()
+    }
+
+    /** Next set of 10 (a new one, or forward again after going back). */
     fun refreshBrowse() {
-        if (saleOnly.value) {
-            val st = state.value
-            val cache = salesCache(st)
-            val pool = recipes(st).values.filter { Sales.savings(it, st.servings, cache) >= Sales.MIN_SAVINGS }.map { it.id }
-            browse.value = pool.shuffled().take(10)
-            if (pool.isEmpty()) message.value = "No meals save \$3 or more at your store today"
+        if (browseAt in 0 until browseSets.size - 1) {
+            browseAt++
+            browse.value = browseSets[browseAt]
             return
         }
-        val pool = bundle.recipes.filter { !it.imported }.map { it.id }
-        browse.value = pool.shuffled().take(10)
+        val set = pickTen()
+        browseSets += set
+        if (browseSets.size > 30) browseSets.removeAt(0)
+        browseAt = browseSets.size - 1
+        browse.value = set
+    }
+
+    /** Previous set of 10. */
+    fun previousBrowse() {
+        if (browseAt > 0) {
+            browseAt--
+            browse.value = browseSets[browseAt]
+        }
+    }
+
+    /** Main protein, used to mix up each set of 10. */
+    private fun protein(r: Recipe): String {
+        val text = (r.name + " " + r.ingredients.joinToString(" ") { it.name }).lowercase()
+        return listOf(
+            "seafood" to listOf("shrimp", "salmon", "cod", "fish", "tilapia", "tuna", "clam"),
+            "chicken" to listOf("chicken", "turkey"),
+            "beef" to listOf("beef", "steak", "chuck", "sirloin"),
+            "pork" to listOf("pork", "sausage", "bacon", "ham", "chorizo", "kielbasa"),
+            "pasta" to listOf("pasta", "spaghetti", "penne", "linguine", "macaroni", "ziti", "noodle", "tortellini", "gnocchi"),
+        ).firstOrNull { (_, words) -> words.any { text.contains(it) } }?.first ?: "veggie"
+    }
+
+    /**
+     * Ten ideas: skips meals already planned or made in the last 3 weeks (and the set just shown),
+     * spreads across proteins, and leans toward meals on sale when sale prices are loaded.
+     */
+    private fun pickTen(): List<Int> {
+        val st = state.value
+        val cache = salesCache(st)
+        if (saleOnly.value) {
+            val pool = recipes(st).values.filter { Sales.savings(it, st.servings, cache) >= Sales.MIN_SAVINGS }.map { it.id }
+            if (pool.isEmpty()) message.value = "No meals save \$3 or more at your store today"
+            return pool.shuffled().take(10)
+        }
+        val cutoff = System.currentTimeMillis() - 21L * 86_400_000L
+        val recent = st.history.filter { it.date >= cutoff }.flatMap { it.recipes }.toSet()
+        val lastShown = browseSets.lastOrNull().orEmpty().toSet()
+        val all = bundle.recipes.filter { !it.imported }
+        var pool = all.filter { it.id !in st.week && it.id !in recent && it.id !in lastShown }
+        if (pool.size < 10) pool = all.filter { it.id !in st.week }
+        // Within each protein, sale meals tend to come first; then take one from each protein in turn.
+        val groups = pool.groupBy { protein(it) }.mapValues { (_, list) ->
+            list.shuffled().sortedByDescending { r ->
+                if (Sales.savings(r, st.servings, cache) >= Sales.MIN_SAVINGS && Math.random() < 0.6) 1 else 0
+            }.toMutableList()
+        }
+        val order = groups.keys.shuffled()
+        val picked = mutableListOf<Int>()
+        while (picked.size < 10 && groups.values.any { it.isNotEmpty() }) {
+            for (k in order) {
+                val g = groups.getValue(k)
+                if (g.isNotEmpty() && picked.size < 10) picked += g.removeAt(0).id
+            }
+        }
+        return picked.shuffled()
     }
 
     // ---- Sales -------------------------------------------------------------------
@@ -182,7 +250,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun setSaleOnly(on: Boolean) {
         if (!on) {
             saleOnly.value = false
-            refreshBrowse()
+            newBrowseSet()
             return
         }
         if (!storeReady() || salesProgress.value != null) return
@@ -191,7 +259,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 val st = state.value
                 fetchSales(recipes(st).values.flatMap { Sales.terms(it, st.servings) }.toSet())
                 saleOnly.value = true
-                refreshBrowse()
+                newBrowseSet()
             } catch (e: Exception) {
                 message.value = e.message ?: "Could not check sale prices"
             }

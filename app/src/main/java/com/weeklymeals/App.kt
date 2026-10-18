@@ -97,6 +97,15 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.layout.size
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 
 private enum class Overlay { None, Settings, AddRecipe, History }
@@ -384,29 +393,67 @@ private val cardColors @Composable get() = CardDefaults.cardColors(
 @Composable
 private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit, onOpen: (Int) -> Unit) {
     val ids by vm.browse.collectAsState()
+    val saleOnly by vm.saleOnly.collectAsState()
+    val progress by vm.salesProgress.collectAsState()
     val all = vm.recipes(st)
-    val shown = ids.mapNotNull { all[it] }
-    // Fits on one screen: a header plus a 2 x 5 grid that stretches to fill the space.
+    val cache = vm.salesCache(st)
+    var query by rememberSaveable { mutableStateOf("") }
+    var filters by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val searching = query.isNotBlank() || filters.isNotEmpty()
+    val scope = rememberCoroutineScope()
+    val offset = remember { Animatable(0f) }
+    var widthPx by remember { mutableStateOf(1f) }
+
+    // Slide the grid off to one side, swap the set, slide the new one in.
+    fun slide(next: Boolean) {
+        if (!next && !vm.canGoBackBrowse()) return
+        scope.launch {
+            offset.animateTo(if (next) -widthPx else widthPx, tween(180))
+            if (next) vm.refreshBrowse() else vm.previousBrowse()
+            offset.snapTo(if (next) widthPx else -widthPx)
+            offset.animateTo(0f, tween(220))
+        }
+    }
+
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
-        val saleOnly by vm.saleOnly.collectAsState()
-        val progress by vm.salesProgress.collectAsState()
-        val cache = vm.salesCache(st)
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (saleOnly) "On sale" else "10 ideas", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            Text("🏷️ Sale", style = MaterialTheme.typography.labelLarge)
-            Switch(
-                checked = saleOnly,
-                onCheckedChange = { vm.setSaleOnly(it) },
-                enabled = progress == null,
-                modifier = Modifier.padding(start = 4.dp, end = 8.dp),
+            Text(
+                when {
+                    searching -> "Search"
+                    saleOnly -> "On sale"
+                    else -> "10 ideas"
+                },
+                style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f),
             )
-            FilledTonalButton(onClick = { vm.refreshBrowse() }, enabled = progress == null) {
-                Icon(Icons.Filled.Refresh, null)
-                Spacer(Modifier.width(4.dp))
-                Text("More")
+            if (!searching) {
+                FilledTonalButton(
+                    onClick = { slide(true) }, enabled = progress == null,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    modifier = Modifier.height(34.dp),
+                ) {
+                    Icon(Icons.Filled.Refresh, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("More")
+                }
             }
         }
-        Spacer(Modifier.height(6.dp))
+        CompactSearch(query, { query = it }, Modifier.padding(top = 6.dp))
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            FilterChip(
+                selected = saleOnly,
+                onClick = { vm.setSaleOnly(!saleOnly) },
+                enabled = progress == null,
+                label = { Text("🏷️ Sale") },
+            )
+            FAV_FILTERS.forEach { (key, label) ->
+                val on = key in filters
+                FilterChip(selected = on, onClick = { filters = if (on) filters - key else filters + key }, label = { Text(label) })
+            }
+        }
+
         progress?.let { (done, total) ->
             Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Checking King Soopers sale prices…", style = MaterialTheme.typography.titleMedium)
@@ -420,28 +467,89 @@ private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) 
             }
             return@Column
         }
+
+        if (searching) {
+            // All matches, scrolling.
+            val q = query.trim().lowercase()
+            val matches = all.values.filter { r ->
+                matchesFilters(r, q, filters) && (!saleOnly || Sales.savings(r, st.servings, cache) >= Sales.MIN_SAVINGS)
+            }.sortedBy { it.name }
+            Text(
+                "${matches.size} match${if (matches.size == 1) "" else "es"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(vertical = 4.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                items(matches, key = { it.id }) { r ->
+                    RecipeTile(
+                        r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) },
+                        Modifier.fillMaxWidth().height(124.dp),
+                        saleSave = Sales.savings(r, st.servings, cache),
+                    )
+                }
+            }
+            return@Column
+        }
+
+        val shown = ids.mapNotNull { all[it] }
         if (saleOnly && shown.isEmpty()) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Text("No meals save \$3 or more at your store today.", textAlign = TextAlign.Center)
             }
             return@Column
         }
-        shown.chunked(2).forEach { pair ->
-            Row(
-                Modifier.fillMaxWidth().weight(1f).padding(vertical = 3.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                pair.forEach { r ->
-                    RecipeTile(
-                        r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) },
-                        Modifier.weight(1f).fillMaxHeight(),
-                        saleSave = Sales.savings(r, st.servings, cache),
-                    )
+
+        // The set of 10: swipe left for more, right to go back. It follows your finger.
+        Column(
+            Modifier.fillMaxWidth().weight(1f)
+                .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            val v = offset.value
+                            when {
+                                v < -widthPx * 0.25f -> slide(true)
+                                v > widthPx * 0.25f && vm.canGoBackBrowse() -> slide(false)
+                                else -> scope.launch { offset.animateTo(0f, spring()) }
+                            }
+                        },
+                        onDragCancel = { scope.launch { offset.animateTo(0f, spring()) } },
+                    ) { change, dx ->
+                        change.consume()
+                        // Resist when there's no previous set to go back to.
+                        val step = if (dx > 0 && offset.value >= 0f && !vm.canGoBackBrowse()) dx * 0.25f else dx
+                        scope.launch { offset.snapTo(offset.value + step) }
+                    }
                 }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                .graphicsLayer {
+                    translationX = offset.value
+                    alpha = 1f - (kotlin.math.abs(offset.value) / widthPx).coerceIn(0f, 0.5f)
+                },
+        ) {
+            shown.chunked(2).forEach { pair ->
+                Row(
+                    Modifier.fillMaxWidth().weight(1f).padding(vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    pair.forEach { r ->
+                        RecipeTile(
+                            r, st, toggleFav, onAdd = { vm.addToWeek(r.id) }, onOpen = { onOpen(r.id) },
+                            Modifier.weight(1f).fillMaxHeight(),
+                            saleSave = Sales.savings(r, st.servings, cache),
+                        )
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
             }
+            repeat(5 - (shown.size + 1) / 2) { Spacer(Modifier.weight(1f)) }
         }
-        repeat(5 - (shown.size + 1) / 2) { Spacer(Modifier.weight(1f)) }
     }
 }
 
@@ -624,6 +732,45 @@ private fun RecipeScreen(
     }
 }
 
+/** Slim one-line "Search" box used on Browse and Favorites. */
+@Composable
+private fun CompactSearch(query: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier.fillMaxWidth().height(42.dp)
+            .clip(RoundedCornerShape(21.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(21.dp))
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.weight(1f)) {
+            if (query.isEmpty()) {
+                Text("Search", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            BasicTextField(
+                query, onChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (query.isNotEmpty()) {
+            Icon(
+                Icons.Filled.Close, "Clear",
+                Modifier.size(18.dp).clickable { onChange("") },
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Recipes matching a search (name or ingredient) and every selected filter chip. */
+private fun matchesFilters(r: Recipe, q: String, filters: List<String>): Boolean =
+    (q.isEmpty() || r.name.lowercase().contains(q) || r.ingredients.any { it.name.lowercase().contains(q) }) &&
+        filters.all { f -> if (f == "quick") Logic.cookMinutes(r) <= 30 else f in r.tags }
+
 // ---- Favorites ---------------------------------------------------------------------
 
 private val FAV_FILTERS = listOf(
@@ -643,10 +790,7 @@ private fun FavoritesScreen(
     val cache = vm.salesCache(st)
     val favs = vm.recipes(st).values.filter { Logic.isFav(it, st) }.sortedBy { it.name }
     val q = query.trim().lowercase()
-    val shown = favs.filter { r ->
-        (q.isEmpty() || r.name.lowercase().contains(q) || r.ingredients.any { it.name.lowercase().contains(q) }) &&
-            filters.all { f -> if (f == "quick") Logic.cookMinutes(r) <= 30 else f in r.tags }
-    }
+    val shown = favs.filter { r -> matchesFilters(r, q, filters) }
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(2),
@@ -657,43 +801,15 @@ private fun FavoritesScreen(
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(Modifier.padding(horizontal = 4.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Favorites", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    FilledTonalButton(onClick = onAdd) {
-                        Icon(Icons.Filled.Add, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Add recipe")
-                    }
+                    Text("Favorites", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.width(10.dp))
+                    FilledTonalButton(
+                        onClick = onAdd,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        modifier = Modifier.height(32.dp),
+                    ) { Text("+ Add recipe", style = MaterialTheme.typography.labelLarge) }
                 }
-                // Compact one-line search box.
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 8.dp).height(42.dp)
-                        .clip(RoundedCornerShape(21.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(21.dp))
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Filled.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(8.dp))
-                    Box(Modifier.weight(1f)) {
-                        if (query.isEmpty()) {
-                            Text("Search", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        BasicTextField(
-                            query, { query = it },
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    if (query.isNotEmpty()) {
-                        Icon(
-                            Icons.Filled.Close, "Clear",
-                            Modifier.size(18.dp).clickable { query = "" },
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                CompactSearch(query, { query = it }, Modifier.padding(top = 8.dp))
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
