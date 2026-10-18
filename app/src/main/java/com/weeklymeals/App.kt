@@ -833,54 +833,61 @@ private fun FavoritesScreen(
     val favs = vm.recipes(st).values.filter { Logic.isFav(it, st) }.sortedBy { it.name }
     val q = query.trim().lowercase()
     val shown = favs.filter { r -> matchesFilters(r, q, filters) }
-    LazyVerticalGrid(
-        state = gridState,
-        columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            Column(Modifier.padding(horizontal = 4.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Favorites", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    // Same size and style as Browse's More button.
-                    FilledTonalButton(
-                        onClick = onAdd,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                        modifier = Modifier.height(34.dp),
-                    ) {
-                        Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Add recipe")
-                    }
-                }
-                CompactSearch(query, { query = it }, Modifier.padding(top = 8.dp))
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    FAV_FILTERS.forEach { (key, label) ->
-                        val on = key in filters
-                        FilterChip(
-                            selected = on,
-                            onClick = { filters = if (on) filters - key else filters + key },
-                            label = { Text(label) },
-                        )
-                    }
-                }
+    // Same layout and spacing as Browse so the title, search bar and tiles line up.
+    Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Favorites", style = MaterialTheme.typography.titleLarge)
+            if (favs.isNotEmpty()) {
                 Text(
-                    when {
-                        favs.isEmpty() -> "No favorites yet. Tap the ♥ on any recipe, or add your own."
-                        shown.size == favs.size -> "${favs.size} favorite${if (favs.size == 1) "" else "s"}"
-                        else -> "${shown.size} of ${favs.size} match"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
+                    if (shown.size == favs.size) "${favs.size}" else "${shown.size} of ${favs.size}",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            // Same size and style as Browse's More button.
+            FilledTonalButton(
+                onClick = onAdd,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(34.dp),
+            ) {
+                Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Add recipe")
+            }
+        }
+        CompactSearch(query, { query = it }, Modifier.padding(top = 6.dp))
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            FAV_FILTERS.forEach { (key, label) ->
+                val on = key in filters
+                FilterChip(
+                    selected = on,
+                    onClick = { filters = if (on) filters - key else filters + key },
+                    label = { Text(label) },
                 )
             }
         }
+        if (favs.isEmpty()) {
+            Text(
+                "No favorites yet. Tap the ♥ on any recipe, or add your own.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+            )
+        }
+    LazyVerticalGrid(
+        state = gridState,
+        columns = GridCells.Fixed(2),
+        // Browse's tile rows have 3dp above them, so the first tile starts at the same height.
+        contentPadding = PaddingValues(top = 3.dp, bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.weight(1f),
+    ) {
         items(shown, key = { it.id }) { r ->
             RecipeTile(
                 r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
@@ -888,6 +895,7 @@ private fun FavoritesScreen(
                 saleSave = Sales.savings(r, st.servings, cache),
             )
         }
+    }
     }
 }
 
