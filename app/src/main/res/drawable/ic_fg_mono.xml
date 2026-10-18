@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App icon: a shopping cart carrying the week's calendar (today in green). Drawn in a
+     120 x 120 box and scaled into the 108 x 108 adaptive-icon canvas, inside its safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:scaleX="0.6" android:scaleY="0.6" android:translateX="18" android:translateY="15">
+        <path android:pathData="M14,34 H24 L34,76 H90 L98,40" android:strokeColor="#FFFFFFFF" android:strokeWidth="7.5" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+        <path android:pathData="M47,36 H77 A6,6 0 0 1 83,42 V62 A6,6 0 0 1 77,68 H47 A6,6 0 0 1 41,62 V42 A6,6 0 0 1 47,36 Z" android:strokeColor="#FFFFFFFF" android:strokeWidth="3"/>
+        <path android:pathData="M46,36 H78 A5,5 0 0 1 83,41 V42 A5,5 0 0 1 78,47 H46 A5,5 0 0 1 41,42 V41 A5,5 0 0 1 46,36 Z" android:fillColor="#FFFFFFFF"/>
+        <path android:pathData="M41,43 H83 V47 H41 Z" android:fillColor="#FFFFFFFF"/>
+        <path android:pathData="M51,30 H51 A2,2 0 0 1 53,32 V38 A2,2 0 0 1 51,40 H51 A2,2 0 0 1 49,38 V32 A2,2 0 0 1 51,30 Z" android:fillColor="#FFFFFFFF"/>
+        <path android:pathData="M73,30 H73 A2,2 0 0 1 75,32 V38 A2,2 0 0 1 73,40 H73 A2,2 0 0 1 71,38 V32 A2,2 0 0 1 73,30 Z" android:fillColor="#FFFFFFFF"/>
+        <path android:pathData="M48.5,54 A2.5,2.5 0 1 0 53.5,54 A2.5,2.5 0 1 0 48.5,54 Z M56.5,54 A2.5,2.5 0 1 0 61.5,54 A2.5,2.5 0 1 0 56.5,54 Z M64.5,54 A2.5,2.5 0 1 0 69.5,54 A2.5,2.5 0 1 0 64.5,54 Z M72.5,54 A2.5,2.5 0 1 0 77.5,54 A2.5,2.5 0 1 0 72.5,54 Z M48.5,61 A2.5,2.5 0 1 0 53.5,61 A2.5,2.5 0 1 0 48.5,61 Z M56.5,61 A2.5,2.5 0 1 0 61.5,61 A2.5,2.5 0 1 0 56.5,61 Z" android:fillColor="#FFFFFFFF"/>
+        <path android:pathData="M63.4,61 A3.6,3.6 0 1 0 70.6,61 A3.6,3.6 0 1 0 63.4,61 Z" android:fillColor="#FFFFFFFF"/>
+        <path android:pathData="M37,94 A7,7 0 1 0 51,94 A7,7 0 1 0 37,94 Z M75,94 A7,7 0 1 0 89,94 A7,7 0 1 0 75,94 Z" android:fillColor="#FFFFFFFF"/>
+    </group>
+</vector>
