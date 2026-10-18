@@ -121,6 +121,10 @@ data class UserState(
     val customSides: List<Side> = emptyList(),
     /** Sides you've used with each recipe beyond its usual ones (offered first next time). */
     val recipeSides: Map<Int, List<String>> = emptyMap(),
+    /** Built-in sides you've hidden everywhere. */
+    val hiddenSides: Set<String> = emptySet(),
+    /** Sides taken off a dish's Recommended list (still under More sides). */
+    val notForDish: Map<Int, Set<String>> = emptyMap(),
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */

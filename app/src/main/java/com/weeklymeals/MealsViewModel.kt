@@ -85,22 +85,54 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val all = sideMap
         val keys = r.sides + st.recipeSides[r.id].orEmpty() +
             st.storeSides[r.id].orEmpty().map { storeSideKey(it.upc) }
-        return keys.distinct().mapNotNull { all[it] }
+        val skip = st.hiddenSides + st.notForDish[r.id].orEmpty()
+        return keys.distinct().filter { it !in skip }.mapNotNull { all[it] }
     }
 
     /** Every side you can cook (built-in and online ones you've added), A to Z. */
     fun allSides(st: UserState): List<Side> =
-        (baseSides.values + st.customSides).sortedBy { it.label.substringAfter(" ").lowercase() }
+        (baseSides.values.filter { it.key !in st.hiddenSides } + st.customSides).sortedBy { it.label.substringAfter(" ").lowercase() }
 
     /** Adds the meal with this side (or changes its side), and remembers it for the recipe. */
     fun chooseSide(id: Int, key: String?) = edit { s0 ->
         val r = recipes(s0)[id]
+        val s1 = if (key != null && key in s0.notForDish[id].orEmpty())
+            s0.copy(notForDish = s0.notForDish + (id to (s0.notForDish[id].orEmpty() - key))) else s0
         val s = if (key != null && r != null && key !in r.sides && !key.startsWith("buy:")) {
-            val list = (s0.recipeSides[id].orEmpty() - key + key).takeLast(6)
-            s0.copy(recipeSides = s0.recipeSides + (id to list))
-        } else s0
+            val list = (s1.recipeSides[id].orEmpty() - key + key).takeLast(6)
+            s1.copy(recipeSides = s1.recipeSides + (id to list))
+        } else s1
         if (id in s.week) s.copy(sides = if (key == null) s.sides - id else s.sides + (id to key))
         else withMeal(s, id, key)
+    }
+
+    fun isBuiltInSide(key: String) = key in baseSides
+
+    /** Takes a side off one dish's Recommended list (it stays under More sides). */
+    fun removeSideFromDish(id: Int, key: String) = edit { s ->
+        s.copy(
+            notForDish = s.notForDish + (id to (s.notForDish[id].orEmpty() + key)),
+            recipeSides = s.recipeSides + (id to (s.recipeSides[id].orEmpty() - key)),
+            storeSides = if (key.startsWith("buy:")) s.storeSides + (id to s.storeSides[id].orEmpty().filterNot { storeSideKey(it.upc) == key }) else s.storeSides,
+        )
+    }
+
+    /** Meals this week using [key] keep their spot but lose the side. */
+    private fun dropFromWeek(s: UserState, key: String) = s.copy(sides = s.sides.filterValues { it != key })
+
+    /** Hides a built-in side for every dish (Settings brings it back). */
+    fun hideSide(key: String) = edit { s -> dropFromWeek(s, key).copy(hiddenSides = s.hiddenSides + key) }
+
+    fun restoreSide(key: String) = edit { it.copy(hiddenSides = it.hiddenSides - key) }
+
+    /** Deletes a side you added (online or store-bought) for good. */
+    fun deleteSide(key: String) = edit { s0 ->
+        val s = dropFromWeek(s0, key)
+        s.copy(
+            customSides = s.customSides.filterNot { it.key == key },
+            storeSides = s.storeSides.mapValues { (_, l) -> l.filterNot { storeSideKey(it.upc) == key } },
+            recipeSides = s.recipeSides.mapValues { (_, l) -> l - key },
+        )
     }
 
     /** Saves an online recipe as a side dish (amounts set for 4, like built-in sides) and uses it. */

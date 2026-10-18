@@ -1,6 +1,8 @@
 package com.weeklymeals
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,6 +44,8 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
     val id = r.id
     var query by remember(id) { mutableStateOf("") }
     var showMore by remember(id) { mutableStateOf(false) }
+    // A side you held down on: choose to remove it from this dish, hide it, or delete it.
+    var held by remember(id) { mutableStateOf<Side?>(null) }
     val products by vm.suggestions.collectAsState()
     val web by vm.sideWeb.collectAsState()
     LaunchedEffect(query) {
@@ -67,7 +71,7 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
                         vm.sideOptions(st, r).filter { isStoreSide(it) && it.label.lowercase().contains(q) }
                     GroupLabel("Your sides")
                     if (mine.isEmpty()) Note("None match")
-                    mine.distinctBy { it.key }.forEach { SideRow(it.label) { pick(it.key) } }
+                    mine.distinctBy { it.key }.forEach { sd -> SideRow(sd.label, onHold = { held = sd }) { pick(sd.key) } }
 
                     // 2) Online side recipes
                     val source = RecipeSources.effective(st)
@@ -128,14 +132,15 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
                     Spacer(Modifier.height(6.dp))
                     val recommended = vm.sideOptions(st, r)
                     if (recommended.isNotEmpty()) GroupLabel("Recommended")
-                    recommended.forEach { SideRow(it.label) { pick(it.key) } }
+                    Note("Hold a side to remove or hide it")
+                    recommended.forEach { sd -> SideRow(sd.label, onHold = { held = sd }) { pick(sd.key) } }
                     SideRow("No side", muted = true) { pick(null) }
                     if (!showMore) {
                         TextButton(onClick = { showMore = true }) { Text("More sides") }
                     } else {
                         GroupLabel("More sides")
                         val shownKeys = recommended.map { it.key }.toSet()
-                        vm.allSides(st).filter { it.key !in shownKeys }.forEach { SideRow(it.label) { pick(it.key) } }
+                        vm.allSides(st).filter { it.key !in shownKeys }.forEach { sd -> SideRow(sd.label, onHold = { held = sd }) { pick(sd.key) } }
                     }
                 }
             }
@@ -143,16 +148,50 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
         confirmButton = {},
         dismissButton = { TextButton(onClick = close) { Text("Cancel") } },
     )
+
+    held?.let { sd ->
+        val name = sd.label.substringAfter(" ")
+        val recommended = vm.sideOptions(st, r).any { it.key == sd.key }
+        val builtIn = vm.isBuiltInSide(sd.key)
+        AlertDialog(
+            onDismissRequest = { held = null },
+            title = { Text(sd.label) },
+            text = {
+                Column {
+                    if (recommended) {
+                        TextButton(onClick = { vm.removeSideFromDish(id, sd.key); held = null }) {
+                            Text("Remove from ${r.name}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Note("Takes it off this dish's Recommended list. It stays under More sides.")
+                    }
+                    if (builtIn) {
+                        TextButton(onClick = { vm.hideSide(sd.key); held = null }) {
+                            Text("Hide everywhere", color = MaterialTheme.colorScheme.error)
+                        }
+                        Note("Hides $name for every dish. Bring it back in Settings → Hidden recipes & sides.")
+                    } else {
+                        TextButton(onClick = { vm.deleteSide(sd.key); held = null }) {
+                            Text("Delete", color = MaterialTheme.colorScheme.error)
+                        }
+                        Note("Removes $name for good.")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { held = null }) { Text("Cancel") } },
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SideRow(label: String, muted: Boolean = false, onClick: () -> Unit) {
+private fun SideRow(label: String, muted: Boolean = false, onHold: (() -> Unit)? = null, onClick: () -> Unit) {
     Text(
         label,
         style = MaterialTheme.typography.bodyLarge,
         color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
         maxLines = 1, overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 11.dp),
+        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onHold).padding(vertical = 11.dp),
     )
     HorizontalDivider()
 }

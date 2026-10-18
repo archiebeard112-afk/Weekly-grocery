@@ -184,10 +184,12 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                 }
             }
             val hiddenList = vm.recipes(st).values.filter { it.id in st.removed }.sortedBy { it.name }
-            SettingsCard("🙈", "Hidden recipes", if (hiddenList.isEmpty()) "None" else "${hiddenList.size} hidden") {
-                if (hiddenList.isEmpty()) {
+            val hiddenSides = vm.sideMap.values.filter { it.key in st.hiddenSides }.sortedBy { it.label.substringAfter(" ") }
+            val hiddenCount = hiddenList.size + hiddenSides.size
+            SettingsCard("🙈", "Hidden recipes & sides", if (hiddenCount == 0) "None" else "$hiddenCount hidden") {
+                if (hiddenCount == 0) {
                     Text(
-                        "Hold down on a recipe tile to hide a built-in recipe or delete one you added.",
+                        "Hold down on a recipe tile, or on a side in the Pick a side pop-up, to hide it.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -198,6 +200,15 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                         )
                         TextButton(onClick = { vm.restoreRecipe(r.id) }) { Text("Show again") }
+                    }
+                }
+                hiddenSides.forEach { sd ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${sd.label} (side)", style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { vm.restoreSide(sd.key) }) { Text("Show again") }
                     }
                 }
             }

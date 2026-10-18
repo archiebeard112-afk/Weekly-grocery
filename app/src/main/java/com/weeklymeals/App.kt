@@ -825,11 +825,18 @@ private fun RecipeScreen(
             )
             LaunchedEffect(r.id) { vm.fetchReviewsIfMissing(r) }
             r.rating?.let { Row(Modifier.padding(top = 4.dp)) { RatingLine(it, r.ratingCount, r.countLabel, 16.dp) } }
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onCook) { Text("▶  Start cooking") }
+            // Two equal buttons, labels on one line so they line up.
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val pad = PaddingValues(horizontal = 8.dp)
+                Button(onClick = onCook, contentPadding = pad, modifier = Modifier.weight(1f)) {
+                    Text("▶  Start cooking", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
                 // One button: adds the meal, or removes it once it's planned.
-                OutlinedButton(onClick = { if (inWeek) vm.removeFromWeek(id) else vm.requestAdd(id) }) {
-                    Text(if (inWeek) "Remove from week" else "Add to week")
+                OutlinedButton(
+                    onClick = { if (inWeek) vm.removeFromWeek(id) else vm.requestAdd(id) },
+                    contentPadding = pad, modifier = Modifier.weight(1f),
+                ) {
+                    Text(if (inWeek) "Remove from week" else "Add to week", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             if (inWeek) WeekControls(vm, st, r, side)
