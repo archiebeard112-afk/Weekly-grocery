@@ -1,5 +1,13 @@
 package com.weeklymeals
 
+import androidx.compose.material.icons.filled.Check
+
+import androidx.compose.material.icons.filled.Close
+
+import androidx.compose.material3.Icon
+
+import androidx.compose.material3.IconButton
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -46,6 +54,10 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
     var showMore by remember(id) { mutableStateOf(false) }
     // A side you held down on: choose to remove it from this dish, hide it, or delete it.
     var held by remember(id) { mutableStateOf<Side?>(null) }
+    // Edit mode: each side shows a ✕ to remove, hide or delete it.
+    var editing by remember(id) { mutableStateOf(false) }
+    // A side opened for a closer look before adding it.
+    var preview by remember(id) { mutableStateOf<Side?>(null) }
     val products by vm.suggestions.collectAsState()
     val web by vm.sideWeb.collectAsState()
     LaunchedEffect(query) {
@@ -57,9 +69,28 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
     val pick: (String?) -> Unit = { key -> vm.chooseSide(id, key); close() }
     val q = query.trim().lowercase()
 
+    // One row per side: tap to preview, ✓ to add right away; in Edit mode, ✕ to remove.
+    @Composable
+    fun item(sd: Side) = SideRow(
+        sd.label, editing = editing,
+        onHold = { held = sd },
+        onQuick = { pick(sd.key) },
+        onEdit = { held = sd },
+    ) { if (editing) held = sd else preview = sd }
+
+    preview?.let { sd ->
+        SidePreview(st, sd, onUse = { pick(sd.key) }, onBack = { preview = null })
+        return
+    }
+
     AlertDialog(
         onDismissRequest = close,
-        title = { Text("Pick a side") },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Pick a side", modifier = Modifier.weight(1f))
+                TextButton(onClick = { editing = !editing }) { Text(if (editing) "Done" else "Edit") }
+            }
+        },
         text = {
             Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
                 Text("${r.emoji} ${r.name}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -71,7 +102,7 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
                         vm.sideOptions(st, r).filter { isStoreSide(it) && it.label.lowercase().contains(q) }
                     GroupLabel("Your sides")
                     if (mine.isEmpty()) Note("None match")
-                    mine.distinctBy { it.key }.forEach { sd -> SideRow(sd.label, onHold = { held = sd }) { pick(sd.key) } }
+                    mine.distinctBy { it.key }.forEach { item(it) }
 
                     // 2) Online side recipes
                     val source = RecipeSources.effective(st)
@@ -132,15 +163,15 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
                     Spacer(Modifier.height(6.dp))
                     val recommended = vm.sideOptions(st, r)
                     if (recommended.isNotEmpty()) GroupLabel("Recommended")
-                    Note("Hold a side to remove or hide it")
-                    recommended.forEach { sd -> SideRow(sd.label, onHold = { held = sd }) { pick(sd.key) } }
-                    SideRow("No side", muted = true) { pick(null) }
+                    Note(if (editing) "Tap ✕ to remove, hide or delete a side" else "Tap a side to see it first, or ✓ to add it")
+                    recommended.forEach { item(it) }
+                    if (!editing) SideRow("No side", muted = true) { pick(null) }
                     if (!showMore) {
                         TextButton(onClick = { showMore = true }) { Text("More sides") }
                     } else {
                         GroupLabel("More sides")
                         val shownKeys = recommended.map { it.key }.toSet()
-                        vm.allSides(st).filter { it.key !in shownKeys }.forEach { sd -> SideRow(sd.label, onHold = { held = sd }) { pick(sd.key) } }
+                        vm.allSides(st).filter { it.key !in shownKeys }.forEach { item(it) }
                     }
                 }
             }
@@ -185,15 +216,70 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SideRow(label: String, muted: Boolean = false, onHold: (() -> Unit)? = null, onClick: () -> Unit) {
-    Text(
-        label,
-        style = MaterialTheme.typography.bodyLarge,
-        color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-        maxLines = 1, overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onHold).padding(vertical = 11.dp),
-    )
+private fun SideRow(
+    label: String, muted: Boolean = false, editing: Boolean = false,
+    onHold: (() -> Unit)? = null, onQuick: (() -> Unit)? = null, onEdit: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onHold).padding(start = 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(vertical = 11.dp),
+        )
+        when {
+            editing && onEdit != null -> IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.Close, "Remove", tint = MaterialTheme.colorScheme.error)
+            }
+            onQuick != null -> IconButton(onClick = onQuick, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.Check, "Add this side", tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
     HorizontalDivider()
+}
+
+/** A side's ingredients (for your servings), steps, calories and reviews before you add it. */
+@Composable
+private fun SidePreview(st: UserState, sd: Side, onUse: () -> Unit, onBack: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onBack,
+        title = { Text(sd.label) },
+        text = {
+            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                Nutrition.side(sd)?.let {
+                    Text(
+                        "≈ %,d cal per serving".format(it),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                sd.rating?.let { RatingLine(it, sd.ratingCount, sd.countLabel, 14.dp) }
+                if (isStoreSide(sd)) {
+                    Note("Store-bought from King Soopers. Nothing to cook.")
+                } else {
+                    GroupLabel("Ingredients (for ${st.servings})")
+                    sd.ingredients.forEach {
+                        Text("• " + Logic.ingText(it, st.servings, 4), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    if (sd.steps.isNotEmpty()) {
+                        GroupLabel("Steps")
+                        sd.steps.forEachIndexed { i, step ->
+                            Text("${i + 1}. $step", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp))
+                        }
+                    }
+                    ReviewsSection(sd.key, sd.rating, sd.ratingCount, sd.countLabel, sd.reviews)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onUse) { Text("Use as side") } },
+        dismissButton = { TextButton(onClick = onBack) { Text("Back") } },
+    )
 }
 
 @Composable

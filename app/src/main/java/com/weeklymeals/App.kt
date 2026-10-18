@@ -211,8 +211,9 @@ fun App(vm: MealsViewModel) {
     }
 
     BackHandler(enabled = overlay != Overlay.None) { overlay = Overlay.None }
-    BackHandler(enabled = overlay == Overlay.None && viewing != null && cooking == null) { viewing = null }
-    BackHandler(enabled = overlay == Overlay.None && viewing == null && webViewing != null) { webViewing = null; sideWebFor = null }
+    BackHandler(enabled = overlay == Overlay.None && viewing != null && cooking == null && webViewing == null) { viewing = null }
+    // An online preview can sit on top of a recipe page (picking a side from it); Back closes just the preview.
+    BackHandler(enabled = overlay == Overlay.None && webViewing != null) { webViewing = null; sideWebFor = null }
 
     val toggleFav: (Recipe) -> Unit = { r ->
         if (Logic.isFav(r, st)) confirmRemove = r else vm.addFav(r.id)
@@ -223,7 +224,7 @@ fun App(vm: MealsViewModel) {
         ProductPicker(vm, picking!!) { vm.picking.value = null }
     } else if (overlay == Overlay.None && cooking != null) {
         CookScreen(vm, st, cooking!!, timerCtl) { cooking = null }
-    } else if (overlay == Overlay.None && viewing == null && webViewing != null) {
+    } else if (overlay == Overlay.None && webViewing != null) {
         WebRecipeScreen(
             vm, st, webViewing!!, forSide = sideWebFor,
             onSaved = { openWhenSaved = it },

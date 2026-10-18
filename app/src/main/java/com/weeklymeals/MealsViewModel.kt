@@ -152,6 +152,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val side = Side(
             key, "${d.emoji} ${d.title}",
             d.ingredients.map { it.copy(q = it.q * 4.0 / d.servings) }, d.steps,
+            rating = d.rating, ratingCount = d.ratingCount, countLabel = d.countLabel, reviews = d.reviews,
         )
         edit { s -> if (s.customSides.any { it.key == key }) s else s.copy(customSides = s.customSides + side) }
         chooseSide(recipeId, key)

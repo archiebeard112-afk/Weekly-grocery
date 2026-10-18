@@ -35,6 +35,11 @@ data class Side(
     val label: String,
     val ingredients: List<Ingredient>,
     val steps: List<String>,
+    /** Rating and reviews, for sides added from an online recipe. */
+    val rating: Double? = null,
+    val ratingCount: Int? = null,
+    val countLabel: String = "ratings",
+    val reviews: List<Review> = emptyList(),
 )
 
 @Serializable
