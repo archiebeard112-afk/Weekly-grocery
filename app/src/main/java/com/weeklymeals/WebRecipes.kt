@@ -42,26 +42,27 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun OnlineResults(
     vm: MealsViewModel, st: UserState, web: MealsViewModel.WebSearch, query: String,
-    onWeb: (Int) -> Unit, onSettings: () -> Unit,
+    onWeb: (String) -> Unit, onSettings: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        val source = RecipeSources.effective(st)
         Text(
-            "Online" + if (web.results.isNotEmpty()) " · ${web.results.size}" else "",
+            "Online · " + RecipeSources.label(source) + if (web.results.isNotEmpty() && web.source == source) " · ${web.results.size}" else "",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
         )
         val q = query.trim().lowercase()
         when {
-            st.spoonKey.isBlank() -> {
+            source == RecipeSources.SPOONACULAR && st.spoonKey.isBlank() -> {
                 Text(
-                    "Add a free Spoonacular key in Settings to search recipes online.",
+                    "Add your free Spoonacular key in Settings, or pick a different site there.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                 )
                 TextButton(onClick = onSettings) { Text("Open Settings") }
             }
-            web.loading || web.query != q -> Row(
+            web.loading || web.query != q || web.source != source -> Row(
                 Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -121,7 +122,7 @@ internal fun OnlineResults(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun WebRecipeScreen(
-    vm: MealsViewModel, st: UserState, webId: Int,
+    vm: MealsViewModel, st: UserState, webId: String,
     onSaved: (Int) -> Unit, onBack: () -> Unit,
 ) {
     LaunchedEffect(webId) { vm.openWebRecipe(webId) }

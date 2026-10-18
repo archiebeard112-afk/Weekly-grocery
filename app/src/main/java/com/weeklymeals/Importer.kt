@@ -16,6 +16,8 @@ data class ImportedRecipe(
     val serves: Int?,
     val ingredients: List<String>,
     val steps: List<String>,
+    /** Total time in minutes, if the page says. */
+    val minutes: Int? = null,
 )
 
 /**
@@ -57,7 +59,9 @@ object Importer {
             val ings = strings(recipe.opt("recipeIngredient") ?: recipe.opt("ingredients")).map { clean(it) }.filter { it.isNotBlank() }
             val steps = instructions(recipe.opt("recipeInstructions")).map { clean(it) }.filter { it.isNotBlank() }
             if (name.isBlank() || ings.isEmpty()) continue
-            return ImportedRecipe(name, emojiFor(name), serves(recipe.opt("recipeYield")), ings, steps)
+            val total = minutes(recipe.optString("totalTime"))
+                ?: listOfNotNull(minutes(recipe.optString("prepTime")), minutes(recipe.optString("cookTime"))).sum().takeIf { it > 0 }
+            return ImportedRecipe(name, emojiFor(name), serves(recipe.opt("recipeYield")), ings, steps, total)
         }
         return null
     }
@@ -94,6 +98,14 @@ object Importer {
             else -> emptyList()
         }
         else -> emptyList()
+    }
+
+    /** "PT1H30M" -> 90. */
+    private fun minutes(iso: String): Int? {
+        val m = Regex("P(?:(\\d+)D)?T?(?:(\\d+)H)?(?:(\\d+)M)?", RegexOption.IGNORE_CASE).find(iso.trim()) ?: return null
+        val (d, h, min) = m.destructured
+        val total = (d.toIntOrNull() ?: 0) * 1440 + (h.toIntOrNull() ?: 0) * 60 + (min.toIntOrNull() ?: 0)
+        return total.takeIf { it > 0 }
     }
 
     private fun serves(v: Any?): Int? {

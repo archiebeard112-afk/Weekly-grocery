@@ -129,7 +129,7 @@ fun App(vm: MealsViewModel) {
     var viewing by rememberSaveable { mutableStateOf<Int?>(null) }
     var cooking by rememberSaveable { mutableStateOf<Int?>(null) }
     // An online recipe being previewed (Spoonacular id).
-    var webViewing by rememberSaveable { mutableStateOf<Int?>(null) }
+    var webViewing by rememberSaveable { mutableStateOf<String?>(null) }
     // A just-saved recipe to open once it's in your recipes.
     var openWhenSaved by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(openWhenSaved, st.custom) {
@@ -490,7 +490,7 @@ private val cardColors @Composable get() = CardDefaults.cardColors(
 @Composable
 private fun BrowseScreen(
     vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit,
-    onWeb: (Int) -> Unit, onSettings: () -> Unit, onOpen: (Int) -> Unit,
+    onWeb: (String) -> Unit, onSettings: () -> Unit, onOpen: (Int) -> Unit,
 ) {
     val ids by vm.browse.collectAsState()
     val saleOnly by vm.saleOnly.collectAsState()
@@ -570,7 +570,7 @@ private fun BrowseScreen(
 
         // Online results load about a second after you stop typing.
         val web by vm.webSearch.collectAsState()
-        LaunchedEffect(query, st.spoonKey) {
+        LaunchedEffect(query, st.spoonKey, st.webSource) {
             delay(900)
             vm.searchWeb(query)
         }
@@ -581,7 +581,7 @@ private fun BrowseScreen(
             val matches = all.values.filter { r ->
                 matchesFilters(r, q, filters) && (!saleOnly || Sales.savings(r, st.servings, cache) >= Sales.MIN_SAVINGS)
             }.sortedBy { it.name }
-            val showWeb = query.trim().length >= 3
+            val showWeb = query.trim().length >= 3 && RecipeSources.effective(st) != RecipeSources.OFF
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),

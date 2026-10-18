@@ -10,12 +10,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-/** One online search result. */
-data class WebRecipe(val id: Int, val title: String, val minutes: Int?, val source: String)
+/** One online search result. [id] says where it's from: "sp:<id>", "ar:<link>" or "md:<id>". */
+data class WebRecipe(val id: String, val title: String, val minutes: Int?, val source: String)
 
 /** A full online recipe, ready to preview before saving. */
 data class WebRecipeDetail(
-    val id: Int,
+    val id: String,
     val title: String,
     val emoji: String,
     val servings: Int,
@@ -26,97 +26,70 @@ data class WebRecipeDetail(
     val tags: List<String>,
 )
 
-class SpoonacularException(msg: String) : Exception(msg)
+class WebSearchException(msg: String) : Exception(msg)
 
-/** Recipe search through the Spoonacular API (spoonacular.com/food-api). */
-object Spoonacular {
-    private const val BASE = "https://api.spoonacular.com"
+/** The online recipe sites you can search from Browse. */
+object RecipeSources {
+    const val SPOONACULAR = "spoonacular"
+    const val ALLRECIPES = "allrecipes"
+    const val MEALDB = "mealdb"
+    const val OFF = "off"
 
-    private val http = OkHttpClient.Builder()
+    val CHOICES = listOf(
+        SPOONACULAR to "Spoonacular",
+        ALLRECIPES to "Allrecipes",
+        MEALDB to "TheMealDB",
+        OFF to "Off",
+    )
+
+    fun label(source: String) = CHOICES.firstOrNull { it.first == source }?.second ?: ""
+
+    /** The site actually used: your choice, or Spoonacular if you have a key, otherwise Allrecipes. */
+    fun effective(st: UserState): String = when (st.webSource) {
+        "" -> if (st.spoonKey.isNotBlank()) SPOONACULAR else ALLRECIPES
+        else -> st.webSource
+    }
+
+    suspend fun search(source: String, key: String, query: String): List<WebRecipe> = when (source) {
+        SPOONACULAR -> Spoonacular.search(key, query)
+        ALLRECIPES -> Allrecipes.search(query)
+        MEALDB -> MealDb.search(query)
+        else -> emptyList()
+    }
+
+    suspend fun details(ref: String, key: String): WebRecipeDetail = when {
+        ref.startsWith("sp:") -> Spoonacular.details(key, ref)
+        ref.startsWith("ar:") -> Allrecipes.details(ref)
+        ref.startsWith("md:") -> MealDb.details(ref)
+        else -> throw WebSearchException("Unknown recipe")
+    }
+
+    internal val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    private fun get(url: Uri): String {
-        val req = Request.Builder().url(url.toString()).build()
-        http.newCall(req).execute().use { resp ->
+    internal fun get(url: String, site: String, browser: Boolean = false): String {
+        val b = Request.Builder().url(url)
+        if (browser) {
+            b.header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Mobile Safari/537.36")
+            b.header("Accept", "text/html")
+        }
+        http.newCall(b.build()).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
             when {
-                resp.code == 401 -> throw SpoonacularException("Your Spoonacular key wasn't accepted. Check it in Settings.")
-                resp.code == 402 -> throw SpoonacularException("Today's free Spoonacular searches are used up. Try again tomorrow.")
-                !resp.isSuccessful -> throw SpoonacularException("Spoonacular said ${resp.code}")
+                site == "Spoonacular" && resp.code == 401 ->
+                    throw WebSearchException("Your Spoonacular key wasn't accepted. Check it in Settings.")
+                site == "Spoonacular" && resp.code == 402 ->
+                    throw WebSearchException("Today's free Spoonacular searches are used up. Try again tomorrow, or pick another site in Settings.")
+                !resp.isSuccessful -> throw WebSearchException("$site said ${resp.code}")
             }
             return body
         }
     }
 
-    suspend fun search(key: String, query: String): List<WebRecipe> = withContext(Dispatchers.IO) {
-        val url = Uri.parse("$BASE/recipes/complexSearch").buildUpon()
-            .appendQueryParameter("query", query)
-            .appendQueryParameter("number", "10")
-            .appendQueryParameter("instructionsRequired", "true")
-            .appendQueryParameter("addRecipeInformation", "true")
-            .appendQueryParameter("apiKey", key.trim())
-            .build()
-        val results = JSONObject(get(url)).optJSONArray("results") ?: JSONArray()
-        (0 until results.length()).mapNotNull { i ->
-            val o = results.optJSONObject(i) ?: return@mapNotNull null
-            WebRecipe(
-                id = o.optInt("id"),
-                title = clean(o.optString("title")),
-                minutes = o.optInt("readyInMinutes", 0).takeIf { it > 0 },
-                source = clean(o.optString("sourceName")),
-            )
-        }.filter { it.id != 0 && it.title.isNotBlank() }
-    }
-
-    suspend fun details(key: String, id: Int): WebRecipeDetail = withContext(Dispatchers.IO) {
-        val url = Uri.parse("$BASE/recipes/$id/information").buildUpon()
-            .appendQueryParameter("includeNutrition", "false")
-            .appendQueryParameter("apiKey", key.trim())
-            .build()
-        val o = JSONObject(get(url))
-        val title = clean(o.optString("title"))
-
-        val ingArr = o.optJSONArray("extendedIngredients") ?: JSONArray()
-        val ingredients = (0 until ingArr.length()).mapNotNull { i ->
-            val ing = ingArr.optJSONObject(i) ?: return@mapNotNull null
-            val us = ing.optJSONObject("measures")?.optJSONObject("us")
-            val amount = us?.optDouble("amount") ?: ing.optDouble("amount")
-            val unit = us?.optString("unitShort").orEmpty().ifBlank { ing.optString("unit") }
-            val name = ing.optString("nameClean").ifBlank { ing.optString("name") }
-            val line = if (amount.isNaN() || amount <= 0) ing.optString("original") else "${fmt(amount)} $unit $name"
-            Logic.parseIngredient(line)
-        }.distinctBy { "${it.name.lowercase()}|${it.u}" }
-
-        val steps = mutableListOf<String>()
-        val analyzed = o.optJSONArray("analyzedInstructions") ?: JSONArray()
-        for (i in 0 until analyzed.length()) {
-            val list = analyzed.optJSONObject(i)?.optJSONArray("steps") ?: continue
-            for (j in 0 until list.length()) {
-                list.optJSONObject(j)?.optString("step")?.let { clean(it) }?.takeIf { it.isNotBlank() }?.let { steps += it }
-            }
-        }
-        if (steps.isEmpty()) {
-            steps += Html.fromHtml(o.optString("instructions").replace(Regex("</(li|p)>", RegexOption.IGNORE_CASE), "\n"), Html.FROM_HTML_MODE_LEGACY)
-                .toString().split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-        }
-
-        WebRecipeDetail(
-            id = id,
-            title = title,
-            emoji = Importer.emojiFor(title),
-            servings = o.optInt("servings", 4).coerceIn(1, 20),
-            minutes = o.optInt("readyInMinutes", 0).takeIf { it > 0 },
-            source = clean(o.optString("sourceName")),
-            ingredients = ingredients,
-            steps = steps,
-            tags = tagsFor(title, steps, o.optBoolean("cheap"), o.optDouble("pricePerServing")),
-        )
-    }
-
     /** Cooking-method and Budget badges, guessed from the title and steps. */
-    private fun tagsFor(title: String, steps: List<String>, cheap: Boolean, pricePerServing: Double): List<String> {
+    fun tagsFor(title: String, steps: List<String>, budget: Boolean = false): List<String> {
         val t = (title + " " + steps.joinToString(" ")).lowercase()
         val tags = mutableListOf<String>()
         if (Regex("slow cooker|crock[- ]?pot").containsMatchIn(t)) tags += "crockpot"
@@ -125,14 +98,153 @@ object Spoonacular {
         if (Regex("sheet[- ]pan").containsMatchIn(t)) tags += "sheetpan"
         if (Regex("\\bgrill").containsMatchIn(t)) tags += "grill"
         if (Regex("one[- ](pan|pot|skillet)").containsMatchIn(t)) tags += "onepan"
-        // Spoonacular's price is in cents per serving.
-        if (cheap || (!pricePerServing.isNaN() && pricePerServing in 1.0..200.0)) tags += "budget"
+        if (budget) tags += "budget"
         return tags
     }
 
-    private fun fmt(v: Double): String =
+    fun fmt(v: Double): String =
         if (v == Math.floor(v)) v.toLong().toString() else "%.2f".format(java.util.Locale.US, v).trimEnd('0').trimEnd('.')
 
-    private fun clean(s: String): String =
+    fun clean(s: String): String =
         Html.fromHtml(s, Html.FROM_HTML_MODE_LEGACY).toString().replace(Regex("\\s+"), " ").trim()
+
+    /** Ingredient lines -> ingredients, dropping duplicates. */
+    fun ingredients(lines: List<String>): List<Ingredient> =
+        lines.mapNotNull { Logic.parseIngredient(it) }.distinctBy { "${it.name.lowercase()}|${it.u}" }
+}
+
+/** spoonacular.com/food-api: needs a free key. */
+object Spoonacular {
+    private const val BASE = "https://api.spoonacular.com"
+
+    suspend fun search(key: String, query: String): List<WebRecipe> = withContext(Dispatchers.IO) {
+        if (key.isBlank()) throw WebSearchException("Add your Spoonacular key in Settings, or pick another site.")
+        val url = Uri.parse("$BASE/recipes/complexSearch").buildUpon()
+            .appendQueryParameter("query", query)
+            .appendQueryParameter("number", "10")
+            .appendQueryParameter("instructionsRequired", "true")
+            .appendQueryParameter("addRecipeInformation", "true")
+            .appendQueryParameter("apiKey", key.trim())
+            .build().toString()
+        val results = JSONObject(RecipeSources.get(url, "Spoonacular")).optJSONArray("results") ?: JSONArray()
+        (0 until results.length()).mapNotNull { i ->
+            val o = results.optJSONObject(i) ?: return@mapNotNull null
+            WebRecipe(
+                id = "sp:" + o.optInt("id"),
+                title = RecipeSources.clean(o.optString("title")),
+                minutes = o.optInt("readyInMinutes", 0).takeIf { it > 0 },
+                source = RecipeSources.clean(o.optString("sourceName")).ifBlank { "Spoonacular" },
+            )
+        }.filter { it.id != "sp:0" && it.title.isNotBlank() }
+    }
+
+    suspend fun details(key: String, ref: String): WebRecipeDetail = withContext(Dispatchers.IO) {
+        val id = ref.removePrefix("sp:")
+        val url = Uri.parse("$BASE/recipes/$id/information").buildUpon()
+            .appendQueryParameter("includeNutrition", "false")
+            .appendQueryParameter("apiKey", key.trim())
+            .build().toString()
+        val o = JSONObject(RecipeSources.get(url, "Spoonacular"))
+        val title = RecipeSources.clean(o.optString("title"))
+
+        val ingArr = o.optJSONArray("extendedIngredients") ?: JSONArray()
+        val lines = (0 until ingArr.length()).mapNotNull { i ->
+            val ing = ingArr.optJSONObject(i) ?: return@mapNotNull null
+            val us = ing.optJSONObject("measures")?.optJSONObject("us")
+            val amount = us?.optDouble("amount") ?: ing.optDouble("amount")
+            val unit = us?.optString("unitShort").orEmpty().ifBlank { ing.optString("unit") }
+            val name = ing.optString("nameClean").ifBlank { ing.optString("name") }
+            if (amount.isNaN() || amount <= 0) ing.optString("original") else "${RecipeSources.fmt(amount)} $unit $name"
+        }
+
+        val steps = mutableListOf<String>()
+        val analyzed = o.optJSONArray("analyzedInstructions") ?: JSONArray()
+        for (i in 0 until analyzed.length()) {
+            val list = analyzed.optJSONObject(i)?.optJSONArray("steps") ?: continue
+            for (j in 0 until list.length()) {
+                list.optJSONObject(j)?.optString("step")?.let { RecipeSources.clean(it) }?.takeIf { it.isNotBlank() }?.let { steps += it }
+            }
+        }
+        if (steps.isEmpty()) {
+            steps += Html.fromHtml(o.optString("instructions").replace(Regex("</(li|p)>", RegexOption.IGNORE_CASE), "\n"), Html.FROM_HTML_MODE_LEGACY)
+                .toString().split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        }
+        // Spoonacular's price is in cents per serving.
+        val price = o.optDouble("pricePerServing")
+        val budget = o.optBoolean("cheap") || (!price.isNaN() && price in 1.0..200.0)
+
+        WebRecipeDetail(
+            id = ref, title = title, emoji = Importer.emojiFor(title),
+            servings = o.optInt("servings", 4).coerceIn(1, 20),
+            minutes = o.optInt("readyInMinutes", 0).takeIf { it > 0 },
+            source = RecipeSources.clean(o.optString("sourceName")).ifBlank { "Spoonacular" },
+            ingredients = RecipeSources.ingredients(lines), steps = steps,
+            tags = RecipeSources.tagsFor(title, steps, budget),
+        )
+    }
+}
+
+/** allrecipes.com: reads its search page, then the recipe page (same as importing a link). */
+object Allrecipes {
+    private val linkRx = Regex(
+        "<a[^>]+href=\"(https://www\\.allrecipes\\.com/recipe/\\d+/[^\"?#]+)\"[^>]*>(.*?)</a>",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+    )
+    private val titleRx = Regex("card__title-text[^>]*>(.*?)</span>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+
+    suspend fun search(query: String): List<WebRecipe> = withContext(Dispatchers.IO) {
+        val url = Uri.parse("https://www.allrecipes.com/search").buildUpon()
+            .appendQueryParameter("q", query).build().toString()
+        val html = RecipeSources.get(url, "Allrecipes", browser = true)
+        linkRx.findAll(html).mapNotNull { m ->
+            val link = m.groupValues[1]
+            val title = titleRx.find(m.groupValues[2])?.groupValues?.get(1)?.let { RecipeSources.clean(it) }
+                ?: link.trimEnd('/').substringAfterLast('/').replace('-', ' ').replaceFirstChar { it.uppercase() }
+            if (title.isBlank()) null else WebRecipe("ar:$link", title, null, "Allrecipes")
+        }.distinctBy { it.id }.take(10).toList()
+    }
+
+    suspend fun details(ref: String): WebRecipeDetail {
+        val r = Importer.fromUrl(ref.removePrefix("ar:"))
+        return WebRecipeDetail(
+            id = ref, title = r.name, emoji = r.emoji, servings = (r.serves ?: 4).coerceIn(1, 20),
+            minutes = r.minutes, source = "Allrecipes",
+            ingredients = RecipeSources.ingredients(r.ingredients), steps = r.steps,
+            tags = RecipeSources.tagsFor(r.name, r.steps),
+        )
+    }
+}
+
+/** themealdb.com: free, no key, small catalog. */
+object MealDb {
+    private const val BASE = "https://www.themealdb.com/api/json/v1/1"
+
+    suspend fun search(query: String): List<WebRecipe> = withContext(Dispatchers.IO) {
+        val url = Uri.parse("$BASE/search.php").buildUpon().appendQueryParameter("s", query).build().toString()
+        val meals = JSONObject(RecipeSources.get(url, "TheMealDB")).optJSONArray("meals") ?: JSONArray()
+        (0 until meals.length()).mapNotNull { i ->
+            val o = meals.optJSONObject(i) ?: return@mapNotNull null
+            WebRecipe("md:" + o.optString("idMeal"), o.optString("strMeal").trim(), null, "TheMealDB")
+        }.filter { it.title.isNotBlank() }.take(10)
+    }
+
+    suspend fun details(ref: String): WebRecipeDetail = withContext(Dispatchers.IO) {
+        val url = Uri.parse("$BASE/lookup.php").buildUpon().appendQueryParameter("i", ref.removePrefix("md:")).build().toString()
+        val o = JSONObject(RecipeSources.get(url, "TheMealDB")).optJSONArray("meals")?.optJSONObject(0)
+            ?: throw WebSearchException("Couldn't load this recipe")
+        val title = o.optString("strMeal").trim()
+        val lines = (1..20).mapNotNull { n ->
+            val ing = o.optString("strIngredient$n").takeUnless { it == "null" }.orEmpty().trim()
+            val measure = o.optString("strMeasure$n").takeUnless { it == "null" }.orEmpty().trim()
+            if (ing.isEmpty()) null else "$measure $ing".trim()
+        }
+        val steps = o.optString("strInstructions").split(Regex("\\r?\\n+"))
+            .map { it.trim().replace(Regex("^(step\\s*)?\\d+[.):]?\\s*", RegexOption.IGNORE_CASE), "") }
+            .filter { it.length > 3 }
+        WebRecipeDetail(
+            id = ref, title = title, emoji = Importer.emojiFor(title), servings = 4, minutes = null,
+            source = "TheMealDB", ingredients = RecipeSources.ingredients(lines), steps = steps,
+            tags = RecipeSources.tagsFor(title, steps),
+        )
+    }
 }

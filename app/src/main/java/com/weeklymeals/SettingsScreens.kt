@@ -1,5 +1,9 @@
 package com.weeklymeals
 
+import androidx.compose.foundation.clickable
+
+import androidx.compose.material3.RadioButton
+
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -121,21 +125,51 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
             HorizontalDivider()
             Text("Online recipes", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Search finds recipes online with Spoonacular. Sign up for free at spoonacular.com/food-api, " +
-                    "open your Profile, copy your API key and paste it below.",
+                "Browse search also looks for recipes online. Pick which site to search:",
                 style = MaterialTheme.typography.bodyMedium,
             )
-            OutlinedTextField(
-                spoon, { spoon = it }, label = { Text("Spoonacular API key") }, singleLine = true,
-                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+            val current = RecipeSources.effective(st)
+            val notes = mapOf(
+                RecipeSources.SPOONACULAR to "Big selection. Needs a free key.",
+                RecipeSources.ALLRECIPES to "Big selection, no key. Could stop working if the site changes.",
+                RecipeSources.MEALDB to "No key, but only about 600 recipes.",
+                RecipeSources.OFF to "Search only the recipes in the app.",
             )
-            Button(
-                onClick = { vm.setSpoonKey(spoon) },
-                enabled = spoon.trim() != st.spoonKey,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (st.spoonKey.isBlank()) "Save key" else "Update key") }
-            if (st.spoonKey.isNotBlank()) {
-                Text("Online search is on.", style = MaterialTheme.typography.bodySmall)
+            Column {
+                RecipeSources.CHOICES.forEach { (key, label) ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { vm.setWebSource(key) }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = current == key, onClick = { vm.setWebSource(key) })
+                        Column {
+                            Text(label, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                notes[key].orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            if (current == RecipeSources.SPOONACULAR) {
+                Text(
+                    "Sign up for free at spoonacular.com/food-api, open your Profile, copy your API key and paste it below.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedTextField(
+                    spoon, { spoon = it }, label = { Text("Spoonacular API key") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+                )
+                Button(
+                    onClick = { vm.setSpoonKey(spoon) },
+                    enabled = spoon.trim() != st.spoonKey,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (st.spoonKey.isBlank()) "Save key" else "Update key") }
+                if (st.spoonKey.isNotBlank()) {
+                    Text("Key saved.", style = MaterialTheme.typography.bodySmall)
+                }
             }
 
             Spacer(Modifier.padding(8.dp))

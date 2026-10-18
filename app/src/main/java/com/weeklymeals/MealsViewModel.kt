@@ -473,6 +473,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** Online search results for the Browse search box. */
     data class WebSearch(
         val query: String = "",
+        val source: String = "",
         val loading: Boolean = false,
         val results: List<WebRecipe> = emptyList(),
         val error: String? = null,
@@ -480,7 +481,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     val webSearch = MutableStateFlow(WebSearch())
     private val webCache = mutableMapOf<String, List<WebRecipe>>()
-    private val detailCache = mutableMapOf<Int, WebRecipeDetail>()
+    private val detailCache = mutableMapOf<String, WebRecipeDetail>()
     private var webJob: kotlinx.coroutines.Job? = null
 
     fun setSpoonKey(key: String) {
@@ -489,25 +490,31 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         message.value = "Saved"
     }
 
+    fun setWebSource(source: String) = edit { it.copy(webSource = source) }
+
     fun searchWeb(query: String) {
         val q = query.trim().lowercase()
-        val key = state.value.spoonKey
+        val st = state.value
+        val source = RecipeSources.effective(st)
         webJob?.cancel()
-        if (q.length < 3 || key.isBlank()) {
-            webSearch.value = WebSearch(q)
+        if (q.length < 3 || source == RecipeSources.OFF ||
+            (source == RecipeSources.SPOONACULAR && st.spoonKey.isBlank())
+        ) {
+            webSearch.value = WebSearch(q, source)
             return
         }
-        webCache[q]?.let { webSearch.value = WebSearch(q, results = it); return }
-        webSearch.value = WebSearch(q, loading = true)
+        val cacheKey = "$source|$q"
+        webCache[cacheKey]?.let { webSearch.value = WebSearch(q, source, results = it); return }
+        webSearch.value = WebSearch(q, source, loading = true)
         webJob = viewModelScope.launch {
             webSearch.value = try {
-                val found = Spoonacular.search(key, q)
-                webCache[q] = found
-                WebSearch(q, results = found)
+                val found = RecipeSources.search(source, st.spoonKey, q)
+                webCache[cacheKey] = found
+                WebSearch(q, source, results = found)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                WebSearch(q, error = e.message ?: "Couldn't search online")
+                WebSearch(q, source, error = e.message ?: "Couldn't search online")
             }
         }
     }
@@ -516,13 +523,13 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     val webPreview = MutableStateFlow<WebRecipeDetail?>(null)
     val webPreviewError = MutableStateFlow<String?>(null)
 
-    fun openWebRecipe(id: Int) {
+    fun openWebRecipe(id: String) {
         webPreviewError.value = null
         detailCache[id]?.let { webPreview.value = it; return }
         webPreview.value = null
         viewModelScope.launch {
             try {
-                val d = Spoonacular.details(state.value.spoonKey, id)
+                val d = RecipeSources.details(id, state.value.spoonKey)
                 detailCache[id] = d
                 webPreview.value = d
             } catch (e: Exception) {
@@ -532,7 +539,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** The saved recipe for an online result, if you've already added it. */
-    fun savedWebRecipe(st: UserState, webId: Int): Recipe? = st.custom.firstOrNull { it.webId == webId }
+    fun savedWebRecipe(st: UserState, ref: String): Recipe? = st.custom.firstOrNull { it.webRef == ref }
 
     /** Saves an approved online recipe to your recipes (it shows in Favorites). Returns its new id. */
     fun saveWebRecipe(d: WebRecipeDetail): Int? {
@@ -547,9 +554,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             id = newId, name = d.title, emoji = d.emoji, base = d.servings,
             steps = d.steps, ingredients = d.ingredients,
             sides = bundle.sides.take(4).map { it.key }, imported = true,
-            tags = d.tags, webId = d.id,
+            tags = d.tags, webRef = d.id,
         )
-        edit { s -> if (s.custom.any { it.webId == d.id }) s else s.copy(custom = s.custom + r) }
+        edit { s -> if (s.custom.any { it.webRef == d.id }) s else s.copy(custom = s.custom + r) }
         message.value = "Added to Favorites"
         return newId
     }
