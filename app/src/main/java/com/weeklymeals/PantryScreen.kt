@@ -150,6 +150,28 @@ private fun digitsFor(at: Long): String {
     return f.format(java.util.Date(at))
 }
 
+private val DATE_RED = Color(0xFFE24B4A)
+
+/** Which dot a jar gets: "date" (past its date), "low" (running low or getting old), or "". */
+private fun dotFor(p: PantryItem): String {
+    val fresh = Pantry.freshness(p)
+    return when {
+        fresh == Pantry.Fresh.EXPIRED && !p.useAnyway && !Pantry.isSpice(p) -> "date"
+        Pantry.isLow(p) || fresh == Pantry.Fresh.SOON || (fresh == Pantry.Fresh.EXPIRED && !p.useAnyway) -> "low"
+        else -> ""
+    }
+}
+
+@Composable
+private fun StatusDot(color: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier.size(12.dp)
+            .background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.CircleShape)
+            .padding(2.dp)
+            .background(color, androidx.compose.foundation.shape.CircleShape),
+    )
+}
+
 private fun boughtAgo(at: Long): String {
     val days = ((System.currentTimeMillis() - at) / 86_400_000L).toInt()
     return "bought " + when { days < 1 -> "today"; days < 14 -> "$days d ago"; else -> "${days / 7} wks ago" }
@@ -358,7 +380,12 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
             .addOnFailureListener { adding = shelf ?: "" }
     }
     var freezingNew by remember { mutableStateOf(false) }
-    val lowCount = st.pantry.count { Pantry.isLow(it) }
+    val lowCount = st.pantry.count { dotFor(it) == "low" }
+    val dateCount = st.pantry.count { dotFor(it) == "date" }
+    var showOnly by remember { mutableStateOf("") } // "", "low" or "date"
+    LaunchedEffect(lowCount, dateCount) {
+        if ((showOnly == "low" && lowCount == 0) || (showOnly == "date" && dateCount == 0)) showOnly = ""
+    }
 
     Scaffold(
         // Shown under the app's top bar, so the status bar is already accounted for.
@@ -384,63 +411,90 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
             item {
                 Text(
                     if (st.pantry.isEmpty()) "Your pantry is empty. Tap + to scan or search for what you have."
-                    else "${st.pantry.size} item${if (st.pantry.size == 1) "" else "s"}" + if (lowCount > 0) " · $lowCount low" else "",
+                    else "${st.pantry.size} item${if (st.pantry.size == 1) "" else "s"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 8.dp),
                 )
             }
+            if (st.pantry.isNotEmpty() && (lowCount > 0 || dateCount > 0)) {
+                item(key = "filters") {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()).padding(start = 4.dp, bottom = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        FilterChip(selected = showOnly == "", onClick = { showOnly = "" }, label = { Text("All") })
+                        if (lowCount > 0) {
+                            FilterChip(
+                                selected = showOnly == "low", onClick = { showOnly = if (showOnly == "low") "" else "low" },
+                                label = { Text("$lowCount low") },
+                                leadingIcon = { StatusDot(LOW) },
+                            )
+                        }
+                        if (dateCount > 0) {
+                            FilterChip(
+                                selected = showOnly == "date", onClick = { showOnly = if (showOnly == "date") "" else "date" },
+                                label = { Text("$dateCount check date") },
+                                leadingIcon = { StatusDot(DATE_RED) },
+                            )
+                        }
+                    }
+                }
+            }
             Pantry.SHELVES.forEach { (key, label) ->
-                val onShelf = st.pantry.filter { it.shelf == key }.sortedBy { it.term }
+                val onShelf = st.pantry.filter { it.shelf == key && (showOnly == "" || dotFor(it) == showOnly) }.sortedBy { it.term }
+                if (showOnly != "" && onShelf.isEmpty()) return@forEach
                 item(key = "shelf_$key") {
                     Text(
                         label, style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 4.dp),
                     )
-                    LazyRow(verticalAlignment = Alignment.Bottom) {
-                        items(onShelf, key = { it.id }) { p ->
-                            Column(
-                                Modifier.width(70.dp).clickable { editing = p; editingNew = false }.padding(bottom = 4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                // Amber when it's low, past its typical time, or near/past its best-by date.
-                                val fresh = Pantry.freshness(p)
-                                ContainerView(p.kind, p.level, Pantry.isLow(p) || fresh != Pantry.Fresh.OK, Modifier.size(52.dp, 62.dp))
-                                Text(
-                                    p.term.replaceFirstChar { it.uppercase() },
-                                    fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp),
-                                )
-                                if (p.measure == Pantry.LB || p.measure == Pantry.STICK) {
-                                    Text(Pantry.amountText(p), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                when (fresh) {
-                                    Pantry.Fresh.EXPIRED -> when {
-                                        p.useAnyway -> Text("past date · using it", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Pantry.isSpice(p) -> Text("may be weak", fontSize = 10.sp, color = LOW)
-                                        else -> Text(if (p.dateKind == "sell") "past sell-by" else "past best-by", fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
-                                    }
-                                    Pantry.Fresh.SOON -> Text("use soon", fontSize = 10.sp, color = LOW)
-                                    else -> {
-                                        if (p.shelf == "produce" && p.addedAt > 0) {
-                                            Text(boughtAgo(p.addedAt), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Four across, wrapping to more rows: the whole shelf at a glance.
+                    // Jars line up along the top, so an extra line under one never shifts the others.
+                    val cells: List<PantryItem?> = onShelf + (if (showOnly == "") listOf(null) else emptyList())
+                    cells.chunked(4).forEach { row ->
+                        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.Top) {
+                            row.forEach { p ->
+                                Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
+                                    if (p == null) {
+                                        Box(
+                                            Modifier.size(50.dp, 62.dp)
+                                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                                                .clickable { scanFirst(key) },
+                                            contentAlignment = Alignment.Center,
+                                        ) { Icon(Icons.Filled.Add, "Add to $label", tint = MaterialTheme.colorScheme.outline) }
+                                    } else {
+                                        Column(
+                                            Modifier.fillMaxWidth().clickable { editing = p; editingNew = false }.padding(horizontal = 2.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                        ) {
+                                            Box {
+                                                ContainerView(p.kind, p.level, Pantry.isLow(p), Modifier.size(52.dp, 62.dp))
+                                                // A dot on the lid: amber = low or use soon, red = check the date.
+                                                when (dotFor(p)) {
+                                                    "date" -> StatusDot(DATE_RED, Modifier.align(Alignment.TopEnd))
+                                                    "low" -> StatusDot(LOW, Modifier.align(Alignment.TopEnd))
+                                                    else -> {}
+                                                }
+                                            }
+                                            Text(
+                                                p.term.replaceFirstChar { it.uppercase() },
+                                                fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                textAlign = TextAlign.Center, modifier = Modifier.padding(top = 3.dp),
+                                            )
+                                            if (p.measure == Pantry.LB || p.measure == Pantry.STICK) {
+                                                Text(Pantry.amountText(p), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                        item {
-                            Box(
-                                Modifier.padding(start = 6.dp, bottom = 20.dp).size(50.dp, 62.dp)
-                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
-                                    .clickable { scanFirst(key) },
-                                contentAlignment = Alignment.Center,
-                            ) { Icon(Icons.Filled.Add, "Add to $label", tint = MaterialTheme.colorScheme.outline) }
+                            repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                     Box(
-                        Modifier.fillMaxWidth().padding(bottom = 12.dp).height(6.dp)
+                        Modifier.fillMaxWidth().padding(bottom = 12.dp).height(4.dp)
                             .background(SHELF_WOOD, RoundedCornerShape(2.dp)),
                     )
                 }
@@ -498,10 +552,10 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
             }
             item {
                 Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(10.dp).background(PLENTY, RoundedCornerShape(2.dp)))
-                    Text(" Plenty    ", style = MaterialTheme.typography.bodySmall)
-                    Box(Modifier.size(10.dp).background(LOW, RoundedCornerShape(2.dp)))
-                    Text(" Low", style = MaterialTheme.typography.bodySmall)
+                    StatusDot(LOW)
+                    Text(" Low or use soon     ", style = MaterialTheme.typography.bodySmall)
+                    StatusDot(DATE_RED)
+                    Text(" Check the date", style = MaterialTheme.typography.bodySmall)
                 }
                 Spacer(Modifier.height(24.dp))
             }
@@ -726,7 +780,7 @@ private fun PantryItemDialog(
                     Pantry.Fresh.EXPIRED -> Text(
                         if (Pantry.isSpice(item)) "Past its $dateWord: may be weak" else "Past its $dateWord date",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (Pantry.isSpice(item)) LOW else MaterialTheme.colorScheme.error,
+                        color = LOW,
                     )
                     Pantry.Fresh.SOON -> Text(if (item.bestBy > 0) "Date is coming up: use soon" else "Getting old: use soon", style = MaterialTheme.typography.bodySmall, color = LOW)
                     else -> {}

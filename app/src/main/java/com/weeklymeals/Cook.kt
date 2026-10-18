@@ -261,7 +261,10 @@ object Cook {
 /** Full-screen cooking view: ingredients, then every step on one scrolling page. The screen stays on. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CookScreen(vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) -> TimerCtl, onClose: () -> Unit) {
+fun CookScreen(
+    vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) -> TimerCtl,
+    onDone: () -> Unit = {}, onClose: () -> Unit,
+) {
     val r = vm.recipes(st)[id]
     if (r == null) { onClose(); return }
     val side = if (id in st.week) st.sides[id]?.let { vm.sideMap[it] } else null
@@ -273,7 +276,13 @@ fun CookScreen(vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) ->
     val sidePieces = remember(side, serv) {
         side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, serv, 4) }, serv / 4.0) } ?: emptyList()
     }
-    var finished by remember(id) { mutableStateOf(setOf<Int>()) }
+    // Picks up where you left off (you can leave and come back with the cooking bubble).
+    val resume = st.cookingId == id
+    var finished by remember(id) { mutableStateOf(if (resume) st.cookDone else setOf()) }
+    val scroll = rememberScrollState(if (resume) st.cookScroll else 0)
+    DisposableEffect(id) {
+        onDispose { vm.saveCookPlace(id, scroll.value, finished) }
+    }
     val mainCtl = timerCtl(r)
     val sideCtl = mainCtl.copy(prefix = mainCtl.prefix + "side", title = sideName ?: "Side")
 
@@ -296,7 +305,7 @@ fun CookScreen(vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             RunningTimers(st, steps, mainCtl, sideCtl)
             Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
                     .padding(horizontal = 18.dp, vertical = 12.dp),
             ) {
                 IngredientsPage(r, side, sideName, serv, steps)
@@ -356,6 +365,11 @@ fun CookScreen(vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) ->
                 Spacer(Modifier.height(24.dp))
                 if (steps.isNotEmpty() && finished.size == steps.size) {
                     Text("That's it. Time to eat! 🎉", style = MaterialTheme.typography.titleLarge)
+                }
+                Spacer(Modifier.height(16.dp))
+                // Ends cooking mode (and the bubble).
+                OutlinedButton(onClick = { vm.stopCooking(); onDone() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("✓  Done cooking")
                 }
                 Spacer(Modifier.height(40.dp))
             }

@@ -148,6 +148,16 @@ data class UserState(
     val wholeCuts: Set<String> = setOf("chicken breast"),
     /** Meat in the freezer. */
     val freezer: List<FreezerItem> = emptyList(),
+    /** The recipe you're cooking (shows the cooking bubble after you leave the cook screen). */
+    val cookingId: Int? = null,
+    /** When cooking mode was last opened; the bubble goes away 6 hours after. */
+    val cookingSince: Long = 0L,
+    /** Where you were on the cook screen: scroll position and steps ticked off. */
+    val cookScroll: Int = 0,
+    val cookDone: Set<Int> = emptySet(),
+    /** Where you dragged the cooking bubble (offset from its usual corner, in pixels). */
+    val bubbleX: Float = 0f,
+    val bubbleY: Float = 0f,
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */

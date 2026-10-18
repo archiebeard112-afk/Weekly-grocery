@@ -254,7 +254,7 @@ fun App(vm: MealsViewModel) {
     if (picking != null) {
         ProductPicker(vm, picking!!) { vm.picking.value = null }
     } else if (overlay == Overlay.None && cooking != null) {
-        CookScreen(vm, st, cooking!!, timerCtl) { cooking = null }
+        CookScreen(vm, st, cooking!!, timerCtl, onDone = { cooking = null }) { cooking = null }
     } else if (overlay == Overlay.None && webViewing != null) {
         WebRecipeScreen(
             vm, st, webViewing!!, forSide = sideWebFor,
@@ -262,7 +262,7 @@ fun App(vm: MealsViewModel) {
         ) { webViewing = null; sideWebFor = null }
     } else if (overlay == Overlay.None && viewing != null) {
         RecipeScreen(
-            vm, st, viewing!!, toggleFav, timerCtl, onCook = { cooking = viewing },
+            vm, st, viewing!!, toggleFav, timerCtl, onCook = { viewing?.let { vm.startCooking(it) }; cooking = viewing },
             // After holding to remove: back to Week to see the open day.
             onRemoved = { viewing = null; overlay = Overlay.None; tab = 0 },
         ) { viewing = null }
@@ -330,6 +330,13 @@ fun App(vm: MealsViewModel) {
         }
     }
     SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
+    // Left cooking mode mid-cook: a bubble to get back to it from anywhere.
+    if (cooking == null && picking == null && cookBubbleOn(st)) {
+        CookBubble(
+            vm, st,
+            Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 16.dp, bottom = 92.dp),
+        ) { cooking = st.cookingId; st.cookingId?.let { vm.startCooking(it) } }
+    }
     }
 
     // "Pick a side" when adding a meal to the week.
@@ -501,8 +508,8 @@ private fun RecipeDetails(
                 // In the pantry but past its date.
                 expired[term]?.let {
                     Text(
-                        "   🫙 $it", style = MaterialTheme.typography.labelSmall,
-                        color = if (it == "expired") MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color(0xFFBA7517),
+                        "   🫙 In pantry · $it", style = MaterialTheme.typography.labelSmall,
+                        color = androidx.compose.ui.graphics.Color(0xFFBA7517),
                     )
                 }
             }

@@ -247,10 +247,8 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         val pantryNote = when (status) {
                             MealsViewModel.PantryStatus.EXPIRED -> {
                                 val item = vm.pantryItem(st, g.term)
-                                val place = if (inFridge) "fridge" else "pantry"
-                                val date = if (item?.dateKind == "sell") "sell-by" else "best-by"
-                                if (item != null && Pantry.isSpice(item)) "⚠ Pantry jar is past its $date and may be weak · get more"
-                                else "⚠ The one in your $place is past its $date · get more"
+                                val place = if (inFridge) "🥛 In fridge" else "🫙 In pantry"
+                                if (item != null && Pantry.isSpice(item)) "$place · may be weak" else "$place · check date"
                             }
                             MealsViewModel.PantryStatus.LOW -> if (inFridge) "🥛 Low in fridge" else "🫙 Low in pantry"
                             MealsViewModel.PantryStatus.COVERED -> if (inFridge) "🥛 In fridge · buying anyway" else "🫙 In pantry · buying anyway"
@@ -415,8 +413,8 @@ private fun ShopRow(
             if (usePantry != null) {
                 // Past its date: buy more, or say you're fine using what you have.
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
-                    TextButton(onClick = usePantry) { Text("Use pantry") }
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFBA7517), modifier = Modifier.weight(1f))
+                    TextButton(onClick = usePantry, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Use pantry") }
                 }
             } else {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFBA7517))

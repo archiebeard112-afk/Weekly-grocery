@@ -609,6 +609,24 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         edit { it.copy(timers = it.timers + (key to end)) }
     }
 
+    // ---- Cooking bubble ---------------------------------------------------------
+
+    /** Opens cooking mode for a recipe (a different recipe replaces the one you were cooking). */
+    fun startCooking(id: Int) = edit { s ->
+        val now = System.currentTimeMillis()
+        if (s.cookingId == id) s.copy(cookingSince = now)
+        else s.copy(cookingId = id, cookingSince = now, cookScroll = 0, cookDone = emptySet())
+    }
+
+    /** Remembers your spot when you leave the cook screen. */
+    fun saveCookPlace(id: Int, scroll: Int, done: Set<Int>) = edit { s ->
+        if (s.cookingId == id) s.copy(cookScroll = scroll, cookDone = done) else s
+    }
+
+    fun stopCooking() = edit { it.copy(cookingId = null, cookScroll = 0, cookDone = emptySet()) }
+
+    fun setBubblePos(x: Float, y: Float) = edit { it.copy(bubbleX = x, bubbleY = y) }
+
     fun stopTimer(key: String) {
         Timers.cancel(getApplication(), key)
         edit { it.copy(timers = it.timers - key) }
@@ -1232,7 +1250,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Ingredients on a recipe page that are past their date in the pantry: term -> label. */
     fun expiredTerms(st: UserState): Map<String, String> =
-        st.pantry.filter { isExpired(it) }.associate { it.term to if (Pantry.isSpice(it)) "may be weak" else "expired" }
+        st.pantry.filter { isExpired(it) }.associate { it.term to if (Pantry.isSpice(it)) "may be weak" else "check date" }
 
     /** Keep using an item past its date (or stop). */
     fun setUseAnyway(term: String, on: Boolean) = edit { s ->
