@@ -221,18 +221,7 @@ internal fun WebRecipeScreen(
                 d.steps.forEachIndexed { i, s ->
                     Text("${i + 1}. $s", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 3.dp))
                 }
-                if (d.reviews.isNotEmpty()) {
-                    Heading("Reviews")
-                    d.rating?.let { RatingLine(it, d.ratingCount, d.countLabel, 16.dp) }
-                    var shown by remember(d.id) { mutableIntStateOf(3) }
-                    d.reviews.take(shown).forEach { rv ->
-                        ReviewItem(rv)
-                        HorizontalDivider()
-                    }
-                    if (shown < d.reviews.size) {
-                        TextButton(onClick = { shown += 3 }) { Text("See more") }
-                    }
-                }
+                ReviewsSection(d.id, d.rating, d.ratingCount, d.countLabel, d.reviews)
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -294,5 +283,21 @@ private fun ReviewItem(r: Review) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 2.dp),
         )
+    }
+}
+
+/** "Reviews": the rating, 3 written reviews, and See more for the rest. */
+@Composable
+internal fun ReviewsSection(key: Any, rating: Double?, count: Int?, countLabel: String, reviews: List<Review>) {
+    if (reviews.isEmpty()) return
+    Heading("Reviews")
+    rating?.let { RatingLine(it, count, countLabel, 16.dp) }
+    var shown by remember(key) { mutableIntStateOf(3) }
+    reviews.take(shown).forEach { rv ->
+        ReviewItem(rv)
+        HorizontalDivider()
+    }
+    if (shown < reviews.size) {
+        TextButton(onClick = { shown += 3 }) { Text("See more") }
     }
 }

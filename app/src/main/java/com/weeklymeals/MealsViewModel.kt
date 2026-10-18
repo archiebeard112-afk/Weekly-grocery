@@ -177,14 +177,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val st = state.value
         val cache = salesCache(st)
         if (saleOnly.value) {
-            val pool = recipes(st).values.filter { Sales.savings(it, st.servings, cache) >= Sales.MIN_SAVINGS }.map { it.id }
+            val pool = recipes(st).values.filter { it.id !in st.removed && Sales.savings(it, st.servings, cache) >= Sales.MIN_SAVINGS }.map { it.id }
             if (pool.isEmpty()) message.value = "No meals save \$3 or more at your store today"
             return pool.shuffled().take(10)
         }
         val cutoff = System.currentTimeMillis() - 21L * 86_400_000L
         val recent = st.history.filter { it.date >= cutoff }.flatMap { it.recipes }.toSet()
         val lastShown = browseSets.lastOrNull().orEmpty().toSet()
-        val all = bundle.recipes.filter { !it.imported }
+        val all = bundle.recipes.filter { !it.imported && it.id !in st.removed }
         var pool = all.filter { it.id !in st.week && it.id !in recent && it.id !in lastShown }
         if (pool.size < 10) pool = all.filter { it.id !in st.week }
         // Within each protein, sale meals tend to come first; then take one from each protein in turn.
@@ -582,10 +582,52 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             steps = d.steps, ingredients = d.ingredients,
             sides = bundle.sides.take(4).map { it.key }, imported = true,
             tags = d.tags, webRef = d.id,
+            rating = d.rating, ratingCount = d.ratingCount, countLabel = d.countLabel, reviews = d.reviews,
         )
         edit { s -> if (s.custom.any { it.webRef == d.id }) s else s.copy(custom = s.custom + r) }
         message.value = "Added to Favorites"
         return newId
+    }
+
+    /**
+     * Hold-to-delete: recipes you added are deleted for good; built-in ones are hidden
+     * (Settings → Hidden recipes brings them back). Either way it comes off this week.
+     */
+    fun deleteRecipe(r: Recipe) {
+        edit { s ->
+            val base = s.copy(
+                week = s.week - r.id,
+                days = s.days - r.id,
+                sides = s.sides - r.id,
+                favs = s.favs - r.id,
+                storeSides = s.storeSides - r.id,
+            )
+            if (s.custom.any { it.id == r.id }) base.copy(
+                custom = s.custom.filterNot { it.id == r.id },
+                deletedNames = s.deletedNames + (r.id to "${r.emoji} ${r.name}"),
+            ) else base.copy(removed = s.removed + r.id)
+        }
+        browse.value = browse.value - r.id
+        for (i in browseSets.indices) browseSets[i] = browseSets[i] - r.id
+        message.value = if (r.imported) "Deleted ${r.name}" else "Hid ${r.name}"
+    }
+
+    fun restoreRecipe(id: Int) = edit { it.copy(removed = it.removed - id) }
+
+    private val reviewTried = mutableSetOf<Int>()
+
+    /** Recipes saved from online before reviews were kept: fetch their rating and reviews once. */
+    fun fetchReviewsIfMissing(r: Recipe) {
+        if (r.webRef.isEmpty() || r.rating != null || r.reviews.isNotEmpty() || !reviewTried.add(r.id)) return
+        viewModelScope.launch {
+            val d = runCatching { RecipeSources.details(r.webRef, state.value.spoonKey) }.getOrNull() ?: return@launch
+            if (d.rating == null && d.reviews.isEmpty()) return@launch
+            edit { s ->
+                s.copy(custom = s.custom.map {
+                    if (it.id == r.id) it.copy(rating = d.rating, ratingCount = d.ratingCount, countLabel = d.countLabel, reviews = d.reviews) else it
+                })
+            }
+        }
     }
 
     fun addCustomRecipe(name: String, emoji: String, base: Int, ingText: String, stepText: String): Boolean {

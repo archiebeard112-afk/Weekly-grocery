@@ -1,4 +1,5 @@
 package com.weeklymeals
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -179,6 +180,24 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     ) { Text(if (st.spoonKey.isBlank()) "Save key" else "Update key") }
                     if (st.spoonKey.isNotBlank()) {
                         Text("Key saved.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            val hiddenList = vm.recipes(st).values.filter { it.id in st.removed }.sortedBy { it.name }
+            SettingsCard("🙈", "Hidden recipes", if (hiddenList.isEmpty()) "None" else "${hiddenList.size} hidden") {
+                if (hiddenList.isEmpty()) {
+                    Text(
+                        "Hold down on a recipe tile to hide a built-in recipe or delete one you added.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                hiddenList.forEach { r ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${r.emoji}  ${r.name}", style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { vm.restoreRecipe(r.id) }) { Text("Show again") }
                     }
                 }
             }

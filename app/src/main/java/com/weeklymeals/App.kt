@@ -68,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
@@ -130,6 +131,8 @@ fun App(vm: MealsViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var overlay by rememberSaveable { mutableStateOf(Overlay.None) }
     var confirmRemove by remember { mutableStateOf<Recipe?>(null) }
+    // Hold a recipe tile: delete (your recipes) or hide (built-in ones), after confirming.
+    var confirmDelete by remember { mutableStateOf<Recipe?>(null) }
     var viewing by rememberSaveable { mutableStateOf<Int?>(null) }
     var cooking by rememberSaveable { mutableStateOf<Int?>(null) }
     // An online recipe being previewed (Spoonacular id).
@@ -263,10 +266,10 @@ fun App(vm: MealsViewModel) {
                     0 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 })
                     1 -> BrowseScreen(
                         vm, st, toggleFav,
-                        browseSearch, browseResults,
+                        browseSearch, browseResults, onHold = { confirmDelete = it },
                         onWeb = { webViewing = it }, onSettings = { overlay = Overlay.Settings },
                     ) { viewing = it }
-                    2 -> FavoritesScreen(vm, st, toggleFav, favGridState, favSearch, onOpen = { viewing = it }) { askAddMode = true }
+                    2 -> FavoritesScreen(vm, st, toggleFav, favGridState, favSearch, onHold = { confirmDelete = it }, onOpen = { viewing = it }) { askAddMode = true }
                     else -> ShopScreen(vm, st, shopListState) { overlay = Overlay.Settings }
                 }
             }
@@ -370,6 +373,27 @@ fun App(vm: MealsViewModel) {
                     askAddMode = false; addLinkMode = false; addFromLink = null; overlay = Overlay.AddRecipe
                 }) { Text("Type it in") }
             },
+        )
+    }
+
+    confirmDelete?.let { r ->
+        val mine = r.imported
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text(if (mine) "Delete ${r.name}?" else "Hide ${r.name}?") },
+            text = {
+                Text(
+                    (if (mine) "This removes the recipe for good."
+                    else "It won't show in Browse, search or Favorites. You can bring it back in Settings → Hidden recipes.") +
+                        if (r.id in st.week) " It will also come off this week and the shopping list." else "",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.deleteRecipe(r); confirmDelete = null }) {
+                    Text(if (mine) "Delete" else "Hide", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
         )
     }
 
@@ -508,6 +532,7 @@ private val cardColors @Composable get() = CardDefaults.cardColors(
 private fun BrowseScreen(
     vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit,
     search: SearchState, resultsState: LazyGridState,
+    onHold: (Recipe) -> Unit,
     onWeb: (String) -> Unit, onSettings: () -> Unit, onOpen: (Int) -> Unit,
 ) {
     val ids by vm.browse.collectAsState()
@@ -597,6 +622,7 @@ private fun BrowseScreen(
             // All matches, scrolling.
             val q = query.trim().lowercase()
             val matches = all.values.filter { r ->
+                r.id !in st.removed &&
                 matchesFilters(r, q, filters) && (!saleOnly || Sales.savings(r, st.servings, cache) >= Sales.MIN_SAVINGS)
             }.sortedBy { it.name }
             val showWeb = query.trim().length >= 3 && RecipeSources.effective(st) != RecipeSources.OFF
@@ -622,6 +648,7 @@ private fun BrowseScreen(
                         r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
                         Modifier.fillMaxWidth().height(96.dp),
                         saleSave = Sales.savings(r, st.servings, cache),
+                        onHold = { onHold(r) },
                     )
                 }
                 if (showWeb) {
@@ -678,6 +705,7 @@ private fun BrowseScreen(
                             r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
                             Modifier.weight(1f).fillMaxHeight(),
                             saleSave = Sales.savings(r, st.servings, cache),
+                            onHold = { onHold(r) },
                         )
                     }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -689,15 +717,17 @@ private fun BrowseScreen(
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun RecipeTile(
     r: Recipe, st: UserState, toggleFav: (Recipe) -> Unit,
     onAdd: () -> Unit, onOpen: () -> Unit, modifier: Modifier,
     saleSave: Double = 0.0,
+    onHold: (() -> Unit)? = null,
 ) {
     val inWeek = r.id in st.week
     Card(
         colors = if (inWeek) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else cardColors,
-        modifier = modifier.clickable(onClick = onOpen),
+        modifier = modifier.combinedClickable(onClick = onOpen, onLongClick = onHold),
     ) {
         Column(Modifier.fillMaxSize().padding(start = 10.dp, top = 6.dp, end = 2.dp, bottom = 2.dp)) {
             // Icon-only badges so they always fit (full labels are on the recipe page).
@@ -856,6 +886,8 @@ private fun RecipeScreen(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 6.dp),
             )
+            LaunchedEffect(r.id) { vm.fetchReviewsIfMissing(r) }
+            r.rating?.let { Row(Modifier.padding(top = 4.dp)) { RatingLine(it, r.ratingCount, r.countLabel, 16.dp) } }
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onCook) { Text("▶  Start cooking") }
                 // One button: adds the meal, or removes it once it's planned.
@@ -866,6 +898,7 @@ private fun RecipeScreen(
             if (inWeek) WeekControls(vm, st, r, side)
             SaleSection(vm, st, r)
             RecipeDetails(r, st.servings, if (inWeek) side else null)
+            ReviewsSection(r.id, r.rating, r.ratingCount, r.countLabel, r.reviews)
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -934,7 +967,7 @@ private val FAV_FILTERS = listOf(
 @Composable
 private fun FavoritesScreen(
     vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit,
-    gridState: LazyGridState, search: SearchState, onOpen: (Int) -> Unit, onAdd: () -> Unit,
+    gridState: LazyGridState, search: SearchState, onHold: (Recipe) -> Unit, onOpen: (Int) -> Unit, onAdd: () -> Unit,
 ) {
     var query by search.query
     var filters by search.filters
@@ -1002,6 +1035,7 @@ private fun FavoritesScreen(
                 r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
                 Modifier.fillMaxWidth().height(96.dp),
                 saleSave = Sales.savings(r, st.servings, cache),
+                onHold = { onHold(r) },
             )
         }
     }
@@ -1050,7 +1084,10 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
                         w.recipes.forEach { id ->
                             val r = all[id]
                             if (r == null) {
-                                Text("• (recipe no longer available)", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "• " + (st.deletedNames[id]?.let { "$it (deleted)" } ?: "(recipe no longer available)"),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
                             } else {
                                 val side = w.sides[id]?.let { vm.sideMap[it] }
                                 TextButton(onClick = { open = if (open == id) null else id }) {

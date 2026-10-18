@@ -30,7 +30,7 @@ object Logic {
     private val COUNT_UNITS = setOf("", "can", "bag", "bunch", "clove", "slices", "jar", "pkg", "box")
 
     fun isFav(r: Recipe, st: UserState): Boolean =
-        r.id !in st.hidden && (r.imported || r.id in st.favs)
+        r.id !in st.hidden && r.id !in st.removed && (r.imported || r.id in st.favs)
 
     fun scale(i: Ingredient, serv: Int, base: Int): Ingredient {
         var q = i.q * serv / base

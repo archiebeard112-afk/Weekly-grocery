@@ -26,6 +26,7 @@ data class ImportedRecipe(
 )
 
 /** One written review. */
+@kotlinx.serialization.Serializable
 data class Review(val author: String, val stars: Double?, val text: String)
 
 /**

@@ -20,6 +20,11 @@ data class Recipe(
     val tags: List<String> = emptyList(),
     /** Where an online recipe came from, e.g. "sp:123" or "ar:<link>" ("" = not from online). */
     val webRef: String = "",
+    /** Rating and written reviews saved from the site it came from. */
+    val rating: Double? = null,
+    val ratingCount: Int? = null,
+    val countLabel: String = "ratings",
+    val reviews: List<Review> = emptyList(),
 )
 
 @Serializable
@@ -108,6 +113,10 @@ data class UserState(
     val webSource: String = "",
     /** How online results are sorted: "top", "reviews" or "match". */
     val webSort: String = "top",
+    /** Built-in recipes you've hidden (they stop showing in Browse, search and Favorites). */
+    val removed: Set<Int> = emptySet(),
+    /** Names of recipes you deleted, so past weeks in History can still show them. */
+    val deletedNames: Map<Int, String> = emptyMap(),
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */
