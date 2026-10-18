@@ -1,5 +1,7 @@
 package com.weeklymeals
 
+import androidx.compose.foundation.layout.navigationBarsPadding
+
 import androidx.compose.foundation.gestures.detectTapGestures
 
 import androidx.compose.animation.core.LinearEasing
@@ -325,7 +327,7 @@ fun App(vm: MealsViewModel) {
             }
         }
     }
-    SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp))
+    SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
     }
 
     // "Pick a side" when adding a meal to the week.
@@ -1202,6 +1204,8 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
     val fmt = remember { java.text.SimpleDateFormat("EEE, MMM d, yyyy", java.util.Locale.getDefault()) }
     var confirmDelete by remember { mutableStateOf<PastWeek?>(null) }
     Scaffold(
+        // Shown under the app's top bar, so the status bar is already accounted for.
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         modifier = Modifier.swipeBack(onBack),
     ) { pad ->
         LazyColumn(

@@ -5,9 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
+import androidx.activity.enableEdgeToEdge
 
 class MainActivity : ComponentActivity() {
     private val vm: MealsViewModel by viewModels()
@@ -15,28 +13,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Timers.ensureChannel(this)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        goFullScreen()
+        // Normal layout: status bar and navigation bar showing, drawn in the app's dark colors.
+        enableEdgeToEdge()
         if (savedInstanceState == null) handle(intent)
         setContent { WeeklyTheme { App(vm) } }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        goFullScreen()
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) goFullScreen()
-    }
-
-    /** Hides the status bar and the home/back bar. Swipe from the edge to show them briefly. */
-    private fun goFullScreen() {
-        WindowInsetsControllerCompat(window, window.decorView).apply {
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            hide(WindowInsetsCompat.Type.systemBars())
-        }
     }
 
     // singleTask: Kroger sends you back here after sign-in.

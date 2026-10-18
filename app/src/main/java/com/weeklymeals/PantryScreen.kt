@@ -265,6 +265,8 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
     val lowCount = st.pantry.count { Pantry.isLow(it) }
 
     Scaffold(
+        // Shown under the app's top bar, so the status bar is already accounted for.
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         modifier = Modifier.swipeBack(onBack),
     ) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
