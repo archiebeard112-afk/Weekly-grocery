@@ -90,6 +90,13 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 
 private enum class Overlay { None, Settings, AddRecipe, History }
@@ -101,6 +108,8 @@ fun App(vm: MealsViewModel) {
     val picking by vm.picking.collectAsState()
     // Kept here so the Shop list keeps its scroll position while a product list is open.
     val shopListState = rememberLazyListState()
+    // Same for Favorites, so going back from a recipe returns to the same spot.
+    val favGridState = rememberLazyGridState()
     val msg by vm.message.collectAsState()
     val snack = remember { SnackbarHostState() }
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -214,7 +223,7 @@ fun App(vm: MealsViewModel) {
                 when (tab) {
                     0 -> BrowseScreen(vm, st, toggleFav) { viewing = it }
                     1 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 0 })
-                    2 -> FavoritesScreen(vm, st, toggleFav, onOpen = { viewing = it }) { askAddMode = true }
+                    2 -> FavoritesScreen(vm, st, toggleFav, favGridState, onOpen = { viewing = it }) { askAddMode = true }
                     else -> ShopScreen(vm, st, shopListState) { overlay = Overlay.Settings }
                 }
             }
@@ -627,7 +636,7 @@ private val FAV_FILTERS = listOf(
 @Composable
 private fun FavoritesScreen(
     vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit,
-    onOpen: (Int) -> Unit, onAdd: () -> Unit,
+    gridState: LazyGridState, onOpen: (Int) -> Unit, onAdd: () -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filters by rememberSaveable { mutableStateOf(listOf<String>()) }
@@ -639,6 +648,7 @@ private fun FavoritesScreen(
             filters.all { f -> if (f == "quick") Logic.cookMinutes(r) <= 30 else f in r.tags }
     }
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Fixed(2),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -654,16 +664,36 @@ private fun FavoritesScreen(
                         Text("Add recipe")
                     }
                 }
-                OutlinedTextField(
-                    query, { query = it },
-                    placeholder = { Text("Search favorites or ingredients") },
-                    leadingIcon = { Icon(Icons.Filled.Search, null) },
-                    trailingIcon = {
-                        if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, "Clear") }
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                )
+                // Compact one-line search box.
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 8.dp).height(42.dp)
+                        .clip(RoundedCornerShape(21.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(21.dp))
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.weight(1f)) {
+                        if (query.isEmpty()) {
+                            Text("Search", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        BasicTextField(
+                            query, { query = it },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    if (query.isNotEmpty()) {
+                        Icon(
+                            Icons.Filled.Close, "Clear",
+                            Modifier.size(18.dp).clickable { query = "" },
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
