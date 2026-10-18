@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -71,21 +72,34 @@ fun WeekScreen(vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrows
     Column(
         Modifier.fillMaxSize()
             .then(if (fits) Modifier else Modifier.verticalScroll(rememberScrollState()))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            // Same margins as Browse and Favorites.
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Cooking for", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            OutlinedButton(onClick = { vm.setServings(st.servings - 1) }) { Text("−") }
-            Text("${st.servings}", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 14.dp))
-            OutlinedButton(onClick = { vm.setServings(st.servings + 1) }) { Text("+") }
-        }
-        if (st.week.isNotEmpty()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("This week", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             Text(
-                "Tap a meal to open it. Hold and drag to move it to another day.",
-                style = MaterialTheme.typography.bodySmall,
+                "Cooking for",
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 8.dp),
             )
+            // Same height and style as Browse's More button.
+            FilledTonalButton(
+                onClick = { vm.setServings(st.servings - 1) },
+                contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.height(34.dp).width(40.dp),
+            ) { Text("−") }
+            Text(
+                "${st.servings}",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 10.dp),
+            )
+            FilledTonalButton(
+                onClick = { vm.setServings(st.servings + 1) },
+                contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.height(34.dp).width(40.dp),
+            ) { Text("+") }
         }
 
         rows.forEachIndexed { index, (label, id) ->

@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -115,27 +117,31 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
+            // Same margins as Browse and Favorites.
+            contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 16.dp),
         ) {
             item(key = "header") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Shopping list", style = MaterialTheme.typography.titleLarge)
-                        val meals = st.week.size
-                        val parts = listOfNotNull(
-                            if (meals > 0) "$meals meal${if (meals == 1) "" else "s"}" else null,
-                            if (st.snacks.isNotEmpty()) "${st.snacks.size} snack${if (st.snacks.size == 1) "" else "s"}" else null,
-                            if (st.pickedStaples.isNotEmpty()) "${st.pickedStaples.size} usual" else null,
-                            if (st.extraItems.isNotEmpty()) "${st.extraItems.size} added" else null,
-                        )
-                        Text(
-                            if (parts.isEmpty()) "Nothing yet" else parts.joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                Row(
+                    Modifier.fillMaxWidth().height(34.dp).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Shopping list", style = MaterialTheme.typography.titleLarge)
+                    val meals = st.week.size
+                    val parts = listOfNotNull(
+                        if (meals > 0) "$meals meal${if (meals == 1) "" else "s"}" else null,
+                        if (st.snacks.isNotEmpty()) "${st.snacks.size} snack${if (st.snacks.size == 1) "" else "s"}" else null,
+                        if (st.pickedStaples.isNotEmpty()) "${st.pickedStaples.size} usual" else null,
+                        if (st.extraItems.isNotEmpty()) "${st.extraItems.size} added" else null,
+                    )
+                    Text(
+                        if (parts.isEmpty()) "Nothing yet" else parts.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
+                    )
                     Box {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                        IconButton(onClick = { menu = true }, modifier = Modifier.size(34.dp)) { Icon(Icons.Filled.MoreVert, "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(
                                 text = { Text("Bring back all \"Already have\" items") },
@@ -149,18 +155,13 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                     }
                 }
                 val add = { vm.addExtraItem(newItem); newItem = ""; focus.clearFocus() }
-                OutlinedTextField(
+                // Slim rounded bar, same as the Search bar on Browse and Favorites.
+                CompactSearch(
                     newItem, { newItem = it },
-                    placeholder = { Text("+ Add an item…") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { add() }),
-                    trailingIcon = {
-                        if (newItem.isNotEmpty()) {
-                            IconButton(onClick = { newItem = "" }) { Icon(Icons.Filled.Close, "Clear") }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    Modifier.padding(top = 6.dp),
+                    placeholder = "Add an item",
+                    icon = Icons.Filled.Add,
+                    onDone = { add() },
                 )
                 // Dropdown of matches while typing.
                 if (newItem.trim().length >= 2) {
@@ -314,25 +315,19 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
 private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
     val chips = vm.quickAdd(st)
     if (chips.isEmpty()) return
-    Text(
-        "Quick add · what you buy most",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 10.dp),
-    )
+    // Same size and spacing as the filter chips on Browse.
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 4.dp),
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         chips.forEach { (term, b) ->
             val on = vm.onList(st, b.name)
             val emoji = SnackCatalog.find(b.name).emoji.takeIf { it != "⭐" } ?: stapleEmoji(b.name)
-            Text(
-                (if (on) "✓ " else "") + "$emoji ${b.name}",
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-                color = if (on) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
+            // 32dp tall like a filter chip; long names end in "…".
+            Box(
+                Modifier
+                    .widthIn(max = 200.dp)
+                    .height(32.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(if (on) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
@@ -340,8 +335,17 @@ private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
                         onClick = { vm.toggleQuickAdd(b.name) },
                         onLongClick = { vm.forgetQuickAdd(term, b.name) },
                     )
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    (if (on) "✓ " else "") + "$emoji ${b.name}",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = if (on) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
     }
 }

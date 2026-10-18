@@ -122,6 +122,7 @@ fun App(vm: MealsViewModel) {
     val favGridState = rememberLazyGridState()
     val msg by vm.message.collectAsState()
     val snack = remember { SnackbarHostState() }
+    // Tabs: 0 Week (opens here), 1 Browse, 2 Favorites, 3 Shop.
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var overlay by rememberSaveable { mutableStateOf(Overlay.None) }
     var confirmRemove by remember { mutableStateOf<Recipe?>(null) }
@@ -211,12 +212,12 @@ fun App(vm: MealsViewModel) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = tab == 0, onClick = { tab = 0 },
-                        icon = { Icon(Icons.Filled.Search, null) }, label = { TabLabel("Browse") },
+                        icon = { CountIcon(st.week.size) { Icon(Icons.Filled.DateRange, null) } },
+                        label = { TabLabel("Week") },
                     )
                     NavigationBarItem(
                         selected = tab == 1, onClick = { tab = 1 },
-                        icon = { CountIcon(st.week.size) { Icon(Icons.Filled.DateRange, null) } },
-                        label = { TabLabel("Week") },
+                        icon = { Icon(Icons.Filled.Search, null) }, label = { TabLabel("Browse") },
                     )
                     NavigationBarItem(
                         selected = tab == 2, onClick = { tab = 2 },
@@ -231,8 +232,8 @@ fun App(vm: MealsViewModel) {
         ) { pad ->
             Column(Modifier.padding(pad).fillMaxSize()) {
                 when (tab) {
-                    0 -> BrowseScreen(vm, st, toggleFav) { viewing = it }
-                    1 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 0 })
+                    0 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 })
+                    1 -> BrowseScreen(vm, st, toggleFav) { viewing = it }
                     2 -> FavoritesScreen(vm, st, toggleFav, favGridState, onOpen = { viewing = it }) { askAddMode = true }
                     else -> ShopScreen(vm, st, shopListState) { overlay = Overlay.Settings }
                 }
@@ -776,7 +777,12 @@ private fun RecipeScreen(
 
 /** Slim one-line "Search" box used on Browse and Favorites. */
 @Composable
-private fun CompactSearch(query: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+internal fun CompactSearch(
+    query: String, onChange: (String) -> Unit, modifier: Modifier = Modifier,
+    placeholder: String = "Search",
+    icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Filled.Search,
+    onDone: (() -> Unit)? = null,
+) {
     Row(
         modifier.fillMaxWidth().height(42.dp)
             .clip(RoundedCornerShape(21.dp))
@@ -784,15 +790,22 @@ private fun CompactSearch(query: String, onChange: (String) -> Unit, modifier: M
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Filled.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(8.dp))
         Box(Modifier.weight(1f)) {
             if (query.isEmpty()) {
-                Text("Search", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(placeholder, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             BasicTextField(
                 query, onChange,
                 singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = if (onDone != null) androidx.compose.ui.text.input.ImeAction.Done
+                    else androidx.compose.ui.text.input.ImeAction.Search,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = { onDone?.invoke() },
+                ),
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 modifier = Modifier.fillMaxWidth(),
