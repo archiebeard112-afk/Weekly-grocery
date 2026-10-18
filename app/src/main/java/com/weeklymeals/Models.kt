@@ -90,6 +90,10 @@ data class UserState(
     val extraItems: List<String> = emptyList(),
     /** Last week's one-off items, offered as Quick add chips. */
     val lastExtraItems: List<String> = emptyList(),
+    /** Extras you've sent to the cart through the app, by store search term (drives Quick add). */
+    val bought: Map<String, Bought> = emptyMap(),
+    /** True once Quick add has been seeded from your earlier snacks and usual items. */
+    val boughtSeeded: Boolean = false,
     /** Shop items marked "Already have" (by store search term); left out of the cart. */
     val haveTerms: Set<String> = emptySet(),
     /** Today's sale prices for main ingredients. */
@@ -103,4 +107,12 @@ data class PastWeek(
     val recipes: List<Int>,
     val sides: Map<Int, String> = emptyMap(),
     val servings: Int = 2,
+)
+
+/** An extra item you've bought through the app: how often and when. */
+@Serializable
+data class Bought(
+    val name: String,
+    val count: Int = 1,
+    val last: Long = 0L,
 )

@@ -67,6 +67,11 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilterChip
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
@@ -75,7 +80,7 @@ import java.util.Locale
  * Tap "Have it" to leave an item out, tap the product to change it, then Add to cart.
  */
 @Composable
-fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, openSettings: () -> Unit, openQuickAdd: () -> Unit) {
+fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, openSettings: () -> Unit) {
     val ctx = LocalContext.current
     val focus = LocalFocusManager.current
     val products by vm.products.collectAsState()
@@ -194,7 +199,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         }
                     }
                 }
-                QuickAddChips(vm, st, openQuickAdd)
+                QuickAddChips(vm, st)
                 if (!hasStore) {
                     TextButton(onClick = openSettings) {
                         Text("Pick your King Soopers store in Settings to see products and prices")
@@ -290,24 +295,41 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
     }
 }
 
-/** Tappable chips under the Add box: usual items, regular snacks, last week's extras, and More…. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Your most-bought extras as chips. Tap to add or remove; long-press to stop suggesting it. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun QuickAddChips(vm: MealsViewModel, st: UserState, openQuickAdd: () -> Unit) {
-    data class Chip(val label: String, val on: Boolean, val toggle: () -> Unit)
-    val snacks = (st.lastSnacks + st.customSnacks + st.snacks).distinct()
-    val extras = (st.lastExtraItems + st.extraItems).distinctBy { it.lowercase() }
-    val chips = st.staples.map { n -> Chip("${stapleEmoji(n)} $n", n in st.pickedStaples) { vm.toggleStaple(n) } } +
-        snacks.map { n -> Chip("${SnackCatalog.find(n).emoji} $n", n in st.snacks) { vm.toggleSnack(n) } } +
-        extras.map { n -> Chip("🛒 $n", st.extraItems.any { it.equals(n, true) }) { vm.toggleExtraItem(n) } }
+private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
+    val chips = vm.quickAdd(st)
+    if (chips.isEmpty()) return
+    Text(
+        "Quick add · what you buy most",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 10.dp),
+    )
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        chips.forEach { c ->
-            FilterChip(selected = c.on, onClick = c.toggle, label = { Text(c.label, maxLines = 1) })
+        chips.forEach { (term, b) ->
+            val on = vm.onList(st, b.name)
+            val emoji = SnackCatalog.find(b.name).emoji.takeIf { it != "⭐" } ?: stapleEmoji(b.name)
+            Text(
+                (if (on) "✓ " else "") + "$emoji ${b.name}",
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                color = if (on) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (on) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                    .combinedClickable(
+                        onClick = { vm.toggleQuickAdd(b.name) },
+                        onLongClick = { vm.forgetQuickAdd(term, b.name) },
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
         }
-        AssistChip(onClick = openQuickAdd, label = { Text("More…") })
     }
 }
 
@@ -355,7 +377,10 @@ private fun ShopRow(vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore:
                 )
                 if (line != null && p != null) {
                     OutlinedButton(
-                        onClick = { vm.setQuantity(g.term, line.quantity - 1) },
+                        onClick = {
+                            if (line.quantity <= 1 && g.aisle == EXTRAS) vm.removeExtra(g)
+                            else vm.setQuantity(g.term, line.quantity - 1)
+                        },
                         contentPadding = PaddingValues(0.dp), modifier = Modifier.size(34.dp),
                     ) { Text("−") }
                     Text("${line.quantity}", modifier = Modifier.padding(horizontal = 10.dp))

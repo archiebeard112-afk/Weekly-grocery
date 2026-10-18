@@ -87,6 +87,19 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshBrowse()
+        // One time: seed Quick add with the snacks and usual items picked before.
+        viewModelScope.launch {
+            store.update { s ->
+                if (s.boughtSeeded) s else {
+                    val now = System.currentTimeMillis()
+                    val names = (s.lastSnacks + s.snacks + s.lastStaples + s.pickedStaples + s.lastExtraItems).distinctBy { it.lowercase() }
+                    s.copy(
+                        boughtSeeded = true,
+                        bought = s.bought + names.associate { Logic.searchTerm(it) to Bought(it, 1, now) },
+                    )
+                }
+            }
+        }
     }
 
     fun recipes(st: UserState = state.value): Map<Int, Recipe> =
@@ -668,6 +681,48 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setQuantity(term: String, q: Int) = updateLine(term) { it.copy(quantity = q.coerceIn(1, 20)) }
 
+    /** Takes an Extras item (snack, usual item or added item) off this week's list. */
+    fun removeExtra(g: ShopGroup) = edit { s ->
+        var out = s
+        g.items.forEach { i ->
+            out = when {
+                i.key.startsWith("snack:") -> out.copy(snacks = out.snacks.filterNot { it.equals(i.name, true) }.toSet())
+                i.key.startsWith("usual:") -> out.copy(pickedStaples = out.pickedStaples.filterNot { it.equals(i.name, true) }.toSet())
+                i.key.startsWith("extra:") -> out.copy(extraItems = out.extraItems.filterNot { it.equals(i.name, true) })
+                else -> out
+            }
+        }
+        out
+    }
+
+    /** Your most-bought extras: how often, with a boost for recent buys. Top 12. */
+    fun quickAdd(st: UserState = state.value): List<Pair<String, Bought>> {
+        val now = System.currentTimeMillis()
+        val day = 86_400_000.0
+        return st.bought.entries
+            .sortedByDescending { (_, b) -> b.count + 2.0 / (1.0 + (now - b.last) / (7 * day)) }
+            .take(12)
+            .map { it.key to it.value }
+    }
+
+    /** True if this extra is on this week's list (as a snack, usual item or added item). */
+    fun onList(st: UserState, name: String): Boolean =
+        st.extraItems.any { it.equals(name, true) } || st.snacks.any { it.equals(name, true) } ||
+            st.pickedStaples.any { it.equals(name, true) }
+
+    fun toggleQuickAdd(name: String) = edit { s ->
+        if (onList(s, name)) s.copy(
+            extraItems = s.extraItems.filterNot { it.equals(name, true) },
+            snacks = s.snacks.filterNot { it.equals(name, true) }.toSet(),
+            pickedStaples = s.pickedStaples.filterNot { it.equals(name, true) }.toSet(),
+        ) else s.copy(extraItems = s.extraItems + name)
+    }
+
+    fun forgetQuickAdd(term: String, name: String) {
+        edit { it.copy(bought = it.bought - term) }
+        message.value = "Removed $name from Quick add"
+    }
+
     /** Searches King Soopers again for one item with your own words (e.g. "jasmine rice"). */
     fun researchLine(term: String, query: String) {
         val q = query.trim()
@@ -724,7 +779,16 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                         val p = it.product!!
                         "term:${it.term}" to Choice(p.upc, p.title, if (it.search != it.term) it.search else "")
                     }
-                    s.copy(kroger = s.kroger.copy(choices = s.kroger.choices + newChoices))
+                    // Remember the extras you buy, for Quick add.
+                    val now = System.currentTimeMillis()
+                    val extraTerms = shopGroups(s).filter { it.aisle == EXTRAS }.associateBy { it.term }
+                    val bought = s.bought.toMutableMap()
+                    chosen.filter { it.term in extraTerms }.forEach { l ->
+                        val name = extraTerms.getValue(l.term).items.first().name
+                        val old = bought[l.term]
+                        bought[l.term] = Bought(name, (old?.count ?: 0) + 1, now)
+                    }
+                    s.copy(kroger = s.kroger.copy(choices = s.kroger.choices + newChoices), bought = bought)
                 }
                 message.value = "Added ${chosen.size} items to your King Soopers cart"
                 openCart.value = true
