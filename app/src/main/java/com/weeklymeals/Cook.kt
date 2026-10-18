@@ -113,7 +113,7 @@ object Cook {
         RegexOption.IGNORE_CASE,
     )
 
-    private fun amountText(i: Ingredient): String {
+    fun amountText(i: Ingredient): String {
         val q = Logic.fmt(i.q)
         val u = if (i.q > 1.0) pluralUnits[i.u] ?: i.u else i.u
         return listOf(q, u).filter { it.isNotBlank() }.joinToString(" ")
@@ -142,41 +142,112 @@ object Cook {
     /** A step split into plain text and highlighted amounts. */
     data class Piece(val text: String, val isAmount: Boolean)
 
+    /** Amounts already written in a step: "3 tbsp", "2 tablespoons of", "1 1/2 cups", "½ pound". */
+    private val writtenAmount = Regex(
+        "(\\d+\\s+\\d/\\d|\\d+[½¼¾]|\\d/\\d|\\d+(?:\\.\\d+)?|[½¼¾])\\s*" +
+            "(tablespoons?|tbsps?\\.?|teaspoons?|tsps?\\.?|cups?|pounds?|lbs?\\.?|ounces?|oz\\.?|cloves?)\\b(\\s+of)?",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private fun parseNum(s: String): Double? {
+        val t = s.trim()
+        val frac = mapOf('½' to 0.5, '¼' to 0.25, '¾' to 0.75)
+        Regex("^(\\d+)\\s+(\\d)/(\\d)$").find(t)?.let {
+            return it.groupValues[1].toDouble() + it.groupValues[2].toDouble() / it.groupValues[3].toDouble()
+        }
+        Regex("^(\\d)/(\\d)$").find(t)?.let { return it.groupValues[1].toDouble() / it.groupValues[2].toDouble() }
+        val last = t.lastOrNull() ?: return null
+        frac[last]?.let { f ->
+            val whole = t.dropLast(1)
+            return (if (whole.isEmpty()) 0.0 else whole.toDoubleOrNull() ?: return null) + f
+        }
+        return t.toDoubleOrNull()
+    }
+
+    private val singularUnit = mapOf(
+        "tablespoons" to "tablespoon", "teaspoons" to "teaspoon", "cups" to "cup",
+        "pounds" to "pound", "ounces" to "ounce", "cloves" to "clove",
+    )
+    private val pluralUnit = singularUnit.entries.associate { (k, v) -> v to k }
+
+    /** "tablespoons" -> "tablespoon" when the scaled amount is 1 or less, and back. */
+    private fun unitFor(u: String, q: Double): String {
+        val w = u.lowercase()
+        return when {
+            q <= 1.0 && w in singularUnit -> singularUnit.getValue(w)
+            q > 1.0 && w in pluralUnit -> pluralUnit.getValue(w)
+            else -> u
+        }
+    }
+
+    private data class Edit(val range: IntRange, val text: String)
+
     /**
-     * Adds the amount in front of the first mention of each ingredient across the steps.
-     * Skips mentions that already have an amount right before them ("3 tbsp butter").
+     * Highlights amounts in the steps, scaled by [factor] (servings ÷ recipe servings):
+     *  - amounts already written ("3 tbsp butter") are scaled and highlighted with the ingredient;
+     *  - otherwise the amount is added in front of the first mention ("2 cloves garlic").
+     * [ings] are already scaled to servings.
      */
-    fun withAmounts(steps: List<String>, ings: List<Ingredient>): List<List<Piece>> {
+    fun withAmounts(steps: List<String>, ings: List<Ingredient>, factor: Double): List<List<Piece>> {
         val usable = ings.filter { it.q > 0 }
         val done = mutableSetOf<Int>() // ingredient indexes already shown
-        // Per step: the matched word's range -> amount text
-        val inserts = steps.map { mutableListOf<Pair<IntRange, String>>() }
+        val edits = steps.map { mutableListOf<Edit>() }
         val claimed = steps.map { mutableListOf<IntRange>() }
+        fun overlaps(si: Int, r: IntRange) = claimed[si].any { it.first <= r.last && r.first <= it.last }
+
+        // 1) Amounts already written in the step.
+        for ((si, step) in steps.withIndex()) {
+            for (m in writtenAmount.findAll(step)) {
+                if (overlaps(si, m.range)) continue
+                val n = parseNum(m.groupValues[1]) ?: continue
+                val q = n * factor
+                var end = m.range.last
+                // Include the ingredient right after it ("3 tbsp [unsalted] butter"), if it's one of ours.
+                val after = step.substring(end + 1)
+                found@ for (tier in 0..2) {
+                    for ((idx, ing) in usable.withIndex()) {
+                        val phrase = phrases(ing.name).getOrNull(tier)?.firstOrNull() ?: continue
+                        val rx = Regex("^\\s+(?:[A-Za-z-]+\\s+){0,2}?" + Regex.escape(phrase) + "(e?s)?\\b", RegexOption.IGNORE_CASE)
+                        val mm = rx.find(after) ?: continue
+                        end += mm.value.length
+                        done += idx
+                        break@found
+                    }
+                }
+                val text = Logic.fmt(q) + " " + unitFor(m.groupValues[2], q) + m.groupValues[3] +
+                    step.substring(m.range.last + 1, end + 1)
+                val range = m.range.first..end
+                edits[si] += Edit(range, text)
+                claimed[si] += range
+            }
+        }
+
+        // 2) Add amounts in front of the first plain mention of each remaining ingredient.
         for (tier in 0..2) {
             for ((idx, ing) in usable.withIndex()) {
                 if (idx in done) continue
                 val phrase = phrases(ing.name).getOrNull(tier)?.firstOrNull() ?: continue
                 val rx = Regex("\\b" + Regex.escape(phrase) + "(e?s)?\\b", RegexOption.IGNORE_CASE)
                 for ((si, step) in steps.withIndex()) {
-                    val m = rx.findAll(step).firstOrNull { mm -> claimed[si].none { it.first <= mm.range.last && mm.range.first <= it.last } }
-                        ?: continue
+                    val m = rx.findAll(step).firstOrNull { !overlaps(si, it.range) } ?: continue
                     claimed[si] += m.range
                     done += idx
                     if (!amountBefore.containsMatchIn(step.substring(0, m.range.first))) {
-                        inserts[si] += m.range to amountText(ing)
+                        edits[si] += Edit(m.range, amountText(ing) + " " + m.value)
                     }
                     break
                 }
             }
         }
+
         return steps.mapIndexed { si, step ->
             val pieces = mutableListOf<Piece>()
             var at = 0
-            // "Sauté garlic" -> "Sauté " + bold("2 cloves garlic")
-            inserts[si].sortedBy { it.first.first }.forEach { (range, amt) ->
-                pieces += Piece(step.substring(at, range.first), false)
-                pieces += Piece("$amt " + step.substring(range.first, range.last + 1), true)
-                at = range.last + 1
+            edits[si].sortedBy { it.range.first }.forEach { e ->
+                if (e.range.first < at) return@forEach
+                pieces += Piece(step.substring(at, e.range.first), false)
+                pieces += Piece(e.text, true)
+                at = e.range.last + 1
             }
             pieces += Piece(step.substring(at), false)
             pieces
@@ -198,9 +269,9 @@ fun CookScreen(vm: MealsViewModel, st: UserState, id: Int, timerCtl: (Recipe) ->
     val serv = st.servings
     val steps = remember(r, side) { Cook.order(r, side) }
     // Amounts scaled to "Cooking for", added after each ingredient's first mention.
-    val mainPieces = remember(r, serv) { Cook.withAmounts(r.steps, r.ingredients.map { Logic.scale(it, serv, r.base) }) }
+    val mainPieces = remember(r, serv) { Cook.withAmounts(r.steps, r.ingredients.map { Logic.scale(it, serv, r.base) }, serv.toDouble() / r.base) }
     val sidePieces = remember(side, serv) {
-        side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, serv, 4) }) } ?: emptyList()
+        side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, serv, 4) }, serv / 4.0) } ?: emptyList()
     }
     var finished by remember(id) { mutableStateOf(setOf<Int>()) }
     val mainCtl = timerCtl(r)
@@ -310,33 +381,47 @@ private fun StepTag(step: CookStep, r: Recipe, side: Side?) {
 
 @Composable
 private fun IngredientsPage(r: Recipe, side: Side?, sideName: String?, serv: Int, steps: List<CookStep>) {
-    var got by remember(r.id) { mutableStateOf(setOf<String>()) }
-    Text("Get everything out", style = MaterialTheme.typography.headlineSmall)
+    Text("Ingredients", style = MaterialTheme.typography.titleLarge)
     if (side != null && sideName != null) {
-        Spacer(Modifier.height(6.dp))
         Text(
             if (Cook.sideFirst(steps)) "Start with the $sideName. You'll start ${r.name} partway through."
             else "Start with ${r.name}. You'll start the $sideName partway through.",
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.primary,
         )
     }
-    @Composable
-    fun group(title: String, lines: List<String>) {
-        Spacer(Modifier.height(14.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        lines.forEach { line ->
-            Row(
-                Modifier.fillMaxWidth().clickable { got = if (line in got) got - line else got + line },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Checkbox(checked = line in got, onCheckedChange = { c -> got = if (c) got + line else got - line })
-                Text(line, style = MaterialTheme.typography.bodyLarge)
+    IngredientColumns("${r.emoji} ${r.name} (for $serv)", r.ingredients.map { Logic.scale(it, serv, r.base) })
+    if (side != null) IngredientColumns("${side.label} (side)", side.ingredients.map { Logic.scale(it, serv, 4) })
+}
+
+/** Compact ingredient list in two columns: bold amount, then the name. */
+@Composable
+private fun IngredientColumns(title: String, items: List<Ingredient>) {
+    val highlight = MaterialTheme.colorScheme.primary
+    Spacer(Modifier.height(12.dp))
+    Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+    Spacer(Modifier.height(4.dp))
+    val half = (items.size + 1) / 2
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        listOf(items.take(half), items.drop(half)).forEach { col ->
+            Column(Modifier.weight(1f)) {
+                col.forEach { i ->
+                    val amt = if (i.q > 0) Cook.amountText(i) else ""
+                    Text(
+                        buildAnnotatedString {
+                            if (amt.isNotEmpty()) {
+                                withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) { append(amt) }
+                                append(" ")
+                            }
+                            append(i.name.replaceFirstChar { it.lowercase() })
+                        },
+                        fontSize = 13.sp, lineHeight = 18.sp,
+                        modifier = Modifier.padding(vertical = 1.dp),
+                    )
+                }
             }
         }
     }
-    group("${r.emoji} ${r.name} (for $serv)", r.ingredients.map { Logic.ingText(it, serv, r.base) })
-    if (side != null) group("${side.label} (side)", side.ingredients.map { Logic.ingText(it, serv, 4) })
 }
 
 /** Small strip of every timer running for this meal, so you can see them while scrolling. */
