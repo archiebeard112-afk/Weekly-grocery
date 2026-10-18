@@ -1,5 +1,9 @@
 package com.weeklymeals
 
+import androidx.compose.foundation.gestures.detectTapGestures
+
+import androidx.compose.animation.core.LinearEasing
+
 import androidx.compose.ui.text.font.FontWeight
 
 import androidx.compose.ui.text.withStyle
@@ -253,7 +257,11 @@ fun App(vm: MealsViewModel) {
             onSaved = { openWhenSaved = it },
         ) { webViewing = null; sideWebFor = null }
     } else if (overlay == Overlay.None && viewing != null) {
-        RecipeScreen(vm, st, viewing!!, toggleFav, timerCtl, onCook = { cooking = viewing }) { viewing = null }
+        RecipeScreen(
+            vm, st, viewing!!, toggleFav, timerCtl, onCook = { cooking = viewing },
+            // After holding to remove: back to Week to see the open day.
+            onRemoved = { viewing = null; overlay = Overlay.None; tab = 0 },
+        ) { viewing = null }
     } else if (overlay == Overlay.AddRecipe) {
         AddRecipeScreen(vm, linkMode = addLinkMode, startLink = addFromLink) { overlay = Overlay.None; addFromLink = null }
     } else {
@@ -857,7 +865,7 @@ private fun WeekControls(vm: MealsViewModel, st: UserState, r: Recipe, side: Sid
 @Composable
 private fun RecipeScreen(
     vm: MealsViewModel, st: UserState, id: Int, toggleFav: (Recipe) -> Unit,
-    timerCtl: (Recipe) -> TimerCtl, onCook: () -> Unit, onBack: () -> Unit,
+    timerCtl: (Recipe) -> TimerCtl, onCook: () -> Unit, onRemoved: () -> Unit = {}, onBack: () -> Unit,
 ) {
     val r = vm.recipes(st)[id]
     if (r == null) { onBack(); return }
@@ -924,12 +932,23 @@ private fun RecipeScreen(
                 Button(onClick = onCook, contentPadding = pad, modifier = Modifier.weight(1f).fillMaxHeight()) {
                     Text("▶  Start cooking", textAlign = TextAlign.Center, maxLines = 2)
                 }
-                // One button: adds the meal, or removes it once it's planned. Label may wrap, centered.
-                OutlinedButton(
-                    onClick = { if (inWeek) vm.removeFromWeek(id) else vm.requestAdd(id) },
-                    contentPadding = pad, modifier = Modifier.weight(1f).fillMaxHeight(),
-                ) {
-                    Text(if (inWeek) "Remove from week" else "Add to week", textAlign = TextAlign.Center, maxLines = 2)
+                // Adds the meal; once it's planned, you hold for 3 seconds to remove it.
+                if (inWeek) {
+                    HoldToRemoveButton(
+                        Modifier.weight(1f).fillMaxHeight(),
+                        onHint = { vm.message.value = "Hold to remove from week" },
+                    ) {
+                        vm.removeFromWeek(id)
+                        vm.message.value = "Removed ${r.name} from your week"
+                        onRemoved()
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = { vm.requestAdd(id) },
+                        contentPadding = pad, modifier = Modifier.weight(1f).fillMaxHeight(),
+                    ) {
+                        Text("Add to week", textAlign = TextAlign.Center, maxLines = 2)
+                    }
                 }
             }
             if (inWeek) WeekControls(vm, st, r, side)
@@ -1235,6 +1254,52 @@ private fun TopIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label
         Icon(
             icon, contentDescription = label,
             tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+private const val HOLD_MS = 3000
+
+/**
+ * "Hold to remove": fills with red while you hold it. Let go early and it fades back;
+ * hold the full 3 seconds and it buzzes and calls [onRemove]. A quick tap shows a hint.
+ */
+@Composable
+private fun HoldToRemoveButton(modifier: Modifier, onHint: () -> Unit, onRemove: () -> Unit) {
+    val progress = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val red = MaterialTheme.colorScheme.error
+    val holding = progress.value > 0.02f
+    Box(
+        modifier
+            .clip(RoundedCornerShape(20.dp))
+            .border(1.dp, if (holding) red else MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
+            .background(red.copy(alpha = 0.85f * progress.value))
+            .pointerInput(Unit) {
+                detectTapGestures(onPress = {
+                    val fill = scope.launch {
+                        progress.animateTo(1f, tween(((1f - progress.value) * HOLD_MS).toInt(), easing = LinearEasing))
+                        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onRemove()
+                        progress.snapTo(0f)
+                    }
+                    val released = tryAwaitRelease()
+                    if (fill.isActive) {
+                        fill.cancel()
+                        if (released && progress.value < 0.15f) onHint()
+                        scope.launch { progress.animateTo(0f, tween(250)) }
+                    }
+                })
+            }
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            if (holding) "Keep holding…" else "Hold to remove",
+            textAlign = TextAlign.Center, maxLines = 2,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (progress.value > 0.5f) MaterialTheme.colorScheme.onError else if (holding) red else MaterialTheme.colorScheme.primary,
         )
     }
 }
