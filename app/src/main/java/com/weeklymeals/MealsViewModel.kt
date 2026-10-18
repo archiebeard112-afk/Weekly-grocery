@@ -1304,7 +1304,12 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun setBudgetMax(v: Double) = edit { it.copy(budgetMax = v) }
 
     /** What a meal costs: [total] to buy, and [saved] by what you already have (pantry, Already have). */
-    data class MealCost(val total: Double, val saved: Double)
+    data class MealCost(
+        val total: Double,
+        val saved: Double,
+        /** Price per shopping item (by store search term), and whether you already have it. */
+        val lines: Map<String, Pair<Double, Boolean>> = emptyMap(),
+    )
 
     private val costCache = HashMap<List<Any?>, MealCost?>()
 
@@ -1319,13 +1324,16 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             var total = 0.0
             var saved = 0.0
             var known = 0
+            val lines = mutableMapOf<String, Pair<Double, Boolean>>()
             items.groupBy { Logic.searchTerm(it.name) }.forEach { (term, list) ->
                 val c = Prices.cost(term + " " + list.first().name, list, prods[term]?.product) ?: return@forEach
                 known++
                 val g = ShopGroup(term, list, list.first().aisle, emptyList())
-                if (term in st.haveTerms || pantryStatus(st, g) == PantryStatus.COVERED) saved += c else total += c
+                val have = term in st.haveTerms || pantryStatus(st, g) == PantryStatus.COVERED
+                if (have) saved += c else total += c
+                lines[term] = c to have
             }
-            if (known == 0) null else MealCost(total, saved)
+            if (known == 0) null else MealCost(total, saved, lines)
         }
     }
 

@@ -479,14 +479,70 @@ internal fun Heading(text: String) {
 }
 
 @Composable
-private fun RecipeDetails(r: Recipe, serv: Int, side: Side?, ctl: TimerCtl? = null) {
+private fun RecipeDetails(
+    r: Recipe, serv: Int, side: Side?, ctl: TimerCtl? = null,
+    cost: MealsViewModel.MealCost? = null, budgetMax: Double = 0.0,
+) {
+    // Each shopping item's price shows once, on its first ingredient line.
+    val priced = mutableSetOf<String>()
+    @Composable
+    fun line(i: Ingredient, base: Int) {
+        val term = Logic.searchTerm(i.name)
+        val price = cost?.lines?.get(term)
+        val first = price != null && priced.add(term)
+        Row(verticalAlignment = Alignment.Top) {
+            Text("• " + Logic.ingText(i, serv, base), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            if (cost != null) {
+                Text(
+                    when {
+                        price == null -> "—"
+                        !first -> "incl. above"
+                        price.second -> "$0.00 🫙"
+                        else -> Sales.money(price.first)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (first && price?.second == true) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
+            }
+        }
+    }
     Heading("Ingredients (for $serv)")
-    r.ingredients.forEach { Text("• " + Logic.ingText(it, serv, r.base), style = MaterialTheme.typography.bodyMedium) }
+    r.ingredients.forEach { line(it, r.base) }
+    if (side != null && side.ingredients.isNotEmpty()) {
+        Text("Side: ${side.label}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
+        side.ingredients.forEach { line(it, 4) }
+    }
+    if (cost != null) {
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Row {
+            Text("Total", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+            Text(
+                Sales.money(cost.total), style = MaterialTheme.typography.titleSmall,
+                color = if (cost.total <= budgetMax) BUDGET_GREEN else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+        if (cost.saved >= 0.01) {
+            Row {
+                Text(
+                    "You save with what you have", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), textAlign = TextAlign.End,
+                )
+                Text(Sales.money(cost.saved), style = MaterialTheme.typography.bodySmall, color = BUDGET_GREEN, modifier = Modifier.padding(start = 12.dp))
+            }
+        }
+        Text(
+            "Prices are for whole packages, as you'd buy them.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+    }
     Heading("Steps")
     Steps(r.steps, ctl)
     if (side != null) {
         Heading("Side: ${side.label}")
-        side.ingredients.forEach { Text("• " + Logic.ingText(it, serv, 4), style = MaterialTheme.typography.bodyMedium) }
         Spacer(Modifier.padding(2.dp))
         Steps(side.steps, ctl?.copy(prefix = ctl.prefix + "side", title = side.label.substringAfter(" ")))
     }
@@ -953,7 +1009,7 @@ private fun RecipeScreen(
             }
             if (inWeek) WeekControls(vm, st, r, side)
             SaleSection(vm, st, r)
-            RecipeDetails(r, st.servings, if (inWeek) side else null)
+            RecipeDetails(r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax)
             ReviewsSection(r.id, r.rating, r.ratingCount, r.countLabel, r.reviews)
             Spacer(Modifier.height(24.dp))
         }
