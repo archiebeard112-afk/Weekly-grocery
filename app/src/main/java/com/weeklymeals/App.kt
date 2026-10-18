@@ -716,8 +716,6 @@ private fun WeekControls(vm: MealsViewModel, st: UserState, r: Recipe, side: Sid
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
-        TextButton(onClick = { vm.removeFromWeek(r.id) }) { Text("Remove from week") }
     }
 }
 
@@ -765,7 +763,10 @@ private fun RecipeScreen(
             )
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onCook) { Text("▶  Start cooking") }
-                if (!inWeek) OutlinedButton(onClick = { vm.requestAdd(id) }) { Text("Add to week") }
+                // One button: adds the meal, or removes it once it's planned.
+                OutlinedButton(onClick = { if (inWeek) vm.removeFromWeek(id) else vm.requestAdd(id) }) {
+                    Text(if (inWeek) "Remove from week" else "Add to week")
+                }
             }
             if (inWeek) WeekControls(vm, st, r, side)
             SaleSection(vm, st, r)
