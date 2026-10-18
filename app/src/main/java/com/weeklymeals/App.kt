@@ -590,6 +590,7 @@ private fun BrowseScreen(
     val cache = vm.salesCache(st)
     var query by search.query
     var filters by search.filters
+    var showFilters by remember { mutableStateOf(false) }
     val searching = query.isNotBlank() || filters.isNotEmpty()
     val scope = rememberCoroutineScope()
     val offset = remember { Animatable(0f) }
@@ -616,33 +617,15 @@ private fun BrowseScreen(
                 },
                 style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f),
             )
-            if (!searching) {
-                FilledTonalButton(
-                    onClick = { slide(true) }, enabled = progress == null,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                    modifier = Modifier.height(34.dp),
-                ) {
-                    Icon(Icons.Filled.Refresh, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("More")
-                }
-            }
+            // Filters live behind this button (swipe the tiles for more ideas).
+            FiltersButton(filters.size + if (saleOnly) 1 else 0, showLabel = true) { showFilters = true }
         }
-        CompactSearch(query, { query = it }, Modifier.padding(top = 6.dp))
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            FilterChip(
-                selected = saleOnly,
-                onClick = { vm.setSaleOnly(!saleOnly) },
-                enabled = progress == null,
-                label = { Text("🏷️ Sale") },
+        CompactSearch(query, { query = it }, Modifier.padding(top = 6.dp, bottom = 4.dp))
+        if (showFilters) {
+            FiltersDialog(
+                filters, onChange = { filters = it }, onDismiss = { showFilters = false },
+                sale = saleOnly, onSale = { if (progress == null) vm.setSaleOnly(it) },
             )
-            FAV_FILTERS.forEach { (key, label) ->
-                val on = key in filters
-                FilterChipFor(key, label, on) { filters = if (on) filters - key else filters + key }
-            }
         }
 
         progress?.let { (done, total) ->
@@ -1126,6 +1109,7 @@ private fun FavoritesScreen(
 ) {
     var query by search.query
     var filters by search.filters
+    var showFilters by remember { mutableStateOf(false) }
     val cache = vm.salesCache(st)
     val favs = vm.recipes(st).values.filter { Logic.isFav(it, st) }.sortedBy { it.name }
     val q = query.trim().lowercase()
@@ -1143,7 +1127,9 @@ private fun FavoritesScreen(
                 )
             }
             Spacer(Modifier.weight(1f))
-            // Same size and style as Browse's More button.
+            // Filters (icon only, to leave room), then Add recipe.
+            FiltersButton(filters.size, showLabel = false) { showFilters = true }
+            Spacer(Modifier.width(6.dp))
             FilledTonalButton(
                 onClick = onAdd,
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
@@ -1154,16 +1140,8 @@ private fun FavoritesScreen(
                 Text("Add recipe")
             }
         }
-        CompactSearch(query, { query = it }, Modifier.padding(top = 6.dp))
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            FAV_FILTERS.forEach { (key, label) ->
-                val on = key in filters
-                FilterChipFor(key, label, on) { filters = if (on) filters - key else filters + key }
-            }
-        }
+        CompactSearch(query, { query = it }, Modifier.padding(top = 6.dp, bottom = 4.dp))
+        if (showFilters) FiltersDialog(filters, onChange = { filters = it }, onDismiss = { showFilters = false })
         if (favs.isEmpty()) {
             Text(
                 "No favorites yet. Tap the ♥ on any recipe, or add your own.",
@@ -1361,4 +1339,71 @@ private fun HoldToRemoveButton(modifier: Modifier, onHint: () -> Unit, onRemove:
             color = if (progress.value > 0.5f) MaterialTheme.colorScheme.onError else if (holding) red else MaterialTheme.colorScheme.primary,
         )
     }
+}
+
+/** "Filters" button that opens the filter chips; shows how many are on. */
+@Composable
+private fun FiltersButton(count: Int, showLabel: Boolean, onClick: () -> Unit) {
+    FilledTonalButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        modifier = Modifier.height(34.dp),
+    ) {
+        Icon(TuneIcon, null, Modifier.size(18.dp))
+        if (showLabel) {
+            Spacer(Modifier.width(4.dp))
+            Text("Filters")
+        }
+        if (count > 0) {
+            Spacer(Modifier.width(4.dp))
+            Text(if (showLabel) "· $count" else "$count")
+        }
+    }
+}
+
+/** Pop-up with every filter chip; tap as many as you like. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun FiltersDialog(
+    filters: List<String>, onChange: (List<String>) -> Unit, onDismiss: () -> Unit,
+    sale: Boolean? = null, onSale: (Boolean) -> Unit = {},
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Filters") },
+        text = {
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (sale != null) {
+                    FilterChip(selected = sale, onClick = { onSale(!sale) }, label = { Text("🏷️ Sale") })
+                }
+                FAV_FILTERS.forEach { (key, label) ->
+                    val on = key in filters
+                    FilterChipFor(key, label, on) { onChange(if (on) filters - key else filters + key) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        dismissButton = {
+            if (filters.isNotEmpty() || sale == true) {
+                TextButton(onClick = { onChange(emptyList()); if (sale == true) onSale(false) }) { Text("Clear all") }
+            }
+        },
+    )
+}
+
+/** Sliders icon for the Filters button. */
+private val TuneIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    androidx.compose.ui.graphics.vector.ImageVector.Builder("Tune", 24.dp, 24.dp, 24f, 24f).apply {
+        fun r(x: Float, y: Float, w: Float, h: Float) = addPath(
+            androidx.compose.ui.graphics.vector.PathData {
+                moveTo(x, y); horizontalLineToRelative(w); verticalLineToRelative(h); horizontalLineToRelative(-w); close()
+            },
+            fill = androidx.compose.ui.graphics.SolidColor(androidx.compose.ui.graphics.Color.Black),
+        )
+        r(3f, 5f, 18f, 2f); r(14f, 3f, 2.5f, 6f)
+        r(3f, 11f, 18f, 2f); r(7f, 9f, 2.5f, 6f)
+        r(3f, 17f, 18f, 2f); r(12f, 15f, 2.5f, 6f)
+    }.build()
 }
