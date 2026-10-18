@@ -534,7 +534,7 @@ private fun BrowseScreen(
             )
             FAV_FILTERS.forEach { (key, label) ->
                 val on = key in filters
-                FilterChip(selected = on, onClick = { filters = if (on) filters - key else filters + key }, label = { Text(label) })
+                FilterChipFor(key, label, on) { filters = if (on) filters - key else filters + key }
             }
         }
 
@@ -564,7 +564,7 @@ private fun BrowseScreen(
             val q = query.trim().lowercase()
             val matches = all.values.filter { r ->
                 r.id !in st.removed &&
-                matchesFilters(r, q, filters) && (!saleOnly || Sales.savings(r, st.servings, cache) >= st.saleMin)
+                matchesFilters(r, q, filters) { vm.mealCalories(st, it) } && (!saleOnly || Sales.savings(r, st.servings, cache) >= st.saleMin)
             }.sortedBy { it.name }
             val showWeb = query.trim().length >= 3 && RecipeSources.effective(st) != RecipeSources.OFF
             LazyVerticalGrid(
@@ -590,6 +590,7 @@ private fun BrowseScreen(
                         Modifier.fillMaxWidth().height(96.dp),
                         saleSave = Sales.savings(r, st.servings, cache),
                         onHold = { onHold(r) },
+                        calories = vm.mealCalories(st, r),
                     )
                 }
                 if (showWeb) {
@@ -647,6 +648,7 @@ private fun BrowseScreen(
                             Modifier.weight(1f).fillMaxHeight(),
                             saleSave = Sales.savings(r, st.servings, cache),
                             onHold = { onHold(r) },
+                            calories = vm.mealCalories(st, r),
                         )
                     }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -664,6 +666,7 @@ private fun RecipeTile(
     onAdd: () -> Unit, onOpen: () -> Unit, modifier: Modifier,
     saleSave: Double = 0.0,
     onHold: (() -> Unit)? = null,
+    calories: Int? = null,
 ) {
     val inWeek = r.id in st.week
     Card(
@@ -680,12 +683,25 @@ private fun RecipeTile(
                 Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                    val infoLine = badges.isNotEmpty() || calories != null
                     Text(
                         r.name, style = MaterialTheme.typography.bodyMedium,
-                        maxLines = if (badges.isEmpty()) 2 else 1, overflow = TextOverflow.Ellipsis,
+                        maxLines = if (infoLine) 1 else 2, overflow = TextOverflow.Ellipsis,
                     )
-                    if (badges.isNotEmpty()) {
-                        Row(Modifier.padding(top = 3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    if (infoLine) {
+                        // Calories first, then the badges.
+                        Row(
+                            Modifier.padding(top = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            calories?.let {
+                                Text(
+                                    "%,d cal".format(it), style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                                    modifier = Modifier.padding(end = 3.dp),
+                                )
+                            }
                             badges.forEach { Badge(it, small = true) }
                         }
                     }
@@ -828,6 +844,16 @@ private fun RecipeScreen(
                 modifier = Modifier.padding(top = 6.dp),
             )
             LaunchedEffect(r.id) { vm.fetchReviewsIfMissing(r) }
+            Nutrition.perServing(r)?.let { cal ->
+                val sideCal = if (inWeek) Nutrition.side(side) else null
+                Text(
+                    "≈ %,d cal per serving".format(cal) +
+                        (if (sideCal != null && side != null) " · + %,d with ${side.label.substringAfter(" ")}".format(sideCal) else ""),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             r.rating?.let { Row(Modifier.padding(top = 4.dp)) { RatingLine(it, r.ratingCount, r.countLabel, 16.dp) } }
             // Two equal buttons, labels on one line so they line up.
             Row(
@@ -902,16 +928,52 @@ internal fun CompactSearch(
 }
 
 /** Recipes matching a search (name or ingredient) and every selected filter chip. */
-private fun matchesFilters(r: Recipe, q: String, filters: List<String>): Boolean =
+private fun matchesFilters(r: Recipe, q: String, filters: List<String>, calories: (Recipe) -> Int? = { null }): Boolean =
     (q.isEmpty() || r.name.lowercase().contains(q) || r.ingredients.any { it.name.lowercase().contains(q) }) &&
-        filters.all { f -> if (f == "quick") Logic.cookMinutes(r) <= 30 else f in r.tags }
+        filters.all { f ->
+            when (f) {
+                "quick" -> Logic.cookMinutes(r) <= 30
+                // 600 or less per serving, side included; unknown calories don't count.
+                "lowcal" -> calories(r)?.let { it <= LOW_CAL } ?: false
+                else -> f in r.tags
+            }
+        }
+
+private const val LOW_CAL = 600
+
+/** The green bold down arrow on the "600 cal" filter chip. */
+@Composable
+private fun LowCalArrow() {
+    val green = androidx.compose.ui.graphics.Color(0xFF5DCAA5)
+    androidx.compose.foundation.Canvas(Modifier.size(16.dp)) {
+        val u = size.width / 24f
+        val p = androidx.compose.ui.graphics.Path().apply {
+            moveTo(9 * u, 3 * u); lineTo(15 * u, 3 * u); lineTo(15 * u, 12 * u); lineTo(19.5f * u, 12 * u)
+            lineTo(12 * u, 21 * u); lineTo(4.5f * u, 12 * u); lineTo(9 * u, 12 * u); close()
+        }
+        drawPath(p, green)
+        drawPath(
+            p, green,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = 1.5f * u, join = androidx.compose.ui.graphics.StrokeJoin.Round,
+            ),
+        )
+    }
+}
+
+/** A filter chip; the low-calorie one shows the green arrow. */
+@Composable
+private fun FilterChipFor(key: String, label: String, on: Boolean, onClick: () -> Unit) {
+    val icon: (@Composable () -> Unit)? = if (key == "lowcal") { { LowCalArrow() } } else null
+    FilterChip(selected = on, onClick = onClick, leadingIcon = icon, label = { Text(label) })
+}
 
 // ---- Favorites ---------------------------------------------------------------------
 
 private val FAV_FILTERS = listOf(
     "crockpot" to "🍲 Crock-Pot", "instantpot" to "⚡ Instapot", "airfryer" to "🌬️ Air Fryer",
     "sheetpan" to "♨️ Sheet-Pan", "grill" to "🔥 Grill", "onepan" to "🍳 One-Pan",
-    "budget" to "💲 Budget", "quick" to "⏱ Quick",
+    "budget" to "💲 Budget", "quick" to "⏱ Quick", "lowcal" to "$LOW_CAL cal",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -925,7 +987,7 @@ private fun FavoritesScreen(
     val cache = vm.salesCache(st)
     val favs = vm.recipes(st).values.filter { Logic.isFav(it, st) }.sortedBy { it.name }
     val q = query.trim().lowercase()
-    val shown = favs.filter { r -> matchesFilters(r, q, filters) }
+    val shown = favs.filter { r -> matchesFilters(r, q, filters) { vm.mealCalories(st, it) } }
     // Same layout and spacing as Browse so the title, search bar and tiles line up.
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -957,11 +1019,7 @@ private fun FavoritesScreen(
         ) {
             FAV_FILTERS.forEach { (key, label) ->
                 val on = key in filters
-                FilterChip(
-                    selected = on,
-                    onClick = { filters = if (on) filters - key else filters + key },
-                    label = { Text(label) },
-                )
+                FilterChipFor(key, label, on) { filters = if (on) filters - key else filters + key }
             }
         }
         if (favs.isEmpty()) {
@@ -987,6 +1045,7 @@ private fun FavoritesScreen(
                 Modifier.fillMaxWidth().height(96.dp),
                 saleSave = Sales.savings(r, st.servings, cache),
                 onHold = { onHold(r) },
+                calories = vm.mealCalories(st, r),
             )
         }
     }

@@ -25,6 +25,8 @@ data class Recipe(
     val ratingCount: Int? = null,
     val countLabel: String = "ratings",
     val reviews: List<Review> = emptyList(),
+    /** Calories per serving from the recipe's site (null = we estimate from ingredients). */
+    val calories: Int? = null,
 )
 
 @Serializable

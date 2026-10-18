@@ -37,6 +37,7 @@ data class WebRecipeDetail(
     val ratingCount: Int? = null,
     val countLabel: String = "ratings",
     val reviews: List<Review> = emptyList(),
+    val calories: Int? = null,
 )
 
 class WebSearchException(msg: String) : Exception(msg)
@@ -175,7 +176,7 @@ object Spoonacular {
     suspend fun details(key: String, ref: String): WebRecipeDetail = withContext(Dispatchers.IO) {
         val id = ref.removePrefix("sp:")
         val url = Uri.parse("$BASE/recipes/$id/information").buildUpon()
-            .appendQueryParameter("includeNutrition", "false")
+            .appendQueryParameter("includeNutrition", "true")
             .appendQueryParameter("apiKey", key.trim())
             .build().toString()
         val o = JSONObject(RecipeSources.get(url, "Spoonacular"))
@@ -217,6 +218,11 @@ object Spoonacular {
             rating = o.optDouble("spoonacularScore").takeIf { !it.isNaN() && it > 0 }?.let { Math.round(it / 2.0) / 10.0 },
             ratingCount = o.optInt("aggregateLikes", -1).takeIf { it >= 0 },
             countLabel = "likes",
+            calories = o.optJSONObject("nutrition")?.optJSONArray("nutrients")?.let { arr ->
+                (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+                    .firstOrNull { it.optString("name").equals("Calories", true) }
+                    ?.optDouble("amount")?.takeIf { !it.isNaN() && it > 0 }?.let { Math.round(it).toInt() }
+            },
         )
     }
 }
@@ -263,7 +269,7 @@ object Allrecipes {
             minutes = r.minutes, source = "Allrecipes",
             ingredients = RecipeSources.ingredients(r.ingredients), steps = r.steps,
             tags = RecipeSources.tagsFor(r.name, r.steps),
-            rating = r.rating, ratingCount = r.ratingCount, reviews = r.reviews,
+            rating = r.rating, ratingCount = r.ratingCount, reviews = r.reviews, calories = r.calories,
         )
     }
 }

@@ -23,6 +23,8 @@ data class ImportedRecipe(
     val ratingCount: Int? = null,
     /** Written reviews included on the page. */
     val reviews: List<Review> = emptyList(),
+    /** Calories per serving, if the page says. */
+    val calories: Int? = null,
 )
 
 /** One written review. */
@@ -76,6 +78,9 @@ object Importer {
             return ImportedRecipe(
                 name, emojiFor(name), serves(recipe.opt("recipeYield")), ings, steps, total,
                 rating, count, reviews(recipe.opt("review")),
+                // "350 kcal" / "350 calories" per serving.
+                Regex("\\d+").find(recipe.optJSONObject("nutrition")?.optString("calories").orEmpty())
+                    ?.value?.toIntOrNull()?.takeIf { it in 1..5000 },
             )
         }
         return null

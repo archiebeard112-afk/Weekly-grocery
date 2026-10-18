@@ -108,6 +108,13 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun isBuiltInSide(key: String) = key in baseSides
 
+    /** Calories per serving for a meal: the main, plus its side once it's in your week. */
+    fun mealCalories(st: UserState, r: Recipe): Int? {
+        val main = Nutrition.perServing(r) ?: return null
+        val side = if (r.id in st.week) Nutrition.side(st.sides[r.id]?.let { sideMap[it] }) else null
+        return main + (side ?: 0)
+    }
+
     /** Takes a side off one dish's Recommended list (it stays under More sides). */
     fun removeSideFromDish(id: Int, key: String) = edit { s ->
         s.copy(
@@ -684,6 +691,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             sides = bundle.sides.take(4).map { it.key }, imported = true,
             tags = d.tags, webRef = d.id,
             rating = d.rating, ratingCount = d.ratingCount, countLabel = d.countLabel, reviews = d.reviews,
+            calories = d.calories,
         )
         edit { s -> if (s.custom.any { it.webRef == d.id }) s else s.copy(custom = s.custom + r) }
         message.value = "Added to Favorites"
@@ -725,7 +733,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             if (d.rating == null && d.reviews.isEmpty()) return@launch
             edit { s ->
                 s.copy(custom = s.custom.map {
-                    if (it.id == r.id) it.copy(rating = d.rating, ratingCount = d.ratingCount, countLabel = d.countLabel, reviews = d.reviews) else it
+                    if (it.id == r.id) it.copy(
+                        rating = d.rating, ratingCount = d.ratingCount, countLabel = d.countLabel,
+                        reviews = d.reviews, calories = d.calories ?: it.calories,
+                    ) else it
                 })
             }
         }
