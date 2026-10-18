@@ -37,6 +37,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.unit.Dp
 
 /** The "Online" section under Browse search results. */
 @Composable
@@ -79,13 +89,25 @@ internal fun OnlineResults(
                 "No online recipes found.", style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
             )
-            else -> Surface(
+            else -> {
+              // Sort chips (only when the site has ratings).
+              if (source != RecipeSources.MEALDB) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 2.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    RecipeSources.SORTS.forEach { (key, label) ->
+                        FilterChip(selected = st.webSort == key, onClick = { vm.setWebSort(key) }, label = { Text(label) })
+                    }
+                }
+              }
+              Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                 modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-            ) {
+              ) {
                 Column {
-                    web.results.forEachIndexed { i, w ->
+                    RecipeSources.sort(web.results, st.webSort).forEachIndexed { i, w ->
                         if (i > 0) HorizontalDivider()
                         val saved = vm.savedWebRecipe(st, w.id) != null
                         Row(
@@ -96,6 +118,7 @@ internal fun OnlineResults(
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(w.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                w.rating?.let { RatingLine(it, w.ratingCount, w.countLabel) }
                                 Text(
                                     listOfNotNull(
                                         w.minutes?.let { "⏱ " + Logic.fmtShort(it) },
@@ -112,6 +135,7 @@ internal fun OnlineResults(
                         }
                     }
                 }
+              }
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -188,14 +212,87 @@ internal fun WebRecipeScreen(
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 6.dp),
                 )
+                d.rating?.let {
+                    Row(Modifier.padding(top = 4.dp)) { RatingLine(it, d.ratingCount, d.countLabel, 16.dp) }
+                }
                 Heading("Ingredients (serves ${d.servings})")
                 d.ingredients.forEach { Text("• " + Logic.ingText(it, d.servings, d.servings), style = MaterialTheme.typography.bodyMedium) }
                 Heading("Steps")
                 d.steps.forEachIndexed { i, s ->
                     Text("${i + 1}. $s", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 3.dp))
                 }
+                if (d.reviews.isNotEmpty()) {
+                    Heading("Reviews")
+                    d.rating?.let { RatingLine(it, d.ratingCount, d.countLabel, 16.dp) }
+                    var shown by remember(d.id) { mutableIntStateOf(3) }
+                    d.reviews.take(shown).forEach { rv ->
+                        ReviewItem(rv)
+                        HorizontalDivider()
+                    }
+                    if (shown < d.reviews.size) {
+                        TextButton(onClick = { shown += 3 }) { Text("See more") }
+                    }
+                }
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
+}
+
+private val STAR_GOLD = Color(0xFFF5B301)
+
+/** Five stars, filled to [rating] (partial stars too). */
+@Composable
+internal fun Stars(rating: Double, size: Dp = 14.dp) {
+    Row {
+        for (i in 0 until 5) {
+            val fill = (rating - i).coerceIn(0.0, 1.0).toFloat()
+            Box(Modifier.size(size)) {
+                Icon(Icons.Filled.Star, null, Modifier.size(size), tint = MaterialTheme.colorScheme.outlineVariant)
+                if (fill > 0f) {
+                    Icon(
+                        Icons.Filled.Star, null,
+                        Modifier.size(size).drawWithContent {
+                            clipRect(right = this.size.width * fill) { this@drawWithContent.drawContent() }
+                        },
+                        tint = STAR_GOLD,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** "★★★★½ 4.6 (2,341)" */
+@Composable
+internal fun RatingLine(rating: Double, count: Int?, countLabel: String, size: Dp = 14.dp) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 1.dp)) {
+        Stars(rating, size)
+        Spacer(Modifier.width(4.dp))
+        Text(
+            String.format(java.util.Locale.US, "%.1f", rating) +
+                (count?.let { " (" + String.format(java.util.Locale.US, "%,d", it) + if (countLabel == "likes") " likes)" else ")" } ?: ""),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** One written review; tap to show all of a long one. */
+@Composable
+private fun ReviewItem(r: Review) {
+    var open by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().clickable { open = !open }.padding(vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            r.stars?.let { Stars(it, 12.dp); Spacer(Modifier.width(6.dp)) }
+            Text(r.author, style = MaterialTheme.typography.labelLarge)
+        }
+        Text(
+            r.text,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = if (open) Int.MAX_VALUE else 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 2.dp),
+        )
     }
 }

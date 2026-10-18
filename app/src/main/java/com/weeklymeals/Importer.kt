@@ -18,7 +18,15 @@ data class ImportedRecipe(
     val steps: List<String>,
     /** Total time in minutes, if the page says. */
     val minutes: Int? = null,
+    /** Average star rating (0-5) and how many ratings, if the page says. */
+    val rating: Double? = null,
+    val ratingCount: Int? = null,
+    /** Written reviews included on the page. */
+    val reviews: List<Review> = emptyList(),
 )
+
+/** One written review. */
+data class Review(val author: String, val stars: Double?, val text: String)
 
 /**
  * Reads recipes from web pages. Most recipe sites include the recipe in a standard
@@ -61,7 +69,13 @@ object Importer {
             if (name.isBlank() || ings.isEmpty()) continue
             val total = minutes(recipe.optString("totalTime"))
                 ?: listOfNotNull(minutes(recipe.optString("prepTime")), minutes(recipe.optString("cookTime"))).sum().takeIf { it > 0 }
-            return ImportedRecipe(name, emojiFor(name), serves(recipe.opt("recipeYield")), ings, steps, total)
+            val agg = recipe.optJSONObject("aggregateRating")
+            val rating = agg?.optString("ratingValue")?.toDoubleOrNull()?.takeIf { it > 0 }
+            val count = (agg?.optString("ratingCount")?.toIntOrNull() ?: agg?.optString("reviewCount")?.toIntOrNull())?.takeIf { it > 0 }
+            return ImportedRecipe(
+                name, emojiFor(name), serves(recipe.opt("recipeYield")), ings, steps, total,
+                rating, count, reviews(recipe.opt("review")),
+            )
         }
         return null
     }
@@ -98,6 +112,26 @@ object Importer {
             else -> emptyList()
         }
         else -> emptyList()
+    }
+
+    private fun reviews(v: Any?): List<Review> {
+        val list = when (v) {
+            is JSONArray -> (0 until v.length()).mapNotNull { v.optJSONObject(it) }
+            is JSONObject -> listOf(v)
+            else -> emptyList()
+        }
+        return list.mapNotNull { r ->
+            val text = clean(r.optString("reviewBody").ifBlank { r.optString("description") })
+            if (text.isBlank()) return@mapNotNull null
+            val author = when (val a = r.opt("author")) {
+                is JSONObject -> a.optString("name")
+                is JSONArray -> a.optJSONObject(0)?.optString("name").orEmpty()
+                is String -> a
+                else -> ""
+            }.let { clean(it) }.ifBlank { "Someone" }
+            val stars = r.optJSONObject("reviewRating")?.optString("ratingValue")?.toDoubleOrNull()
+            Review(author, stars, text)
+        }
     }
 
     /** "PT1H30M" -> 90. */

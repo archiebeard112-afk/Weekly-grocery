@@ -492,6 +492,30 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setWebSource(source: String) = edit { it.copy(webSource = source) }
 
+    fun setWebSort(sort: String) = edit { it.copy(webSort = sort) }
+
+    /** If a search page didn't show ratings, read them from each recipe page (also makes previews instant). */
+    private suspend fun fillRatings(q: String, source: String, cacheKey: String, found: List<WebRecipe>) {
+        if (source != RecipeSources.ALLRECIPES || found.any { it.rating != null }) return
+        val gate = kotlinx.coroutines.sync.Semaphore(4)
+        kotlinx.coroutines.coroutineScope {
+            found.forEach { w ->
+                launch {
+                    val d = gate.withPermit {
+                        detailCache[w.id] ?: runCatching { RecipeSources.details(w.id, "") }.getOrNull()?.also { detailCache[w.id] = it }
+                    } ?: return@launch
+                    val cur = webSearch.value
+                    if (cur.query != q || cur.source != source) return@launch
+                    val updated = cur.results.map {
+                        if (it.id == w.id) it.copy(rating = d.rating, ratingCount = d.ratingCount, minutes = it.minutes ?: d.minutes) else it
+                    }
+                    webCache[cacheKey] = updated
+                    webSearch.value = cur.copy(results = updated)
+                }
+            }
+        }
+    }
+
     fun searchWeb(query: String) {
         val q = query.trim().lowercase()
         val st = state.value
@@ -510,7 +534,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             webSearch.value = try {
                 val found = RecipeSources.search(source, st.spoonKey, q)
                 webCache[cacheKey] = found
-                WebSearch(q, source, results = found)
+                WebSearch(q, source, results = found).also {
+                    webSearch.value = it
+                    fillRatings(q, source, cacheKey, found)
+                }.let { webSearch.value }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {

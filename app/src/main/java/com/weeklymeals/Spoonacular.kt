@@ -11,7 +11,16 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /** One online search result. [id] says where it's from: "sp:<id>", "ar:<link>" or "md:<id>". */
-data class WebRecipe(val id: String, val title: String, val minutes: Int?, val source: String)
+data class WebRecipe(
+    val id: String,
+    val title: String,
+    val minutes: Int?,
+    val source: String,
+    /** Stars out of 5, and how many ratings (or likes, for Spoonacular). */
+    val rating: Double? = null,
+    val ratingCount: Int? = null,
+    val countLabel: String = "ratings",
+)
 
 /** A full online recipe, ready to preview before saving. */
 data class WebRecipeDetail(
@@ -24,6 +33,10 @@ data class WebRecipeDetail(
     val ingredients: List<Ingredient>,
     val steps: List<String>,
     val tags: List<String>,
+    val rating: Double? = null,
+    val ratingCount: Int? = null,
+    val countLabel: String = "ratings",
+    val reviews: List<Review> = emptyList(),
 )
 
 class WebSearchException(msg: String) : Exception(msg)
@@ -41,6 +54,23 @@ object RecipeSources {
         MEALDB to "TheMealDB",
         OFF to "Off",
     )
+
+    // Sorting online results.
+    const val SORT_MATCH = "match"
+    const val SORT_TOP = "top"
+    const val SORT_REVIEWS = "reviews"
+    val SORTS = listOf(SORT_MATCH to "Best match", SORT_TOP to "Top rated", SORT_REVIEWS to "Most reviews")
+
+    fun sort(list: List<WebRecipe>, by: String): List<WebRecipe> = when (by) {
+        // Weighted so a 5-star recipe with 3 ratings doesn't beat 4.8 stars from 5,000.
+        SORT_TOP -> list.sortedByDescending { w ->
+            val r = w.rating ?: return@sortedByDescending -1.0
+            val n = (w.ratingCount ?: 0).toDouble()
+            (r * n + 4.0 * 50) / (n + 50)
+        }
+        SORT_REVIEWS -> list.sortedByDescending { it.ratingCount ?: -1 }
+        else -> list
+    }
 
     fun label(source: String) = CHOICES.firstOrNull { it.first == source }?.second ?: ""
 
@@ -134,6 +164,10 @@ object Spoonacular {
                 title = RecipeSources.clean(o.optString("title")),
                 minutes = o.optInt("readyInMinutes", 0).takeIf { it > 0 },
                 source = RecipeSources.clean(o.optString("sourceName")).ifBlank { "Spoonacular" },
+                // Spoonacular has no star ratings: its 0-100 score shown as stars, and likes.
+                rating = o.optDouble("spoonacularScore").takeIf { !it.isNaN() && it > 0 }?.let { Math.round(it / 2.0) / 10.0 },
+                ratingCount = o.optInt("aggregateLikes", -1).takeIf { it >= 0 },
+                countLabel = "likes",
             )
         }.filter { it.id != "sp:0" && it.title.isNotBlank() }
     }
@@ -180,6 +214,9 @@ object Spoonacular {
             source = RecipeSources.clean(o.optString("sourceName")).ifBlank { "Spoonacular" },
             ingredients = RecipeSources.ingredients(lines), steps = steps,
             tags = RecipeSources.tagsFor(title, steps, budget),
+            rating = o.optDouble("spoonacularScore").takeIf { !it.isNaN() && it > 0 }?.let { Math.round(it / 2.0) / 10.0 },
+            ratingCount = o.optInt("aggregateLikes", -1).takeIf { it >= 0 },
+            countLabel = "likes",
         )
     }
 }
@@ -200,9 +237,24 @@ object Allrecipes {
             val link = m.groupValues[1]
             val title = titleRx.find(m.groupValues[2])?.groupValues?.get(1)?.let { RecipeSources.clean(it) }
                 ?: link.trimEnd('/').substringAfterLast('/').replace('-', ' ').replaceFirstChar { it.uppercase() }
-            if (title.isBlank()) null else WebRecipe("ar:$link", title, null, "Allrecipes")
+            if (title.isBlank()) null else {
+                val card = m.groupValues[2]
+                WebRecipe("ar:$link", title, null, "Allrecipes", cardStars(card), cardCount(card))
+            }
         }.distinctBy { it.id }.take(10).toList()
     }
+
+    /** Stars drawn on a search card: full star icons plus half stars. */
+    private fun cardStars(card: String): Double? {
+        val full = Regex("icon-star(?![-_\\w])").findAll(card).count()
+        val half = Regex("icon-star-half").findAll(card).count()
+        return (full + 0.5 * half).takeIf { it > 0 && it <= 5 }
+    }
+
+    /** "1,234 Ratings" on a search card. */
+    private fun cardCount(card: String): Int? =
+        Regex("([\\d,]+)\\s*(?:<[^>]*>\\s*)*Ratings?", RegexOption.IGNORE_CASE).find(card)
+            ?.groupValues?.get(1)?.replace(",", "")?.toIntOrNull()
 
     suspend fun details(ref: String): WebRecipeDetail {
         val r = Importer.fromUrl(ref.removePrefix("ar:"))
@@ -211,6 +263,7 @@ object Allrecipes {
             minutes = r.minutes, source = "Allrecipes",
             ingredients = RecipeSources.ingredients(r.ingredients), steps = r.steps,
             tags = RecipeSources.tagsFor(r.name, r.steps),
+            rating = r.rating, ratingCount = r.ratingCount, reviews = r.reviews,
         )
     }
 }

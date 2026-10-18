@@ -106,6 +106,8 @@ data class UserState(
     val spoonKey: String = "",
     /** Online recipe search: "spoonacular", "allrecipes", "mealdb", "off", or "" (automatic). */
     val webSource: String = "",
+    /** How online results are sorted: "top", "reviews" or "match". */
+    val webSort: String = "top",
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */

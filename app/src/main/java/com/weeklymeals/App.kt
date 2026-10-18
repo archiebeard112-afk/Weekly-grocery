@@ -182,6 +182,16 @@ fun App(vm: MealsViewModel) {
         }
     }
 
+    // On the four main tabs the keyboard slides over the screen instead of squishing it.
+    // Other screens (Settings, Add recipe, product picker) still make room for it.
+    val onMainTabs = picking == null && overlay == Overlay.None && cooking == null && viewing == null && webViewing == null
+    LaunchedEffect(onMainTabs) {
+        (ctx as? android.app.Activity)?.window?.setSoftInputMode(
+            if (onMainTabs) android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            else android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+        )
+    }
+
     BackHandler(enabled = overlay != Overlay.None) { overlay = Overlay.None }
     BackHandler(enabled = overlay == Overlay.None && viewing != null && cooking == null) { viewing = null }
     BackHandler(enabled = overlay == Overlay.None && viewing == null && webViewing != null) { webViewing = null }
