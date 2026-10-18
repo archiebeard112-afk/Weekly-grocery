@@ -140,6 +140,8 @@ data class UserState(
     val saleMin: Double = 2.0,
     /** A meal is "budget" when what you'd buy for it costs this much or less. */
     val budgetMax: Double = 15.0,
+    /** Pack weights you set for meat sold by the pound (by product UPC, or "term:<name>"), in lb. */
+    val packWeights: Map<String, Double> = emptyMap(),
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */

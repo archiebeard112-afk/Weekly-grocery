@@ -493,18 +493,26 @@ private fun RecipeDetails(
         Row(verticalAlignment = Alignment.Top) {
             Text("• " + Logic.ingText(i, serv, base), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             if (cost != null) {
-                Text(
-                    when {
-                        price == null -> "—"
-                        !first -> "incl. above"
-                        price.second -> "$0.00 🫙"
-                        else -> Sales.money(price.first)
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (first && price?.second == true) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.padding(start = 12.dp),
-                )
+                Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
+                    Text(
+                        when {
+                            price == null -> "—"
+                            !first -> "incl. above"
+                            price.have -> "$0.00 🫙"
+                            else -> Sales.money(price.cost)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (first && price?.have == true) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.End,
+                    )
+                    // Meat: the pack it comes from (this meal's share of it).
+                    if (first && price != null && price.note.isNotEmpty()) {
+                        Text(
+                            price.note, style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }

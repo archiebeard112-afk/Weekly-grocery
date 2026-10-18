@@ -126,6 +126,9 @@ object Prices {
         return pick
     }
 
+    /** Typical price per pound for meat and fish sold by weight (null if not one of those). */
+    fun perLb(name: String): Double? = find(name.lowercase())?.takeIf { it.byWeight }?.price
+
     /** Grams in a store package size like "16 oz", "2 lb", "32 fl oz" (null if it doesn't say). */
     private fun packGrams(size: String): Double? {
         val (n, unit) = Pantry.parseSize(size) ?: return null

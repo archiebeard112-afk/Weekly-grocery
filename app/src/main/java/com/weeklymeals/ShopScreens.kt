@@ -1,5 +1,7 @@
 package com.weeklymeals
 
+import androidx.compose.material3.AlertDialog
+
 import androidx.compose.ui.graphics.Color
 
 import androidx.activity.compose.BackHandler
@@ -245,7 +247,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                             MealsViewModel.PantryStatus.COVERED -> "🫙 In pantry · buying anyway"
                             null -> null
                         }
-                        ShopRow(vm, g, products[g.term], hasStore, pantryNote)
+                        ShopRow(vm, g, products[g.term], hasStore, pantryNote, vm.shopPack(st, g))
                     }
                 }
             }
@@ -364,7 +366,11 @@ private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
 }
 
 @Composable
-private fun ShopRow(vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore: Boolean, pantryNote: String? = null) {
+private fun ShopRow(
+    vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore: Boolean, pantryNote: String? = null,
+    meat: MealsViewModel.MeatPack? = null,
+) {
+    var editPack by remember { mutableStateOf(false) }
     val highlight = MaterialTheme.colorScheme.primary
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -381,6 +387,18 @@ private fun ShopRow(vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore:
         }
         pantryNote?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFBA7517))
+        }
+        // Meat sold by the pound: which pack, what's left over. Tap to set the real pack weight.
+        meat?.let { m ->
+            Text(
+                "🥩 " + (if (m.packs > 1) "${m.packs} × " else "") + Packs.label(m.pack) +
+                    (if (m.leftoverLb >= 0.1) " · ${Logic.fmt(Math.round(m.leftoverLb * 4) / 4.0)} lb left over" else "") +
+                    " · " + (if (m.pack.source == Packs.Source.YOU) "your size" else "tap to set"),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable { editPack = true }.padding(vertical = 2.dp),
+            )
+            if (editPack) PackWeightDialog(g.term, m, onSet = { vm.setPackWeight(m.key, it); editPack = false }) { editPack = false }
         }
         if (g.sources.isNotEmpty()) {
             Text(
@@ -510,4 +528,47 @@ fun ProductPicker(vm: MealsViewModel, term: String, onClose: () -> Unit) {
             }
         }
     }
+}
+
+/** Set how much a pack of this meat really weighs (remembered for that product). */
+@Composable
+private fun PackWeightDialog(term: String, m: MealsViewModel.MeatPack, onSet: (Double?) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(Logic.fmt(m.pack.lb)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${term.replaceFirstChar { it.uppercase() }} pack size") },
+        text = {
+            Column {
+                Text(
+                    "How much does one pack weigh? Check the label after you buy it. The app remembers it for this product.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(
+                    Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf(1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0).forEach { v ->
+                        FilterChip(
+                            selected = text.toDoubleOrNull() == v,
+                            onClick = { text = Logic.fmt(v) },
+                            label = { Text("${Logic.fmt(v)} lb") },
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    text, { text = it.filter { c -> c.isDigit() || c == '.' } },
+                    label = { Text("Pounds per pack") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSet(text.toDoubleOrNull()) }) { Text("Save") } },
+        dismissButton = {
+            Row {
+                if (m.pack.source == Packs.Source.YOU) TextButton(onClick = { onSet(null) }) { Text("Use estimate") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
 }

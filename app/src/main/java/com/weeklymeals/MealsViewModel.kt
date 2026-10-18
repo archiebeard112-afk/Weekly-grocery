@@ -1304,40 +1304,94 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun setBudgetMax(v: Double) = edit { it.copy(budgetMax = v) }
 
     /** What a meal costs: [total] to buy, and [saved] by what you already have (pantry, Already have). */
+    /** One shopping item's price for a meal; [have] = you already have it; [note] e.g. "≈3 lb pack". */
+    data class PriceLine(val cost: Double, val have: Boolean, val note: String = "")
+
     data class MealCost(
         val total: Double,
         val saved: Double,
-        /** Price per shopping item (by store search term), and whether you already have it. */
-        val lines: Map<String, Pair<Double, Boolean>> = emptyMap(),
+        /** Price per shopping item (by store search term). */
+        val lines: Map<String, PriceLine> = emptyMap(),
     )
 
     private val costCache = HashMap<List<Any?>, MealCost?>()
+
+    /** A meat pack worked out for a shopping item: how many packs, what's left, and the price. */
+    data class MeatPack(val pack: Packs.Pack, val packs: Int, val cost: Double, val leftoverLb: Double, val key: String)
+
+    /**
+     * Whole-pack price for meat sold by the pound, for [needLb]. Uses the sale price, then the
+     * King Soopers product, then a typical price. Null if this isn't meat sold by weight.
+     */
+    fun meatPack(st: UserState, term: String, needLb: Double, product: Product?, sale: SaleItem?): MeatPack? {
+        if (needLb <= 0 || !Packs.weighed(term)) return null
+        val title = sale?.title ?: product?.title
+        val size = sale?.size ?: product?.size
+        val upc = product?.upc.orEmpty()
+        val key = if (upc.isNotEmpty()) upc else "term:$term"
+        val yours = st.packWeights[key] ?: st.packWeights["term:$term"]
+        val pack = Packs.packFor(term, title, size, yours)
+        val price = sale?.promo ?: product?.let { it.promo ?: it.price } ?: Prices.perLb(term) ?: return null
+        // Typical prices are per pound, so a fixed-size pack still costs weight × price.
+        val p = if (sale == null && product == null) pack.copy(perLb = true) else pack
+        val (packs, cost) = Packs.cost(needLb, price, p)
+        return MeatPack(p, packs, cost, (packs * p.lb - needLb).coerceAtLeast(0.0), key)
+    }
+
+    fun setPackWeight(key: String, lb: Double?) = edit { s ->
+        s.copy(packWeights = if (lb == null || lb <= 0) s.packWeights - key else s.packWeights + (key to lb))
+    }
 
     /** Cost to make a meal for your Cooking for number, with its side once it's in your week. */
     fun mealCost(st: UserState, r: Recipe): MealCost? {
         val side = if (r.id in st.week) st.sides[r.id] else null
         val prods = products.value
         val sales = salesCache(st)
-        val key = listOf(r.id, r.ingredients.hashCode(), side, st.servings, st.pantry, st.haveTerms, prods.size, sales.day, sales.options.size)
+        val key = listOf(
+            r.id, r.ingredients.hashCode(), side, st.servings, st.pantry, st.haveTerms, prods.size,
+            sales.day, sales.options.size, st.packWeights, if (r.id in st.week) st.week else null, st.sides,
+        )
         if (costCache.size > 2000) costCache.clear()
         return costCache.getOrPut(key) {
             val items = Logic.shopList(listOf(r.id), side?.let { mapOf(r.id to it) } ?: emptyMap(), mapOf(r.id to r), sideMap, st.servings)
+            // Meat in planned meals shares packs across the week, so we need the week's totals too.
+            val weekItems = if (r.id in st.week) Logic.shopList(st.week, st.sides, recipes(st), sideMap, st.servings)
+                .groupBy { Logic.searchTerm(it.name) } else emptyMap()
             var total = 0.0
             var saved = 0.0
             var known = 0
-            val lines = mutableMapOf<String, Pair<Double, Boolean>>()
+            val lines = mutableMapOf<String, PriceLine>()
             // Sale prices found for "On sale this week" win over everything else.
-            val onSale = Sales.lines(r, st.servings, sales).associate { it.term to it.sale.promo * it.packages }
+            val onSale = Sales.lines(r, st.servings, sales).associateBy { it.term }
             items.groupBy { Logic.searchTerm(it.name) }.forEach { (term, list) ->
-                val c = onSale[term] ?: Prices.cost(term + " " + list.first().name, list, prods[term]?.product) ?: return@forEach
+                val needLb = Logic.needOf(list).lb
+                val sale = onSale[term]?.sale
+                val meat = if (needLb > 0) {
+                    val weekLb = weekItems[term]?.let { Logic.needOf(it).lb }?.takeIf { it > needLb } ?: needLb
+                    meatPack(st, term, weekLb, prods[term]?.product, sale)?.let { m ->
+                        // This meal's share of the pack(s) bought for the week.
+                        Triple(m.cost * needLb / weekLb, (if (weekLb > needLb) "share of " else "") + Packs.label(m.pack), m)
+                    }
+                } else null
+                val c = meat?.first
+                    ?: onSale[term]?.let { it.sale.promo * it.packages }
+                    ?: Prices.cost(term + " " + list.first().name, list, prods[term]?.product)
+                    ?: return@forEach
                 known++
                 val g = ShopGroup(term, list, list.first().aisle, emptyList())
                 val have = term in st.haveTerms || pantryStatus(st, g) == PantryStatus.COVERED
                 if (have) saved += c else total += c
-                lines[term] = c to have
+                lines[term] = PriceLine(c, have, meat?.second.orEmpty())
             }
             if (known == 0) null else MealCost(total, saved, lines)
         }
+    }
+
+    /** Pack details for a meat item on the Shop list (the whole week's amount). */
+    fun shopPack(st: UserState, g: ShopGroup): MeatPack? {
+        val needLb = Logic.needOf(g.items).lb
+        val sale = salesCache(st).options[g.term]?.minByOrNull { it.promo }
+        return meatPack(st, g.term, needLb, products.value[g.term]?.product, sale)
     }
 
     fun isBudget(st: UserState, r: Recipe): Boolean = mealCost(st, r)?.let { it.total <= st.budgetMax } ?: false
