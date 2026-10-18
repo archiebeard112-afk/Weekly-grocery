@@ -61,6 +61,8 @@ data class KrogerState(
 @Serializable
 data class UserState(
     val week: List<Int> = emptyList(),
+    /** Which day each planned recipe is on: recipe id -> 0 (Mon) .. 6 (Sun). */
+    val days: Map<Int, Int> = emptyMap(),
     val sides: Map<Int, String> = emptyMap(),
     val favs: Set<Int> = emptySet(),
     val hidden: Set<Int> = emptySet(),

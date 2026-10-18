@@ -97,6 +97,7 @@ fun App(vm: MealsViewModel) {
     var overlay by rememberSaveable { mutableStateOf(Overlay.None) }
     var confirmRemove by remember { mutableStateOf<Recipe?>(null) }
     var viewing by rememberSaveable { mutableStateOf<Int?>(null) }
+    var cooking by rememberSaveable { mutableStateOf<Int?>(null) }
     val ctx = LocalContext.current
     val openCart by vm.openCart.collectAsState()
     LaunchedEffect(openCart) {
@@ -130,7 +131,7 @@ fun App(vm: MealsViewModel) {
 
     BackHandler(enabled = review != null) { vm.closeReview() }
     BackHandler(enabled = review == null && overlay != Overlay.None) { overlay = Overlay.None }
-    BackHandler(enabled = review == null && overlay == Overlay.None && viewing != null) { viewing = null }
+    BackHandler(enabled = review == null && overlay == Overlay.None && viewing != null && cooking == null) { viewing = null }
 
     val toggleFav: (Recipe) -> Unit = { r ->
         if (Logic.isFav(r, st)) confirmRemove = r else vm.addFav(r.id)
@@ -139,8 +140,10 @@ fun App(vm: MealsViewModel) {
     Box(Modifier.fillMaxSize()) {
     if (review != null) {
         CartReviewScreen(vm, review!!)
+    } else if (overlay == Overlay.None && cooking != null) {
+        CookScreen(vm, st, cooking!!, timerCtl) { cooking = null }
     } else if (overlay == Overlay.None && viewing != null) {
-        RecipeScreen(vm, st, viewing!!, toggleFav, timerCtl) { viewing = null }
+        RecipeScreen(vm, st, viewing!!, toggleFav, timerCtl, onCook = { cooking = viewing }) { viewing = null }
     } else if (overlay == Overlay.Settings) {
         SettingsScreen(vm, st) { overlay = Overlay.None }
     } else if (overlay == Overlay.History) {
@@ -192,7 +195,7 @@ fun App(vm: MealsViewModel) {
             Column(Modifier.padding(pad).fillMaxSize()) {
                 when (tab) {
                     0 -> BrowseScreen(vm, st, toggleFav) { viewing = it }
-                    1 -> WeekScreen(vm, st, toggleFav, timerCtl)
+                    1 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 0 })
                     2 -> FavoritesScreen(vm, st, toggleFav) { overlay = Overlay.AddRecipe }
                     3 -> SnacksScreen(vm, st)
                     else -> ShopScreen(vm, st) { overlay = Overlay.Settings }
@@ -261,7 +264,7 @@ private fun Steps(steps: List<String>, ctl: TimerCtl? = null) {
 }
 
 @Composable
-private fun TimerButton(key: String, label: String, t: Logic.StepTime, ctl: TimerCtl) {
+internal fun TimerButton(key: String, label: String, t: Logic.StepTime, ctl: TimerCtl) {
     val end = ctl.running[key]
     val small = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
     if (end == null) {
@@ -294,7 +297,7 @@ private fun TimerButton(key: String, label: String, t: Logic.StepTime, ctl: Time
 }
 
 @Composable
-private fun Heading(text: String) {
+internal fun Heading(text: String) {
     Text(
         text, style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
@@ -501,12 +504,34 @@ private fun Badge(text: String, small: Boolean) {
     )
 }
 
+/** On a planned recipe: which day, the side dish, and Remove from week. */
+@Composable
+private fun WeekControls(vm: MealsViewModel, st: UserState, r: Recipe, side: Side?) {
+    var menu by remember { mutableStateOf(false) }
+    val day = Logic.dayPlan(st.week, st.days).dayOf(r.id)
+    Heading(if (day != null) "📅 Planned for ${Logic.DAY_LONG[day]}" else "📅 In your week (extra meal)")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Side: ", style = MaterialTheme.typography.bodyMedium)
+        Box {
+            OutlinedButton(onClick = { menu = true }) { Text(side?.label ?: "None") }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text("None") }, onClick = { vm.setSide(r.id, null); menu = false })
+                r.sides.mapNotNull { vm.sideMap[it] }.forEach { s ->
+                    DropdownMenuItem(text = { Text(s.label) }, onClick = { vm.setSide(r.id, s.key); menu = false })
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        TextButton(onClick = { vm.removeFromWeek(r.id) }) { Text("Remove from week") }
+    }
+}
+
 /** One recipe on its own page: buttons at the top, then ingredients and steps. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RecipeScreen(
     vm: MealsViewModel, st: UserState, id: Int, toggleFav: (Recipe) -> Unit,
-    timerCtl: (Recipe) -> TimerCtl, onBack: () -> Unit,
+    timerCtl: (Recipe) -> TimerCtl, onCook: () -> Unit, onBack: () -> Unit,
 ) {
     val r = vm.recipes(st)[id]
     if (r == null) { onBack(); return }
@@ -543,109 +568,15 @@ private fun RecipeScreen(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 6.dp),
             )
-            Button(
-                onClick = { vm.addToWeek(id) }, enabled = !inWeek,
-                modifier = Modifier.padding(top = 8.dp),
-            ) { Text(if (inWeek) "In your week" else "Add to week") }
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onCook) { Text("▶  Start cooking") }
+                if (!inWeek) OutlinedButton(onClick = { vm.addToWeek(id) }) { Text("Add to week") }
+            }
+            if (inWeek) WeekControls(vm, st, r, side)
             SaleSection(vm, st, r)
             RecipeDetails(r, st.servings, if (inWeek) side else null, if (inWeek) timerCtl(r) else null)
             Spacer(Modifier.height(24.dp))
         }
-    }
-}
-
-// ---- My Week -----------------------------------------------------------------------
-
-@Composable
-private fun WeekScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit, timerCtl: (Recipe) -> TimerCtl) {
-    val all = vm.recipes(st)
-    var confirmFinish by remember { mutableStateOf(false) }
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Cooking for", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = { vm.setServings(st.servings - 1) }) { Text("−") }
-                Text("${st.servings}", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 14.dp))
-                OutlinedButton(onClick = { vm.setServings(st.servings + 1) }) { Text("+") }
-            }
-        }
-        if (st.week.isEmpty()) {
-            item {
-                Text(
-                    "Nothing yet. Add recipes from Browse or Favorites.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 24.dp),
-                )
-            }
-        }
-        items(st.week, key = { it }) { id ->
-            val r = all[id] ?: return@items
-            var open by remember { mutableStateOf(false) }
-            var menu by remember { mutableStateOf(false) }
-            val sideKey = st.sides[id]
-            val side = sideKey?.let { vm.sideMap[it] }
-            val index = st.week.indexOf(id)
-            Card(colors = cardColors, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(r.emoji, style = MaterialTheme.typography.headlineMedium)
-                        Spacer(Modifier.width(10.dp))
-                        Text(r.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { vm.move(id, -1) }, enabled = index > 0) {
-                            Icon(Icons.Filled.KeyboardArrowUp, "Move up")
-                        }
-                        IconButton(onClick = { vm.move(id, 1) }, enabled = index < st.week.size - 1) {
-                            Icon(Icons.Filled.KeyboardArrowDown, "Move down")
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Side: ", style = MaterialTheme.typography.bodyMedium)
-                        Box {
-                            OutlinedButton(onClick = { menu = true }) { Text(side?.label ?: "None") }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(text = { Text("None") }, onClick = { vm.setSide(id, null); menu = false })
-                                r.sides.mapNotNull { vm.sideMap[it] }.forEach { s ->
-                                    DropdownMenuItem(
-                                        text = { Text(s.label) },
-                                        onClick = { vm.setSide(id, s.key); menu = false },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { open = !open }) { Text(if (open) "Hide steps" else "Show steps") }
-                        Spacer(Modifier.weight(1f))
-                        FavButton(r, st, toggleFav)
-                        IconButton(onClick = { vm.removeFromWeek(id) }) {
-                            Icon(Icons.Filled.Delete, "Remove from week")
-                        }
-                    }
-                    if (open) RecipeDetails(r, st.servings, side, timerCtl(r))
-                }
-            }
-        }
-        if (st.week.isNotEmpty()) {
-            item {
-                Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
-                    OutlinedButton(onClick = { confirmFinish = true }) { Text("Finish week") }
-                }
-            }
-        }
-    }
-    if (confirmFinish) {
-        AlertDialog(
-            onDismissRequest = { confirmFinish = false },
-            title = { Text("Finish this week?") },
-            text = { Text("Your ${st.week.size} meals will be saved to History, and My Week and the shopping list will be cleared.") },
-            confirmButton = {
-                TextButton(onClick = { vm.finishWeek(); confirmFinish = false }) { Text("Finish week") }
-            },
-            dismissButton = { TextButton(onClick = { confirmFinish = false }) { Text("Cancel") } },
-        )
     }
 }
 

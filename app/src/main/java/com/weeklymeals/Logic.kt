@@ -334,6 +334,37 @@ object Logic {
         else -> "${m / 60}h ${m % 60}m"
     }
 
+    // ---- Day-by-day week ------------------------------------------------------
+
+    val DAY_SHORT = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    val DAY_LONG = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+    /** Seven day slots (Mon..Sun) plus any meals that don't fit. */
+    data class DayPlan(val slots: List<Int?>, val extras: List<Int>) {
+        fun dayOf(id: Int): Int? = slots.indexOf(id).takeIf { it >= 0 }
+        /** Every placed meal -> its day. */
+        fun asMap(): Map<Int, Int> = slots.withIndex().mapNotNull { (d, id) -> id?.let { it to d } }.toMap()
+    }
+
+    /** Meals keep their chosen day; meals without one fill the first empty days in order. */
+    fun dayPlan(week: List<Int>, days: Map<Int, Int>): DayPlan {
+        val slots = arrayOfNulls<Int>(7)
+        val rest = mutableListOf<Int>()
+        for (id in week) {
+            val d = days[id]
+            if (d != null && d in 0..6 && slots[d] == null) slots[d] = id else rest += id
+        }
+        val extras = mutableListOf<Int>()
+        for (id in rest) {
+            val free = slots.indexOfFirst { it == null }
+            if (free >= 0) slots[free] = id else extras += id
+        }
+        return DayPlan(slots.toList(), extras)
+    }
+
+    /** Today as 0 (Mon) .. 6 (Sun). */
+    fun todayIndex(): Int = (java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7
+
     // ---- Badges --------------------------------------------------------------
 
     private val BADGES = linkedMapOf(

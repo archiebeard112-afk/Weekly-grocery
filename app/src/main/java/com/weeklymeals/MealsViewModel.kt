@@ -222,27 +222,37 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Week ----------------------------------------------------------------
 
+    /** Adds a meal to the next empty day (or "Extra meals" if the week is full). */
     fun addToWeek(id: Int) = edit { s ->
         if (id in s.week) s else {
             val r = recipes(s)[id]
             val firstSide = r?.sides?.firstOrNull()
+            val plan = Logic.dayPlan(s.week, s.days)
+            val free = plan.slots.indexOfFirst { it == null }
             s.copy(
                 week = s.week + id,
+                days = if (free >= 0) plan.asMap() + (id to free) else plan.asMap(),
                 sides = if (firstSide != null && id !in s.sides) s.sides + (id to firstSide) else s.sides,
             )
         }
     }
 
-    fun removeFromWeek(id: Int) = edit { s -> s.copy(week = s.week - id, sides = s.sides - id) }
+    fun removeFromWeek(id: Int) = edit { s ->
+        s.copy(week = s.week - id, sides = s.sides - id, days = Logic.dayPlan(s.week, s.days).asMap() - id)
+    }
 
-    fun move(id: Int, delta: Int) = edit { s ->
-        val list = s.week.toMutableList()
-        val from = list.indexOf(id)
-        val to = from + delta
-        if (from < 0 || to < 0 || to >= list.size) s else {
-            list.removeAt(from)
-            list.add(to, id)
-            s.copy(week = list)
+    /** Moves a meal to a day; if that day already has a meal, the two swap. */
+    fun moveToDay(id: Int, day: Int) = edit { s ->
+        val plan = Logic.dayPlan(s.week, s.days)
+        val occupant = plan.slots.getOrNull(day)
+        if (occupant == id || day !in 0..6) s else {
+            val m = plan.asMap().toMutableMap()
+            val from = m[id]
+            m[id] = day
+            if (occupant != null) {
+                if (from != null) m[occupant] = from else m.remove(occupant)
+            }
+            s.copy(days = m)
         }
     }
 
@@ -254,9 +264,16 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun finishWeek() = edit { s ->
         if (s.week.isEmpty() && s.snacks.isEmpty()) s else s.copy(
             history = if (s.week.isEmpty()) s.history else
-                listOf(PastWeek(System.currentTimeMillis(), s.week, s.sides.filterKeys { it in s.week }, s.servings)) +
+                listOf(
+                    PastWeek(
+                        System.currentTimeMillis(),
+                        Logic.dayPlan(s.week, s.days).let { p -> p.slots.filterNotNull() + p.extras },
+                        s.sides.filterKeys { it in s.week }, s.servings,
+                    ),
+                ) +
                     s.history.take(99),
             week = emptyList(),
+            days = emptyMap(),
             sides = emptyMap(),
             checked = emptySet(),
             lastSnacks = if (s.snacks.isEmpty()) s.lastSnacks else s.snacks,
