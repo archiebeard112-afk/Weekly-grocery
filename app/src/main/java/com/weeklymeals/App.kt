@@ -913,20 +913,12 @@ internal fun Badge(text: String, small: Boolean) {
 /** On a planned recipe: which day, the side dish, and Remove from week. */
 @Composable
 private fun WeekControls(vm: MealsViewModel, st: UserState, r: Recipe, side: Side?) {
-    var menu by remember { mutableStateOf(false) }
     val day = Logic.dayPlan(st.week, st.days).dayOf(r.id)
     Heading(if (day != null) "📅 Planned for ${Logic.DAY_LONG[day]}" else "📅 In your week (extra meal)")
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Side: ", style = MaterialTheme.typography.bodyMedium)
-        Box {
-            OutlinedButton(onClick = { menu = true }) { Text(side?.label ?: "None") }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text("None") }, onClick = { vm.setSide(r.id, null); menu = false })
-                vm.sideOptions(st, r).forEach { s ->
-                    DropdownMenuItem(text = { Text(s.label) }, onClick = { vm.chooseSide(r.id, s.key); menu = false })
-                }
-            }
-        }
+        // Opens the full Pick a side window: search, Recommended, More sides, online and store sides.
+        OutlinedButton(onClick = { vm.changeSide(r.id) }) { Text(side?.label ?: "None") }
     }
 }
 

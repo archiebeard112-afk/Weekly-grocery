@@ -541,6 +541,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         sidePicker.value = id
     }
 
+    /** Change the side on a meal that's already planned (same picker as when adding). */
+    fun changeSide(id: Int) { sidePicker.value = id }
+
     fun removeFromWeek(id: Int) = edit { s ->
         s.copy(week = s.week - id, sides = s.sides - id, days = Logic.dayPlan(s.week, s.days).asMap() - id)
     }
