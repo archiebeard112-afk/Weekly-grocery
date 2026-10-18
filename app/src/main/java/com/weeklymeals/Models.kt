@@ -117,6 +117,10 @@ data class UserState(
     val removed: Set<Int> = emptySet(),
     /** Names of recipes you deleted, so past weeks in History can still show them. */
     val deletedNames: Map<Int, String> = emptyMap(),
+    /** Side dishes you added from online recipes (key "web:<ref>"). */
+    val customSides: List<Side> = emptyList(),
+    /** Sides you've used with each recipe beyond its usual ones (offered first next time). */
+    val recipeSides: Map<Int, List<String>> = emptyMap(),
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */

@@ -65,22 +65,89 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UserState> =
         store.flow.stateIn(viewModelScope, SharingStarted.Eagerly, UserState())
 
-    private var sideCache: Pair<Map<Int, List<StoreSide>>, Map<String, Side>>? = null
+    private var sideCache: Triple<Map<Int, List<StoreSide>>, List<Side>, Map<String, Side>>? = null
 
-    /** All sides: the built-in ones plus store-bought sides you've picked ("buy:<upc>"). */
+    /** All sides: built-in ones, online sides you added ("web:…"), and store-bought ones ("buy:<upc>"). */
     val sideMap: Map<String, Side>
         get() {
-            val ss = state.value.storeSides
-            sideCache?.let { (k, v) -> if (k === ss) return v }
-            val m = baseSides + ss.values.flatten().associate { storeSideKey(it.upc) to storeSide(it) }
-            sideCache = ss to m
+            val st = state.value
+            val ss = st.storeSides
+            val cs = st.customSides
+            sideCache?.let { (a, b, v) -> if (a === ss && b === cs) return v }
+            val m = baseSides + cs.associateBy { it.key } +
+                ss.values.flatten().associate { storeSideKey(it.upc) to storeSide(it) }
+            sideCache = Triple(ss, cs, m)
             return m
         }
 
-    /** The side options for a recipe: its usual sides, then store-bought ones you've used with it. */
+    /** Recommended sides for a recipe: its usual sides, then ones you've used with it. */
     fun sideOptions(st: UserState, r: Recipe): List<Side> {
         val all = sideMap
-        return r.sides.mapNotNull { all[it] } + st.storeSides[r.id].orEmpty().mapNotNull { all[storeSideKey(it.upc)] }
+        val keys = r.sides + st.recipeSides[r.id].orEmpty() +
+            st.storeSides[r.id].orEmpty().map { storeSideKey(it.upc) }
+        return keys.distinct().mapNotNull { all[it] }
+    }
+
+    /** Every side you can cook (built-in and online ones you've added), A to Z. */
+    fun allSides(st: UserState): List<Side> =
+        (baseSides.values + st.customSides).sortedBy { it.label.substringAfter(" ").lowercase() }
+
+    /** Adds the meal with this side (or changes its side), and remembers it for the recipe. */
+    fun chooseSide(id: Int, key: String?) = edit { s0 ->
+        val r = recipes(s0)[id]
+        val s = if (key != null && r != null && key !in r.sides && !key.startsWith("buy:")) {
+            val list = (s0.recipeSides[id].orEmpty() - key + key).takeLast(6)
+            s0.copy(recipeSides = s0.recipeSides + (id to list))
+        } else s0
+        if (id in s.week) s.copy(sides = if (key == null) s.sides - id else s.sides + (id to key))
+        else withMeal(s, id, key)
+    }
+
+    /** Saves an online recipe as a side dish (amounts set for 4, like built-in sides) and uses it. */
+    fun saveWebSide(recipeId: Int, d: WebRecipeDetail) {
+        if (d.ingredients.isEmpty() || d.steps.isEmpty()) {
+            message.value = "This recipe is missing ingredients or steps"
+            return
+        }
+        val key = "web:${d.id}"
+        val side = Side(
+            key, "${d.emoji} ${d.title}",
+            d.ingredients.map { it.copy(q = it.q * 4.0 / d.servings) }, d.steps,
+        )
+        edit { s -> if (s.customSides.any { it.key == key }) s else s.copy(customSides = s.customSides + side) }
+        chooseSide(recipeId, key)
+        message.value = "Added ${d.title} as a side"
+    }
+
+    // Online search inside the "Pick a side" pop-up.
+    val sideWeb = MutableStateFlow(WebSearch())
+    private var sideJob: kotlinx.coroutines.Job? = null
+
+    fun searchSideWeb(query: String) {
+        val q = query.trim().lowercase()
+        val st = state.value
+        val source = RecipeSources.effective(st)
+        sideJob?.cancel()
+        if (q.length < 3 || source == RecipeSources.OFF ||
+            (source == RecipeSources.SPOONACULAR && st.spoonKey.isBlank())
+        ) {
+            sideWeb.value = WebSearch(q, source)
+            return
+        }
+        val cacheKey = "$source|$q"
+        webCache[cacheKey]?.let { sideWeb.value = WebSearch(q, source, results = it); return }
+        sideWeb.value = WebSearch(q, source, loading = true)
+        sideJob = viewModelScope.launch {
+            sideWeb.value = try {
+                val found = RecipeSources.search(source, st.spoonKey, q)
+                webCache[cacheKey] = found
+                WebSearch(q, source, results = found)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                WebSearch(q, source, error = e.message ?: "Couldn't search online")
+            }
+        }
     }
 
     /** One-line messages shown as a snackbar (success or error). */
@@ -385,7 +452,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun requestAdd(id: Int) {
         val r = recipes()[id] ?: return
         if (id in state.value.week) return
-        if (sideOptions(state.value, r).isNotEmpty()) sidePicker.value = id else addToWeek(id, null)
+        sidePicker.value = id
     }
 
     fun removeFromWeek(id: Int) = edit { s ->

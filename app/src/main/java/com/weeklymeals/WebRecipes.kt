@@ -147,6 +147,7 @@ internal fun OnlineResults(
 @Composable
 internal fun WebRecipeScreen(
     vm: MealsViewModel, st: UserState, webId: String,
+    forSide: Int? = null,
     onSaved: (Int) -> Unit, onBack: () -> Unit,
 ) {
     LaunchedEffect(webId) { vm.openWebRecipe(webId) }
@@ -159,7 +160,7 @@ internal fun WebRecipeScreen(
         modifier = Modifier.swipeBack(onBack),
         topBar = {
             TopAppBar(
-                title = { Text("Online recipe") },
+                title = { Text(if (forSide != null) "Online side" else "Online recipe") },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
             )
         },
@@ -170,11 +171,22 @@ internal fun WebRecipeScreen(
                         TextButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
                         Button(
                             onClick = {
-                                if (saved != null) onSaved(saved.id)
-                                else vm.saveWebRecipe(d)?.let(onSaved)
+                                when {
+                                    forSide != null -> { vm.saveWebSide(forSide, d); onBack() }
+                                    saved != null -> onSaved(saved.id)
+                                    else -> vm.saveWebRecipe(d)?.let(onSaved)
+                                }
                             },
                             modifier = Modifier.weight(2f),
-                        ) { Text(if (saved != null) "Open my copy" else "Add to my recipes") }
+                        ) {
+                            Text(
+                                when {
+                                    forSide != null -> "Use as side"
+                                    saved != null -> "Open my copy"
+                                    else -> "Add to my recipes"
+                                },
+                            )
+                        }
                     }
                 }
             }

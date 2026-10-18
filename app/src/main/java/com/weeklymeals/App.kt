@@ -137,6 +137,8 @@ fun App(vm: MealsViewModel) {
     var cooking by rememberSaveable { mutableStateOf<Int?>(null) }
     // An online recipe being previewed (Spoonacular id).
     var webViewing by rememberSaveable { mutableStateOf<String?>(null) }
+    // When previewing an online recipe to use as a side: the meal it's for.
+    var sideWebFor by rememberSaveable { mutableStateOf<Int?>(null) }
     // A just-saved recipe to open once it's in your recipes.
     var openWhenSaved by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(openWhenSaved, st.custom) {
@@ -201,7 +203,7 @@ fun App(vm: MealsViewModel) {
 
     BackHandler(enabled = overlay != Overlay.None) { overlay = Overlay.None }
     BackHandler(enabled = overlay == Overlay.None && viewing != null && cooking == null) { viewing = null }
-    BackHandler(enabled = overlay == Overlay.None && viewing == null && webViewing != null) { webViewing = null }
+    BackHandler(enabled = overlay == Overlay.None && viewing == null && webViewing != null) { webViewing = null; sideWebFor = null }
 
     val toggleFav: (Recipe) -> Unit = { r ->
         if (Logic.isFav(r, st)) confirmRemove = r else vm.addFav(r.id)
@@ -213,7 +215,10 @@ fun App(vm: MealsViewModel) {
     } else if (overlay == Overlay.None && cooking != null) {
         CookScreen(vm, st, cooking!!, timerCtl) { cooking = null }
     } else if (overlay == Overlay.None && viewing == null && webViewing != null) {
-        WebRecipeScreen(vm, st, webViewing!!, onSaved = { openWhenSaved = it }) { webViewing = null }
+        WebRecipeScreen(
+            vm, st, webViewing!!, forSide = sideWebFor,
+            onSaved = { openWhenSaved = it },
+        ) { webViewing = null; sideWebFor = null }
     } else if (overlay == Overlay.None && viewing != null) {
         RecipeScreen(vm, st, viewing!!, toggleFav, timerCtl, onCook = { cooking = viewing }) { viewing = null }
     } else if (overlay == Overlay.Settings) {
@@ -283,77 +288,9 @@ fun App(vm: MealsViewModel) {
     pickSide?.let { id ->
         val r = vm.recipes(st)[id]
         if (r == null) { vm.sidePicker.value = null } else {
-            var sideQuery by remember(id) { mutableStateOf("") }
-            val found by vm.suggestions.collectAsState()
-            LaunchedEffect(sideQuery) {
-                delay(350)
-                vm.searchSuggestions(sideQuery)
-            }
-            val close = { vm.sidePicker.value = null; vm.suggestions.value = emptyList() }
-            AlertDialog(
-                onDismissRequest = close,
-                title = { Text("Pick a side") },
-                text = {
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
-                        Text("${r.emoji} ${r.name}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        // Type to search King Soopers for a store-bought side.
-                        CompactSearch(
-                            sideQuery, { sideQuery = it },
-                            Modifier.padding(top = 8.dp),
-                            placeholder = "Add a side",
-                            icon = Icons.Filled.Add,
-                        )
-                        if (sideQuery.trim().length >= 2) {
-                            if (st.kroger.store.id.isEmpty()) {
-                                Text(
-                                    "Pick your store in Settings to see King Soopers matches.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(vertical = 8.dp),
-                                )
-                            }
-                            found.forEach { p ->
-                                Column(
-                                    Modifier.fillMaxWidth()
-                                        .clickable { vm.addToWeekWithProduct(id, p); close() }
-                                        .padding(vertical = 8.dp),
-                                ) {
-                                    Text(p.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(
-                                        listOfNotNull(
-                                            p.size.ifBlank { null }, (p.promo ?: p.price)?.let { Sales.money(it) },
-                                            if (p.promo != null) "on sale" else null,
-                                        ).joinToString(" · "),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                HorizontalDivider()
-                            }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        vm.sideOptions(st, r).forEach { sd ->
-                            Text(
-                                sd.label,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.fillMaxWidth()
-                                    .clickable { vm.addToWeek(id, sd.key); close() }
-                                    .padding(vertical = 12.dp),
-                            )
-                            HorizontalDivider()
-                        }
-                        Text(
-                            "No side",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.fillMaxWidth()
-                                .clickable { vm.addToWeek(id, null); close() }
-                                .padding(vertical = 12.dp),
-                        )
-                    }
-                },
-                confirmButton = {},
-                dismissButton = { TextButton(onClick = close) { Text("Cancel") } },
+            SidePicker(
+                vm, st, r,
+                onOnlineSide = { ref -> sideWebFor = id; webViewing = ref },
             )
         }
     }
@@ -837,7 +774,7 @@ private fun WeekControls(vm: MealsViewModel, st: UserState, r: Recipe, side: Sid
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("None") }, onClick = { vm.setSide(r.id, null); menu = false })
                 vm.sideOptions(st, r).forEach { s ->
-                    DropdownMenuItem(text = { Text(s.label) }, onClick = { vm.setSide(r.id, s.key); menu = false })
+                    DropdownMenuItem(text = { Text(s.label) }, onClick = { vm.chooseSide(r.id, s.key); menu = false })
                 }
             }
         }
