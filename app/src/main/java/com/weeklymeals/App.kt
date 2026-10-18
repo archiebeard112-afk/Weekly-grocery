@@ -128,6 +128,15 @@ fun App(vm: MealsViewModel) {
     var confirmRemove by remember { mutableStateOf<Recipe?>(null) }
     var viewing by rememberSaveable { mutableStateOf<Int?>(null) }
     var cooking by rememberSaveable { mutableStateOf<Int?>(null) }
+    // An online recipe being previewed (Spoonacular id).
+    var webViewing by rememberSaveable { mutableStateOf<Int?>(null) }
+    // A just-saved recipe to open once it's in your recipes.
+    var openWhenSaved by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(openWhenSaved, st.custom) {
+        openWhenSaved?.let { id ->
+            if (vm.recipes(st).containsKey(id)) { viewing = id; webViewing = null; openWhenSaved = null }
+        }
+    }
     var addFromLink by rememberSaveable { mutableStateOf<String?>(null) }
     var addLinkMode by rememberSaveable { mutableStateOf(false) }
     var askAddMode by remember { mutableStateOf(false) }
@@ -175,6 +184,7 @@ fun App(vm: MealsViewModel) {
 
     BackHandler(enabled = overlay != Overlay.None) { overlay = Overlay.None }
     BackHandler(enabled = overlay == Overlay.None && viewing != null && cooking == null) { viewing = null }
+    BackHandler(enabled = overlay == Overlay.None && viewing == null && webViewing != null) { webViewing = null }
 
     val toggleFav: (Recipe) -> Unit = { r ->
         if (Logic.isFav(r, st)) confirmRemove = r else vm.addFav(r.id)
@@ -185,6 +195,8 @@ fun App(vm: MealsViewModel) {
         ProductPicker(vm, picking!!) { vm.picking.value = null }
     } else if (overlay == Overlay.None && cooking != null) {
         CookScreen(vm, st, cooking!!, timerCtl) { cooking = null }
+    } else if (overlay == Overlay.None && viewing == null && webViewing != null) {
+        WebRecipeScreen(vm, st, webViewing!!, onSaved = { openWhenSaved = it }) { webViewing = null }
     } else if (overlay == Overlay.None && viewing != null) {
         RecipeScreen(vm, st, viewing!!, toggleFav, timerCtl, onCook = { cooking = viewing }) { viewing = null }
     } else if (overlay == Overlay.Settings) {
@@ -233,7 +245,10 @@ fun App(vm: MealsViewModel) {
             Column(Modifier.padding(pad).fillMaxSize()) {
                 when (tab) {
                     0 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 })
-                    1 -> BrowseScreen(vm, st, toggleFav) { viewing = it }
+                    1 -> BrowseScreen(
+                        vm, st, toggleFav,
+                        onWeb = { webViewing = it }, onSettings = { overlay = Overlay.Settings },
+                    ) { viewing = it }
                     2 -> FavoritesScreen(vm, st, toggleFav, favGridState, onOpen = { viewing = it }) { askAddMode = true }
                     else -> ShopScreen(vm, st, shopListState) { overlay = Overlay.Settings }
                 }
@@ -473,7 +488,10 @@ private val cardColors @Composable get() = CardDefaults.cardColors(
 // ---- Browse ------------------------------------------------------------------------
 
 @Composable
-private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit, onOpen: (Int) -> Unit) {
+private fun BrowseScreen(
+    vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit,
+    onWeb: (Int) -> Unit, onSettings: () -> Unit, onOpen: (Int) -> Unit,
+) {
     val ids by vm.browse.collectAsState()
     val saleOnly by vm.saleOnly.collectAsState()
     val progress by vm.salesProgress.collectAsState()
@@ -550,18 +568,20 @@ private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) 
             return@Column
         }
 
+        // Online results load about a second after you stop typing.
+        val web by vm.webSearch.collectAsState()
+        LaunchedEffect(query, st.spoonKey) {
+            delay(900)
+            vm.searchWeb(query)
+        }
+
         if (searching) {
             // All matches, scrolling.
             val q = query.trim().lowercase()
             val matches = all.values.filter { r ->
                 matchesFilters(r, q, filters) && (!saleOnly || Sales.savings(r, st.servings, cache) >= Sales.MIN_SAVINGS)
             }.sortedBy { it.name }
-            Text(
-                "${matches.size} match${if (matches.size == 1) "" else "es"}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-            )
+            val showWeb = query.trim().length >= 3
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -569,12 +589,26 @@ private fun BrowseScreen(vm: MealsViewModel, st: UserState, toggleFav: (Recipe) 
                 contentPadding = PaddingValues(vertical = 4.dp),
                 modifier = Modifier.weight(1f),
             ) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "inapp") {
+                    Text(
+                        if (showWeb) "In the app · ${matches.size}"
+                        else "${matches.size} match${if (matches.size == 1) "" else "es"}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
                 items(matches, key = { it.id }) { r ->
                     RecipeTile(
                         r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
                         Modifier.fillMaxWidth().height(96.dp),
                         saleSave = Sales.savings(r, st.servings, cache),
                     )
+                }
+                if (showWeb) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "online") {
+                        OnlineResults(vm, st, web, query, onWeb, onSettings)
+                    }
                 }
             }
             return@Column
@@ -729,7 +763,7 @@ private fun SaleSection(vm: MealsViewModel, st: UserState, r: Recipe) {
 
 /** A small rounded label like "🍲 Crock-Pot" or "💲 Budget". */
 @Composable
-private fun Badge(text: String, small: Boolean) {
+internal fun Badge(text: String, small: Boolean) {
     Text(
         text,
         style = if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelLarge,

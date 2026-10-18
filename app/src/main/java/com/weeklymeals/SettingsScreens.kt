@@ -55,12 +55,13 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
     var id by remember { mutableStateOf(k.clientId) }
     var secret by remember { mutableStateOf(k.clientSecret) }
     var zip by remember { mutableStateOf(k.zip) }
+    var spoon by remember { mutableStateOf(st.spoonKey) }
 
     Scaffold(
         modifier = Modifier.swipeBack(onBack),
         topBar = {
             TopAppBar(
-                title = { Text("King Soopers") },
+                title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") }
                 },
@@ -71,6 +72,7 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
             Modifier.padding(pad).imePadding().padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            Text("King Soopers", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Create a free app at developer.kroger.com. Set its redirect URI to ${KrogerApi.REDIRECT} " +
                     "and enable the Product, Location and Cart APIs. Then paste the keys below.",
@@ -116,6 +118,28 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
             )
 
             Spacer(Modifier.padding(8.dp))
+            HorizontalDivider()
+            Text("Online recipes", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Search finds recipes online with Spoonacular. Sign up for free at spoonacular.com/food-api, " +
+                    "open your Profile, copy your API key and paste it below.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OutlinedTextField(
+                spoon, { spoon = it }, label = { Text("Spoonacular API key") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = { vm.setSpoonKey(spoon) },
+                enabled = spoon.trim() != st.spoonKey,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (st.spoonKey.isBlank()) "Save key" else "Update key") }
+            if (st.spoonKey.isNotBlank()) {
+                Text("Online search is on.", style = MaterialTheme.typography.bodySmall)
+            }
+
+            Spacer(Modifier.padding(8.dp))
+            HorizontalDivider()
             UpdateSection(vm)
         }
     }

@@ -1,0 +1,200 @@
+package com.weeklymeals
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+
+/** The "Online" section under Browse search results. */
+@Composable
+internal fun OnlineResults(
+    vm: MealsViewModel, st: UserState, web: MealsViewModel.WebSearch, query: String,
+    onWeb: (Int) -> Unit, onSettings: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        Text(
+            "Online" + if (web.results.isNotEmpty()) " · ${web.results.size}" else "",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+        )
+        val q = query.trim().lowercase()
+        when {
+            st.spoonKey.isBlank() -> {
+                Text(
+                    "Add a free Spoonacular key in Settings to search recipes online.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+                )
+                TextButton(onClick = onSettings) { Text("Open Settings") }
+            }
+            web.loading || web.query != q -> Row(
+                Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(10.dp))
+                Text("Searching online…", style = MaterialTheme.typography.bodyMedium)
+            }
+            web.error != null -> Text(
+                web.error, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+            )
+            web.results.isEmpty() -> Text(
+                "No online recipes found.", style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+            )
+            else -> Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+            ) {
+                Column {
+                    web.results.forEachIndexed { i, w ->
+                        if (i > 0) HorizontalDivider()
+                        val saved = vm.savedWebRecipe(st, w.id) != null
+                        Row(
+                            Modifier.fillMaxWidth().clickable { onWeb(w.id) }.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(Importer.emojiFor(w.title), style = MaterialTheme.typography.titleLarge)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(w.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    listOfNotNull(
+                                        w.minutes?.let { "⏱ " + Logic.fmtShort(it) },
+                                        w.source.ifBlank { null },
+                                    ).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            if (saved) {
+                                Text("✓ Saved", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+/** Preview of an online recipe. Nothing is saved until you tap "Add to my recipes". */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun WebRecipeScreen(
+    vm: MealsViewModel, st: UserState, webId: Int,
+    onSaved: (Int) -> Unit, onBack: () -> Unit,
+) {
+    LaunchedEffect(webId) { vm.openWebRecipe(webId) }
+    val loaded by vm.webPreview.collectAsState()
+    val error by vm.webPreviewError.collectAsState()
+    val d = loaded?.takeIf { it.id == webId }
+    val saved = vm.savedWebRecipe(st, webId)
+
+    Scaffold(
+        modifier = Modifier.swipeBack(onBack),
+        topBar = {
+            TopAppBar(
+                title = { Text("Online recipe") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
+            )
+        },
+        bottomBar = {
+            if (d != null) {
+                Surface(tonalElevation = 3.dp) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TextButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
+                        Button(
+                            onClick = {
+                                if (saved != null) onSaved(saved.id)
+                                else vm.saveWebRecipe(d)?.let(onSaved)
+                            },
+                            modifier = Modifier.weight(2f),
+                        ) { Text(if (saved != null) "Open my copy" else "Add to my recipes") }
+                    }
+                }
+            }
+        },
+    ) { pad ->
+        when {
+            error != null && d == null -> Box(Modifier.padding(pad).fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Text(error ?: "", color = MaterialTheme.colorScheme.error)
+            }
+            d == null -> Box(Modifier.padding(pad).fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            else -> Column(
+                Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(d.emoji, style = MaterialTheme.typography.displaySmall)
+                    Spacer(Modifier.width(12.dp))
+                    Text(d.title, style = MaterialTheme.typography.headlineSmall)
+                }
+                val badges = Logic.badges(Recipe(0, d.title, d.emoji, steps = emptyList(), ingredients = emptyList(), tags = d.tags))
+                if (badges.isNotEmpty()) {
+                    Row(
+                        Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) { badges.forEach { Badge(it, small = false) } }
+                }
+                Text(
+                    listOfNotNull(
+                        "Serves ${d.servings}",
+                        d.minutes?.let { "⏱ About ${Logic.fmtMinutes(it)}" },
+                        d.source.ifBlank { null }?.let { "from $it" },
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                Heading("Ingredients (serves ${d.servings})")
+                d.ingredients.forEach { Text("• " + Logic.ingText(it, d.servings, d.servings), style = MaterialTheme.typography.bodyMedium) }
+                Heading("Steps")
+                d.steps.forEachIndexed { i, s ->
+                    Text("${i + 1}. $s", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 3.dp))
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+}

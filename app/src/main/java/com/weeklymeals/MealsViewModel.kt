@@ -468,6 +468,92 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** Call only after the "are you sure?" dialog is confirmed. */
     fun removeFav(id: Int) = edit { it.copy(favs = it.favs - id, hidden = it.hidden + id) }
 
+    // ---- Online recipes (Spoonacular) --------------------------------------------
+
+    /** Online search results for the Browse search box. */
+    data class WebSearch(
+        val query: String = "",
+        val loading: Boolean = false,
+        val results: List<WebRecipe> = emptyList(),
+        val error: String? = null,
+    )
+
+    val webSearch = MutableStateFlow(WebSearch())
+    private val webCache = mutableMapOf<String, List<WebRecipe>>()
+    private val detailCache = mutableMapOf<Int, WebRecipeDetail>()
+    private var webJob: kotlinx.coroutines.Job? = null
+
+    fun setSpoonKey(key: String) {
+        webCache.clear()
+        edit { it.copy(spoonKey = key.trim()) }
+        message.value = "Saved"
+    }
+
+    fun searchWeb(query: String) {
+        val q = query.trim().lowercase()
+        val key = state.value.spoonKey
+        webJob?.cancel()
+        if (q.length < 3 || key.isBlank()) {
+            webSearch.value = WebSearch(q)
+            return
+        }
+        webCache[q]?.let { webSearch.value = WebSearch(q, results = it); return }
+        webSearch.value = WebSearch(q, loading = true)
+        webJob = viewModelScope.launch {
+            webSearch.value = try {
+                val found = Spoonacular.search(key, q)
+                webCache[q] = found
+                WebSearch(q, results = found)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                WebSearch(q, error = e.message ?: "Couldn't search online")
+            }
+        }
+    }
+
+    /** The online recipe being previewed (null = loading or none). */
+    val webPreview = MutableStateFlow<WebRecipeDetail?>(null)
+    val webPreviewError = MutableStateFlow<String?>(null)
+
+    fun openWebRecipe(id: Int) {
+        webPreviewError.value = null
+        detailCache[id]?.let { webPreview.value = it; return }
+        webPreview.value = null
+        viewModelScope.launch {
+            try {
+                val d = Spoonacular.details(state.value.spoonKey, id)
+                detailCache[id] = d
+                webPreview.value = d
+            } catch (e: Exception) {
+                webPreviewError.value = e.message ?: "Couldn't load this recipe"
+            }
+        }
+    }
+
+    /** The saved recipe for an online result, if you've already added it. */
+    fun savedWebRecipe(st: UserState, webId: Int): Recipe? = st.custom.firstOrNull { it.webId == webId }
+
+    /** Saves an approved online recipe to your recipes (it shows in Favorites). Returns its new id. */
+    fun saveWebRecipe(d: WebRecipeDetail): Int? {
+        if (d.ingredients.isEmpty() || d.steps.isEmpty()) {
+            message.value = "This recipe is missing ingredients or steps"
+            return null
+        }
+        savedWebRecipe(state.value, d.id)?.let { return it.id }
+        val st = state.value
+        val newId = (recipes(st).keys.maxOrNull() ?: 99).coerceAtLeast(99) + 1
+        val r = Recipe(
+            id = newId, name = d.title, emoji = d.emoji, base = d.servings,
+            steps = d.steps, ingredients = d.ingredients,
+            sides = bundle.sides.take(4).map { it.key }, imported = true,
+            tags = d.tags, webId = d.id,
+        )
+        edit { s -> if (s.custom.any { it.webId == d.id }) s else s.copy(custom = s.custom + r) }
+        message.value = "Added to Favorites"
+        return newId
+    }
+
     fun addCustomRecipe(name: String, emoji: String, base: Int, ingText: String, stepText: String): Boolean {
         val ings = ingText.lines().mapNotNull { Logic.parseIngredient(it) }
         val steps = stepText.lines().map { it.trim().replace(Regex("^\\d+[.)]\\s*"), "") }.filter { it.isNotEmpty() }

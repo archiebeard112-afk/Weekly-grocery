@@ -18,6 +18,8 @@ data class Recipe(
     val imported: Boolean = false,
     /** Cooking method / budget labels, e.g. "crockpot", "instantpot", "budget". */
     val tags: List<String> = emptyList(),
+    /** Spoonacular recipe id, for recipes saved from an online search (0 = not from online). */
+    val webId: Int = 0,
 )
 
 @Serializable
@@ -100,6 +102,8 @@ data class UserState(
     val sales: SalesCache = SalesCache(),
     /** Store-bought sides you've picked for each recipe (offered again next time). */
     val storeSides: Map<Int, List<StoreSide>> = emptyMap(),
+    /** Spoonacular API key, for searching recipes online. */
+    val spoonKey: String = "",
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */
