@@ -55,6 +55,31 @@ object Shares {
         else -> "~1 week"
     }
 
+    /** Produce usually bought one at a time (not in a bag) when there's no product chosen yet. */
+    private val usuallyLoose = Regex(
+        "\\b(onions?|bell peppers?|red peppers?|green peppers?|jalape\\w*|lemons?|limes?|oranges?|avocados?|tomato(es)?|" +
+            "cucumbers?|zucchinis?|apples?|bananas?|sweet potato(es)?|mangos?|peach(es)?|pears?|eggplants?|heads? of \\w+)\\b",
+    )
+
+    /** True when the product is sold one at a time ("each", "1 ct", or loose by the pound). */
+    fun soldEach(p: Product?, term: String): Boolean {
+        if (p == null) return usuallyLoose.containsMatchIn(term)
+        val size = p.size.lowercase()
+        val parsed = Pantry.parseSize(size)
+        val v = parsed?.first ?: 0.0
+        val unit = parsed?.second.orEmpty()
+        return Regex("\\b(each|ea)\\b").containsMatchIn(size) ||
+            (unit.startsWith("lb") && v <= 1.0 && usuallyLoose.containsMatchIn(term)) ||
+            ((unit == "ct" || unit == "count") && v == 1.0) ||
+            (size.isBlank() && usuallyLoose.containsMatchIn(term))
+    }
+
+    /** Whole pieces only (1 onion, 2 peppers): nothing is cut from one meal's piece for another. */
+    fun wholePieces(items: List<ShopItem>): Boolean = items.all {
+        (it.unit.isBlank() || it.unit in setOf("each", "whole", "small", "medium", "large")) &&
+            Math.abs(it.qty - Math.round(it.qty)) < 1e-6 && it.qty >= 1
+    }
+
     /** Pantry staples (spices, oils, baking) aren't "shared": they live in the Pantry. */
     fun isStaple(term: String): Boolean = Pantry.classify(term)?.first in setOf("spices", "oils", "baking")
 }
@@ -77,7 +102,12 @@ fun MealsViewModel.weekShares(st: UserState): Map<String, Share> {
     val perMeal = order.associateWith { mealItems(st, it) }
     val terms = perMeal.values.flatMap { it.keys }.groupingBy { it }.eachCount().filter { it.value >= 2 }.keys
     val groups by lazy { shopGroups(st).associateBy { it.term } }
-    val out = terms.filter { it !in st.usedAll && !Shares.isStaple(it) }.associateWith { term ->
+    // Bought one at a time and each meal uses whole ones (3 onions for 3 meals): each meal has its own, nothing shared.
+    val ownPieces = terms.filter { term ->
+        Shares.soldEach(products.value[term]?.product, term) &&
+            perMeal.values.all { m -> m[term]?.let { Shares.wholePieces(it) } ?: true }
+    }.toSet()
+    val out = terms.filter { it !in st.usedAll && !Shares.isStaple(it) && it !in ownPieces }.associateWith { term ->
         val meals = order.filter { term in perMeal.getValue(it) }
         val pack = if (Packs.weighed(term)) groups[term]?.let { g -> shopPack(st, g) }?.let { m ->
             if (m.cut != null) "${m.packs * m.perPack} ${Packs.pieceWord(m.cut, m.packs * m.perPack)}"
