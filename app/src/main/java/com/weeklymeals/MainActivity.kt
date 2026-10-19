@@ -40,6 +40,10 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         // Tapped the cooking bubble (or its notification): back to your steps.
+        if (intent?.getBooleanExtra(TimerAlarmService.EXTRA_STOP_ALARM, false) == true) {
+            TimerAlarmService.stopAll()
+            intent.removeExtra(TimerAlarmService.EXTRA_STOP_ALARM)
+        }
         if (intent?.getBooleanExtra(CookOverlay.EXTRA_OPEN_COOK, false) == true) {
             vm.openCook.value = true
             intent.removeExtra(CookOverlay.EXTRA_OPEN_COOK)

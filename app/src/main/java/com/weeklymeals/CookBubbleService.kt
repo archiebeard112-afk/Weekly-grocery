@@ -38,6 +38,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 
 /**
  * The cooking bubble outside the app. While you're cooking, a small service keeps a red pot
@@ -73,6 +84,24 @@ object CookOverlay {
     }
 
     const val EXTRA_OPEN_COOK = "open_cook"
+
+    /** A view model for the mini cook window, kept for as long as the app's process runs. */
+    @Volatile private var sharedVm: MealsViewModel? = null
+    fun vm(app: android.app.Application): MealsViewModel =
+        sharedVm ?: synchronized(this) { sharedVm ?: MealsViewModel(app).also { sharedVm = it } }
+}
+
+/** Lets a Compose view live in a window owned by a service (no activity). */
+private class OverlayOwner : LifecycleOwner, SavedStateRegistryOwner {
+    private val registry = LifecycleRegistry(this)
+    private val saved = SavedStateRegistryController.create(this)
+    override val lifecycle: Lifecycle get() = registry
+    override val savedStateRegistry: SavedStateRegistry get() = saved.savedStateRegistry
+    fun start() {
+        saved.performRestore(null)
+        registry.currentState = Lifecycle.State.RESUMED
+    }
+    fun stop() { registry.currentState = Lifecycle.State.DESTROYED }
 }
 
 class CookBubbleService : Service() {
@@ -82,6 +111,9 @@ class CookBubbleService : Service() {
     private var bubble: View? = null
     private var pill: TextView? = null
     private var params: WindowManager.LayoutParams? = null
+    // The mini cook window that opens from the bubble.
+    private var panel: View? = null
+    private var panelOwner: OverlayOwner? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -208,7 +240,7 @@ class CookBubbleService : Service() {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX; val dy = e.rawY - downY
-                    if (!moved && (abs(dx) > slop || abs(dy) > slop)) { moved = true; main.removeCallbacks(hold) }
+                    if (!moved && (abs(dx) > slop || abs(dy) > slop)) { moved = true; main.removeCallbacks(hold); closePanel() }
                     if (moved && bubble != null) {
                         p.x = (startX + dx).toInt().coerceIn(0, metrics.widthPixels - dp(64))
                         p.y = (startY + dy).toInt().coerceIn(0, metrics.heightPixels - dp(100))
@@ -219,7 +251,9 @@ class CookBubbleService : Service() {
                     main.removeCallbacks(hold)
                     if (moved) { savedX = p.x; savedY = p.y }
                     else if (e.action == MotionEvent.ACTION_UP && bubble != null) {
-                        runCatching { startActivity(openIntent()) }
+                        // Tap: silence a ringing timer, and open or close the mini cook window.
+                        if (TimerAlarmService.isRinging) TimerAlarmService.stopAll()
+                        if (panel == null) openPanel() else closePanel()
                     }
                 }
             }
@@ -231,7 +265,52 @@ class CookBubbleService : Service() {
         }
     }
 
+    /** The mini cook window: above the bubble (or below it when the bubble is near the top). */
+    private fun openPanel() {
+        val bp = params ?: return
+        val m = resources.displayMetrics
+        val w = (m.widthPixels * 0.88f).toInt()
+        val h = (m.heightPixels * 0.5f).toInt()
+        val bubbleH = bubble?.height?.takeIf { it > 0 } ?: dp(90)
+        val above = bp.y + bubbleH / 2 > m.heightPixels / 2
+        val p = WindowManager.LayoutParams(
+            w, h,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = (m.widthPixels - w) / 2
+            y = if (above) (bp.y - h - dp(6)).coerceAtLeast(dp(24)) else (bp.y + bubbleH + dp(6)).coerceAtMost(m.heightPixels - h)
+        }
+        val owner = OverlayOwner().also { it.start() }
+        val vm = CookOverlay.vm(application)
+        val view = ComposeView(this).apply {
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeSavedStateRegistryOwner(owner)
+            setContent {
+                WeeklyTheme {
+                    val st by vm.state.collectAsState()
+                    val id = st.cookingId
+                    if (id != null) MiniCook(vm, st, id) { closePanel(); runCatching { startActivity(openIntent()) } }
+                }
+            }
+        }
+        runCatching { wm.addView(view, p) }.onSuccess {
+            panel = view; panelOwner = owner
+            // Keep the bubble on top of the window.
+            bubble?.let { b -> runCatching { wm.removeView(b); wm.addView(b, bp) } }
+        }.onFailure { owner.stop() }
+    }
+
+    private fun closePanel() {
+        panel?.let { runCatching { wm.removeView(it) } }
+        panelOwner?.stop()
+        panel = null; panelOwner = null
+    }
+
     private fun hideBubble() {
+        closePanel()
         bubble?.let { runCatching { wm.removeView(it) } }
         bubble = null; pill = null; params = null
     }

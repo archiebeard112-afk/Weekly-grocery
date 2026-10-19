@@ -70,9 +70,12 @@ object Timers {
         val am = ctx.getSystemService(AlarmManager::class.java)
         am.cancel(pending(ctx, key, ""))
         NotificationManagerCompat.from(ctx).cancel(key.hashCode())
+        TimerAlarmService.stop(key)
     }
 
     internal fun ring(ctx: Context, key: String, label: String) {
+        // Ring like an alarm clock (plays on silent). Falls back to a loud notification.
+        if (TimerAlarmService.ring(ctx, key, label)) return
         ensureChannel(ctx)
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED

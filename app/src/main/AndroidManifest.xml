@@ -65,6 +65,15 @@
                 android:value="Floating cooking bubble shown over other apps while the user is cooking a recipe" />
         </service>
 
+        <service
+            android:name=".TimerAlarmService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Rings a finished cooking timer on the alarm stream until the user stops it" />
+        </service>
+
         <receiver
             android:name=".TimerReceiver"
             android:exported="false" />

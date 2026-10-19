@@ -24,6 +24,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -468,6 +470,95 @@ private fun RunningTimers(st: UserState, steps: List<CookStep>, mainCtl: TimerCt
             val label = "Step $stepNo · " + if (left > 0) "%d:%02d".format(left / 60, left % 60) else "Done!"
             FilledTonalButton(onClick = { (if (isSide) sideCtl else mainCtl).stop(key) }) {
                 Text("⏱ $label  ✕")
+            }
+        }
+    }
+}
+
+/**
+ * The small cooking window that opens from the floating bubble (outside the app):
+ * running timers, then every step with amounts highlighted. Tap a step to tick it off.
+ */
+@Composable
+internal fun MiniCook(vm: MealsViewModel, st: UserState, id: Int, onOpenApp: () -> Unit) {
+    val r = vm.recipes(st)[id] ?: return
+    val side = if (id in st.week) st.sides[id]?.let { vm.sideMap[it] } else null
+    val sideName = side?.label?.substringAfter(" ")
+    val serv = st.servings
+    val steps = remember(r, side) { Cook.order(r, side) }
+    val mainPieces = remember(r, serv) { Cook.withAmounts(r.steps, r.ingredients.map { Logic.scale(it, serv, r.base) }, serv.toDouble() / r.base) }
+    val sidePieces = remember(side, serv) {
+        side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, serv, 4) }, serv / 4.0) } ?: emptyList()
+    }
+    val mainCtl = TimerCtl(
+        prefix = "r${r.id}", title = r.name, running = st.timers,
+        start = { key, label, minutes -> vm.startTimer(key, label, minutes) },
+        stop = { vm.stopTimer(it) },
+    )
+    val sideCtl = mainCtl.copy(prefix = mainCtl.prefix + "side", title = sideName ?: "Side")
+    val done = st.cookDone
+    val highlight = MaterialTheme.colorScheme.primary
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 3.dp,
+        shadowElevation = 10.dp,
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${r.emoji} ${r.name}", style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onOpenApp) { Text("Open app") }
+            }
+            RunningTimers(st, steps, mainCtl, sideCtl)
+            Column(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+            ) {
+                steps.forEachIndexed { n, step ->
+                    val isDone = n in done
+                    val pieces = (if (step.isSide) sidePieces else mainPieces).getOrNull(step.stepIndex)
+                        ?: listOf(Cook.Piece(step.text, false))
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .clickable { vm.saveCookPlace(id, st.cookScroll, if (isDone) done - n else done + n) }
+                            .alpha(if (isDone) 0.45f else 1f)
+                            .padding(vertical = 6.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Text(
+                                if (isDone) "✓" else "${n + 1}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = highlight, modifier = Modifier.width(26.dp),
+                            )
+                            Text(
+                                buildAnnotatedString {
+                                    if (step.isSide) withStyle(SpanStyle(color = MaterialTheme.colorScheme.secondary)) { append("Side · ") }
+                                    pieces.forEach { p ->
+                                        if (p.isAmount) withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) { append(p.text) }
+                                        else append(p.text)
+                                    }
+                                },
+                                fontSize = 15.sp, lineHeight = 21.sp,
+                                textDecoration = if (isDone) TextDecoration.LineThrough else null,
+                            )
+                        }
+                        if (step.times.isNotEmpty() && !isDone) {
+                            val ctl = if (step.isSide) sideCtl else mainCtl
+                            Row(Modifier.padding(start = 26.dp, top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                step.times.forEachIndexed { k, t ->
+                                    TimerButton("${ctl.prefix}:${step.stepIndex}:$k", "${ctl.title}: step ${step.stepIndex + 1}", t, ctl)
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider()
+                }
+                Spacer(Modifier.height(12.dp))
             }
         }
     }
