@@ -777,10 +777,13 @@ private fun BrowseScreen(
             // Filters live behind this button (swipe the tiles for more ideas).
             FiltersButton(filters.size + if (saleOnly) 1 else 0, showLabel = true) { showFilters = true }
         }
-        CompactSearch(query, { query = it }, Modifier.padding(top = 6.dp, bottom = 4.dp))
-        // Where to search, one at a time: this app's recipes, online recipes, or King Soopers products.
+        // Where to search, one at a time (menu inside the search bar): this app's recipes, online recipes, or King Soopers products.
         val scopeKey = st.browseScope
-        ScopeChips(scopeKey, { vm.setBrowseScope(it) }, Modifier.padding(bottom = 4.dp))
+        CompactSearch(
+            query, { query = it }, Modifier.padding(top = 6.dp, bottom = 4.dp),
+            placeholder = BrowseScope.hint(scopeKey),
+            trailing = { ScopeMenu(scopeKey) { vm.setBrowseScope(it) } },
+        )
         if (showFilters) {
             FiltersDialog(
                 filters, onChange = { filters = it }, onDismiss = { showFilters = false },
@@ -1197,6 +1200,7 @@ internal fun CompactSearch(
     placeholder: String = "Search",
     icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Filled.Search,
     onDone: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier.fillMaxWidth().height(42.dp)
@@ -1233,6 +1237,7 @@ internal fun CompactSearch(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        trailing?.invoke()
     }
 }
 

@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -82,8 +83,6 @@ fun WeekScreen(
     val plan = Logic.dayPlan(st.week, st.days)
     val today = Logic.todayIndex()
     val density = LocalDensity.current
-    // A standard week (no extras, no store meals) fits on one screen; extras and store meals make the page scroll.
-    val fits = plan.extras.isEmpty() && st.storeMeals.isEmpty()
     val gapPx = with(density) { ROW_GAP.toPx() }
     var rowPx by remember { mutableFloatStateOf(with(density) { ROW_HEIGHT.toPx() }) }
     // Each tile's real height (tiles with store items are taller), so dragging lands on the right day.
@@ -121,6 +120,17 @@ fun WeekScreen(
     val rows: List<Pair<String, Int?>> =
         plan.slots.mapIndexed { d, id -> Logic.DAY_SHORT[d] to id } + plan.extras.map { "Extra" to it }
 
+    // Roughly how tall each day's tile needs to be (dp): a day with store items is taller.
+    fun estDp(index: Int, hasRecipe: Boolean): Float {
+        val n = if (index < 7) st.storeMeals.count { it.day == index } else 0
+        return if (n == 0) 64f else 16f + (if (hasRecipe) 52f else 0f) + 36f * n + 32f
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // The week stays on one screen (days with store items take more room, the rest squeeze a little).
+    // It only scrolls if there are extra meals or it truly can't fit.
+    val needDp = 12f + 44f + 40f + rows.withIndex().sumOf { (i, row) -> estDp(i, row.second != null).toDouble() }.toFloat() + 6f * (rows.size + 2)
+    val fits = plan.extras.isEmpty() && maxHeight.value >= needDp
     Column(
         Modifier.fillMaxSize()
             .then(if (fits) Modifier else Modifier.verticalScroll(scroll))
@@ -191,7 +201,7 @@ fun WeekScreen(
             }
             var rowMod = Modifier
                 .fillMaxWidth()
-                .then(if (fits) Modifier.weight(1f) else Modifier.heightIn(min = ROW_HEIGHT))
+                .then(if (fits) Modifier.weight(estDp(index, id != null)) else Modifier.heightIn(min = ROW_HEIGHT))
                 .onSizeChanged {
                     heights[index] = it.height.toFloat()
                     if (index == 0) rowPx = it.height.toFloat()
@@ -279,6 +289,7 @@ fun WeekScreen(
             }
         }
         if (!fits) Spacer(Modifier.height(12.dp))
+    }
     }
 
     openMeal?.let { m ->

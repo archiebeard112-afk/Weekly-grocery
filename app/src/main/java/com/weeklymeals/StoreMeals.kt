@@ -16,7 +16,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,14 +46,36 @@ object BrowseScope {
     const val WEB = "web"
     const val STORE = "store"
     val ALL = listOf(APP to "In app", WEB to "Online", STORE to "King Soopers")
+    fun label(key: String) = ALL.firstOrNull { it.first == key }?.second ?: "In app"
+    fun hint(key: String) = when (key) {
+        WEB -> "Search online recipes"
+        STORE -> "Search King Soopers"
+        else -> "Search"
+    }
 }
 
-/** The three "where to search" chips under the Browse search box. */
+/** The "where to search" button at the right end of the Browse search bar, with a short menu. */
 @Composable
-internal fun ScopeChips(scope: String, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        BrowseScope.ALL.forEach { (key, label) ->
-            FilterChip(selected = scope == key, onClick = { onPick(key) }, label = { Text(label) })
+internal fun ScopeMenu(scope: String, onPick: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).clickable { open = true }.padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                BrowseScope.label(scope), style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary, maxLines = 1,
+            )
+            Icon(Icons.Filled.ArrowDropDown, "Where to search", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            BrowseScope.ALL.forEach { (key, label) ->
+                DropdownMenuItem(
+                    text = { Text((if (key == scope) "✓  " else "     ") + label) },
+                    onClick = { open = false; onPick(key) },
+                )
+            }
         }
     }
 }
