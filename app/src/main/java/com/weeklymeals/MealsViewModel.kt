@@ -344,9 +344,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         if (pool.size < 10) pool = all.filter { it.id !in st.week }
         // Within each protein, sale meals tend to come first; then take one from each protein in turn.
         val groups = pool.groupBy { protein(it) }.mapValues { (_, list) ->
-            list.shuffled().sortedByDescending { r ->
-                if (Sales.savings(r, st.servings, cache) >= st.saleMin && Math.random() < 0.6) 1 else 0
-            }.toMutableList()
+            // Decide each meal's coin flip once, then sort (a sort can't ask a random question twice).
+            list.shuffled().map { r ->
+                r to if (Sales.savings(r, st.servings, cache) >= st.saleMin && Math.random() < 0.6) 1 else 0
+            }.sortedByDescending { it.second }.map { it.first }.toMutableList()
         }
         val order = groups.keys.shuffled()
         val picked = mutableListOf<Int>()
