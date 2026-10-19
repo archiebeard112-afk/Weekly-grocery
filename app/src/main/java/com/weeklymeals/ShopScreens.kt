@@ -242,16 +242,16 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         )
                     }
                     items(section, key = { "g_" + it.term }) { g ->
-                        val inFridge = st.pantry.any { Pantry.covers(it, g.term) && it.shelf == "fridge" }
                         val status = vm.pantryStatus(st, g)
+                        val zone = vm.pantryItem(st, g.term)?.let { zoneOf(it.shelf) }
+                        val place = zoneName(zone)
                         val pantryNote = when (status) {
                             MealsViewModel.PantryStatus.EXPIRED -> {
                                 val item = vm.pantryItem(st, g.term)
-                                val place = if (inFridge) "🥛 In fridge" else "🫙 In pantry"
                                 if (item != null && Pantry.isSpice(item)) "$place · may be weak" else "$place · check date"
                             }
-                            MealsViewModel.PantryStatus.LOW -> if (inFridge) "🥛 Low in fridge" else "🫙 Low in pantry"
-                            MealsViewModel.PantryStatus.COVERED -> if (inFridge) "🥛 In fridge · buying anyway" else "🫙 In pantry · buying anyway"
+                            MealsViewModel.PantryStatus.LOW -> "Low in ${place.lowercase()}"
+                            MealsViewModel.PantryStatus.COVERED -> "In ${place.lowercase()} · buying anyway"
                             null -> null
                         }
                         // Some in the freezer but not enough: say how much more to buy.
@@ -260,11 +260,11 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                             val need = vm.meatNeed(st, g.term, g.items)
                             val more = need - f.amount()
                             if (more <= 0) null
-                            else if (f.byCount) "🧊 ${f.count} in freezer · need ${Logic.fmt(more)} more"
-                            else "🧊 ${Logic.fmt(f.lb)} lb in freezer · need ${Logic.fmt(Math.round(more * 4) / 4.0)} lb more"
+                            else if (f.byCount) "${f.count} in freezer · need ${Logic.fmt(more)} more"
+                            else "${Logic.fmt(f.lb)} lb in freezer · need ${Logic.fmt(Math.round(more * 4) / 4.0)} lb more"
                         }
                         ShopRow(
-                            vm, g, products[g.term], hasStore, pantryNote, vm.shopPack(st, g), freezerNote,
+                            vm, g, products[g.term], hasStore, pantryNote, vm.shopPack(st, g), freezerNote, noteZone = zone,
                             usePantry = if (status == MealsViewModel.PantryStatus.EXPIRED) ({ vm.setUseAnyway(g.term, true) }) else null,
                         )
                     }
@@ -292,14 +292,20 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         ) {
                             val fromPantry = g.term !in st.haveTerms
                             val fromFreezer = fromPantry && vm.freezerCovers(st, g)
-                            val fromFridge = fromPantry && st.pantry.any { Pantry.covers(it, g.term) && it.shelf == "fridge" }
-                            Text(
-                                g.term.replaceFirstChar { it.uppercase() } +
-                                    if (fromFreezer) "  · 🧊 in freezer" else if (fromFridge) "  · 🥛 in fridge" else if (fromPantry) "  · 🫙 in pantry" else "",
-                                textDecoration = if (fromPantry) null else TextDecoration.LineThrough,
-                                color = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.weight(1f),
-                            )
+                            val zone = if (!fromPantry) null else if (fromFreezer) "freezer" else vm.haveZone(st, g.term)
+                            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    g.term.replaceFirstChar { it.uppercase() },
+                                    textDecoration = if (fromPantry) null else TextDecoration.LineThrough,
+                                    color = MaterialTheme.colorScheme.outline,
+                                )
+                                // Same icon as its Kitchen zone, then where it is.
+                                if (fromPantry) {
+                                    Spacer(Modifier.width(8.dp))
+                                    HaveIcon(zone ?: "pantry")
+                                    Text(" ${zoneName(zone)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                }
+                            }
                             if (fromPantry) {
                                 TextButton(onClick = { vm.togglePantryBuy(g.term) }) { Text("Buy anyway") }
                             } else {
@@ -394,6 +400,7 @@ private fun ShopRow(
     meat: MealsViewModel.MeatPack? = null,
     freezerNote: String? = null,
     usePantry: (() -> Unit)? = null,
+    noteZone: String? = null,
 ) {
     var editPack by remember { mutableStateOf(false) }
     val highlight = MaterialTheme.colorScheme.primary
@@ -411,19 +418,22 @@ private fun ShopRow(
             TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Have it") }
         }
         pantryNote?.let {
-            if (usePantry != null) {
+            val amber = Color(0xFFBA7517)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HaveIcon(noteZone ?: "pantry", Modifier.size(14.dp), amber)
+                Text(" $it", style = MaterialTheme.typography.bodySmall, color = amber, modifier = Modifier.weight(1f))
                 // Past its date: buy more, or say you're fine using what you have.
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFBA7517), modifier = Modifier.weight(1f))
+                if (usePantry != null) {
                     TextButton(onClick = usePantry, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Use pantry") }
                 }
-            } else {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFBA7517))
             }
         }
         // Meat sold by the pound: which pack, what's left over. Tap to set the real pack weight.
         freezerNote?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFF85B7EB))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HaveIcon("freezer", Modifier.size(14.dp))
+                Text(" $it", style = MaterialTheme.typography.bodySmall, color = Color(0xFF85B7EB))
+            }
         }
         meat?.let { m ->
             val leftover = when {
@@ -654,4 +664,10 @@ private fun PackCountDialog(term: String, m: MealsViewModel.MeatPack, onSet: (In
             }
         },
     )
+}
+
+
+/** "Pantry", "Fridge", "Freezer" or "Produce bin". */
+internal fun zoneName(zone: String?): String = when (zone) {
+    "fridge" -> "Fridge"; "freezer" -> "Freezer"; "produce" -> "Produce bin"; else -> "Pantry"
 }

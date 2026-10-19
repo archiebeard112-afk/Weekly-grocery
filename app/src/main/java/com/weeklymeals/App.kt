@@ -627,30 +627,36 @@ private fun RecipeDetails(
         val term = Logic.searchTerm(i.name)
         val price = cost?.lines?.get(term)
         val first = price != null && priced.add(term)
+        val zone = price?.zone
         Row(verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text("• " + Logic.ingText(i, serv, base), style = MaterialTheme.typography.bodyMedium)
                 // In the pantry but past its date.
                 expired[term]?.let {
-                    Text(
-                        "   🫙 In pantry · $it", style = MaterialTheme.typography.labelSmall,
-                        color = androidx.compose.ui.graphics.Color(0xFFBA7517),
-                    )
+                    val amber = androidx.compose.ui.graphics.Color(0xFFBA7517)
+                    Row(Modifier.padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        HaveIcon(zone ?: "pantry", Modifier.size(13.dp), amber)
+                        Text(" $it", style = MaterialTheme.typography.labelSmall, color = amber)
+                    }
                 }
             }
             if (cost != null) {
                 Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
-                    Text(
-                        when {
-                            price == null -> "—"
-                            !first -> "incl. above"
-                            price.have -> "$0.00 🫙"
-                            else -> Sales.money(price.cost)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (first && price?.have == true) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.End,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when {
+                                price == null -> "—"
+                                !first -> "incl. above"
+                                price.have -> "$0.00 "
+                                else -> Sales.money(price.cost)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (first && price?.have == true) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.End,
+                        )
+                        // Same icon as its Kitchen zone (pantry, fridge, freezer, produce).
+                        if (first && price?.have == true) HaveIcon(zone ?: "pantry")
+                    }
                     // Meat: the pack it comes from (this meal's share of it).
                     if (first && price != null && price.note.isNotEmpty()) {
                         Text(

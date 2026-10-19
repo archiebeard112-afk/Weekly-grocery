@@ -205,7 +205,7 @@ private val ZONES = listOf(
     Zone("freezer", "Freezer", Color(0xFF85B7EB)),
     Zone("produce", "Produce", Color(0xFF639922)),
 )
-private fun zoneOf(shelf: String) = when (shelf) { "fridge" -> "fridge"; "produce" -> "produce"; else -> "pantry" }
+internal fun zoneOf(shelf: String) = when (shelf) { "fridge" -> "fridge"; "produce" -> "produce"; else -> "pantry" }
 
 /** A zone on the Kitchen overview: icon, name, count and anything that needs a look. */
 @Composable
@@ -246,9 +246,16 @@ private fun ZoneCard(z: Zone, st: UserState, modifier: Modifier, onClick: () -> 
     }
 }
 
+/** The Kitchen zone's own icon, small, in its color: "you have it" (pantry, fridge, freezer or produce). */
+@Composable
+internal fun HaveIcon(zone: String?, modifier: Modifier = Modifier.size(16.dp), color: Color? = null) {
+    val z = ZONES.firstOrNull { it.key == zone } ?: ZONES.first()
+    ZoneIcon(z.key, color ?: z.color, modifier)
+}
+
 /** Drawn zone icons: cupboard with jars, fridge, freezer chest with a snowflake, produce basket. */
 @Composable
-private fun ZoneIcon(kind: String, color: Color, modifier: Modifier) {
+internal fun ZoneIcon(kind: String, color: Color, modifier: Modifier) {
     Canvas(modifier) {
         val u = size.minDimension / 34f
         val w = 2f * u

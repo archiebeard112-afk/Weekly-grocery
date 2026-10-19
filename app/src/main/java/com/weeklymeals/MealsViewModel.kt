@@ -1538,7 +1538,13 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** What a meal costs: [total] to buy, and [saved] by what you already have (pantry, Already have). */
     /** One shopping item's price for a meal; [have] = you already have it; [note] e.g. "≈3 lb pack". */
-    data class PriceLine(val cost: Double, val have: Boolean, val note: String = "")
+    data class PriceLine(val cost: Double, val have: Boolean, val note: String = "", val zone: String? = null)
+
+    /** Where you keep what covers a shopping item: "freezer", "fridge", "produce" or "pantry" (null if you don't have it). */
+    fun haveZone(st: UserState, term: String): String? = when {
+        freezerFor(st, term) != null -> "freezer"
+        else -> pantryItem(st, term)?.let { zoneOf(it.shelf) }
+    }
 
     data class MealCost(
         val total: Double,
@@ -1744,7 +1750,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 val g = ShopGroup(term, list, list.first().aisle, emptyList())
                 val have = term in st.haveTerms || pantryStatus(st, g) == PantryStatus.COVERED || fromFreezer
                 if (have) saved += c else total += c
-                lines[term] = PriceLine(c, have, meat?.second ?: reuseNote)
+                lines[term] = PriceLine(c, have, meat?.second ?: reuseNote, if (fromFreezer) "freezer" else haveZone(st, term))
             }
             if (known == 0) null else MealCost(total, saved, lines)
         }
