@@ -14,7 +14,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -414,7 +416,44 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             it.day == Sales.today() && it.storeId == st.kroger.store.id && it.version == Sales.CACHE_VERSION
         } ?: SalesCache()
 
-    private suspend fun fetchSales(terms: Collection<String>) {
+    /** One sale check at a time (the daily one in the background, or one you asked for). */
+    private val salesLock = Mutex()
+    /** Show the progress screen for a background check too (you asked for sale prices while it ran). */
+    @Volatile private var watchSales = false
+    @Volatile private var lastProgress: Pair<Int, Int>? = null
+
+    private fun reportSales(p: Pair<Int, Int>, quiet: Boolean) {
+        lastProgress = p
+        if (!quiet || watchSales) salesProgress.value = p
+    }
+
+    private suspend fun fetchSales(terms: Collection<String>, quiet: Boolean = false) = salesLock.withLock {
+        fetchSalesLocked(terms, quiet)
+    }
+
+    /**
+     * Once a day, the first time the app opens: quietly loads today's sale prices for every recipe's
+     * main ingredients and saves them for the rest of the day (Browse, recipe pages, On sale use them).
+     */
+    fun dailySales() {
+        viewModelScope.launch {
+            try {
+                val st = store.flow.first()
+                val k = st.kroger
+                if (k.store.id.isEmpty() || k.clientId.isBlank()) return@launch
+                val terms = recipes(st).values.flatMap { Sales.terms(it, st.servings) }.toSet()
+                val cache = salesCache(st)
+                if (terms.all { it in cache.checked }) return@launch
+                // Wait until the saved settings have loaded into the app's state.
+                state.first { it.kroger.store.id == k.store.id && it.kroger.clientId == k.clientId }
+                fetchSales(terms, quiet = true)
+            } catch (_: Exception) {
+                // No internet: try again next time the app opens.
+            }
+        }
+    }
+
+    private suspend fun fetchSalesLocked(terms: Collection<String>, quiet: Boolean) {
         val st = state.value
         val k = st.kroger
         val cache = salesCache(st)
@@ -423,7 +462,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val token = api.clientToken(k.clientId, k.clientSecret)
         val found = ConcurrentHashMap<String, List<SaleItem>>()
         val done = AtomicInteger(0)
-        salesProgress.value = 0 to todo.size
+        reportSales(0 to todo.size, quiet)
         try {
             coroutineScope {
                 val gate = Semaphore(4)
@@ -434,7 +473,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                                 ?.let { Sales.saleOptions(t, it) }
                                 ?.takeIf { it.isNotEmpty() }
                                 ?.let { found[t] = it }
-                            salesProgress.value = done.incrementAndGet() to todo.size
+                            reportSales(done.incrementAndGet() to todo.size, quiet)
                         }
                     }
                 }.awaitAll()
@@ -451,8 +490,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         } finally {
-            salesProgress.value = null
+            lastProgress = null
+            if (!quiet || watchSales) salesProgress.value = null
         }
+    }
+
+    /** Before a check you asked for: if the daily one is running, show its progress while you wait. */
+    private fun watchRunning() {
+        if (salesLock.isLocked) { watchSales = true; lastProgress?.let { salesProgress.value = it } }
     }
 
     private fun storeReady(): Boolean {
@@ -471,6 +516,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (!storeReady() || salesProgress.value != null) return
+        watchRunning()
         viewModelScope.launch {
             try {
                 val st = state.value
@@ -479,6 +525,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 newBrowseSet()
             } catch (e: Exception) {
                 message.value = e.message ?: "Could not check sale prices"
+            } finally {
+                watchSales = false; salesProgress.value = null
             }
         }
     }
@@ -486,11 +534,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** Checks sale prices for just one recipe's main ingredients. */
     fun checkSales(r: Recipe) {
         if (!storeReady() || salesProgress.value != null) return
+        watchRunning()
         viewModelScope.launch {
             try {
                 fetchSales(Sales.terms(r, state.value.servings))
             } catch (e: Exception) {
                 message.value = e.message ?: "Could not check sale prices"
+            } finally {
+                watchSales = false; salesProgress.value = null
             }
         }
     }
@@ -519,6 +570,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Quietly looks for a newer version (when the app opens, or after 30+ minutes away). */
     fun autoCheck() {
+        // Today's sale prices, once a day (does nothing if they're already saved for today).
+        dailySales()
         val now = System.currentTimeMillis()
         if (now - lastAutoCheck < 30 * 60_000L) return
         if (update.value is UpdateState.Checking || update.value is UpdateState.Downloading) return
