@@ -233,6 +233,9 @@ object Logic {
     private val termMemo = HashMap<String, String>()
 
     /** Store search term for an ingredient name (remembered; it runs for every tile). */
+    /** An extra's name without its row number ("Kool-Aid #2" -> "Kool-Aid"). */
+    fun baseExtra(name: String): String = name.replace(Regex("\\s+#\\d+$"), "")
+
     fun searchTerm(name: String): String = termMemo.getOrPut(name) { searchTermOf(name) }
 
     private fun searchTermOf(name: String): String {

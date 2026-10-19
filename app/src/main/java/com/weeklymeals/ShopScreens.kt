@@ -346,7 +346,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
     }
 }
 
-/** Your most-bought extras as chips. Tap to add or remove; long-press to stop suggesting it. */
+/** Your most-bought extras as chips. Tap to add one more (its own row); long-press to stop suggesting it. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
@@ -376,7 +376,8 @@ private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Text(
-                    (if (on) "✓ " else "") + "$emoji ${b.name}",
+                    // Each tap adds another row; the chip shows how many are on the list.
+                    (if (on) (vm.quickCount(st, b.name).let { if (it > 1) "✓ $it× " else "✓ " }) else "") + "$emoji ${b.name}",
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

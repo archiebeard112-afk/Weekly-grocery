@@ -1195,7 +1195,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun lookup(token: String, k: KrogerState, g: ShopGroup): CartLine {
         // Your pick, or else the product your receipts show you usually buy.
         val saved = k.choices["term:${g.term}"] ?: g.items.firstNotNullOfOrNull { k.choices[it.key] } ?: Receipts.usual(g.term)
-        val search = saved?.search?.ifBlank { null } ?: g.term
+        val search = saved?.search?.ifBlank { null } ?: Logic.baseExtra(g.term)
         val all = runCatching { api.searchProducts(token, k.store.id, search) }.getOrDefault(emptyList())
         // Leave out anything out of stock, not sold here, or not deliverable.
         val options = all.filter { it.available }
@@ -1246,13 +1246,20 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         st.extraItems.any { it.equals(name, true) } || st.snacks.any { it.equals(name, true) } ||
             st.pickedStaples.any { it.equals(name, true) }
 
+    /**
+     * Quick add: each tap adds another one as its own row ("Kool-Aid #2", "#3"…), so you can
+     * pick a different product (flavor) for each. Remove extras from the list itself.
+     */
     fun toggleQuickAdd(name: String) = edit { s ->
-        if (onList(s, name)) s.copy(
-            extraItems = s.extraItems.filterNot { it.equals(name, true) },
-            snacks = s.snacks.filterNot { it.equals(name, true) }.toSet(),
-            pickedStaples = s.pickedStaples.filterNot { it.equals(name, true) }.toSet(),
-        ) else s.copy(extraItems = s.extraItems + name)
+        var n = name
+        var k = 2
+        while (s.extraItems.any { it.equals(n, true) }) n = "$name #${k++}"
+        s.copy(extraItems = s.extraItems + n)
     }
+
+    /** How many rows of this Quick add item are on the list. */
+    fun quickCount(st: UserState, name: String): Int =
+        st.extraItems.count { Logic.baseExtra(it).equals(name, true) }
 
     fun forgetQuickAdd(term: String, name: String) {
         edit { it.copy(bought = it.bought - term) }
@@ -1731,10 +1738,13 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                     val now = System.currentTimeMillis()
                     val extraTerms = shopGroups(s).filter { it.aisle == EXTRAS }.associateBy { it.term }
                     val bought = s.bought.toMutableMap()
-                    chosen.filter { it.term in extraTerms }.forEach { l ->
-                        val name = extraTerms.getValue(l.term).items.first().name
-                        val old = bought[l.term]
-                        bought[l.term] = Bought(name, (old?.count ?: 0) + 1, now)
+                    // Extra rows of the same thing ("… #2") count toward the one Quick add item.
+                    chosen.filter { it.term in extraTerms }.map { l ->
+                        Logic.baseExtra(extraTerms.getValue(l.term).items.first().name)
+                    }.distinctBy { it.lowercase() }.forEach { name ->
+                        val term = Logic.searchTerm(name)
+                        val old = bought[term]
+                        bought[term] = Bought(old?.name ?: name, (old?.count ?: 0) + 1, now)
                     }
                     s.copy(
                         kroger = s.kroger.copy(choices = s.kroger.choices + newChoices), bought = bought,
