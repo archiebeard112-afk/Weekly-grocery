@@ -124,7 +124,7 @@ private object DateSlashes : VisualTransformation {
  * Typed digits to a date (midnight UTC): MMDD (the next one coming up), MMDDYY or MMDDYYYY.
  * Null while it's incomplete or not a real date.
  */
-private fun parseTypedDate(d: String): Long? {
+private fun parseTypedDate(d: String, past: Boolean = false): Long? {
     if (d.length != 4 && d.length != 6 && d.length != 8) return null
     val m = d.substring(0, 2).toInt()
     val day = d.substring(2, 4).toInt()
@@ -142,6 +142,11 @@ private fun parseTypedDate(d: String): Long? {
     if (m !in 1..12 || day !in 1..31 || year !in 2000..2100) return null
     var ms = make(year) ?: return null
     // Just month and day: if that's already passed this year, it means next year.
+    // A date already behind you (frozen on): month and day still to come this year means last year.
+    if (past) {
+        if (d.length == 4 && ms > System.currentTimeMillis() + 86_400_000L) { year--; ms = make(year) ?: return null }
+        return ms
+    }
     if (d.length == 4 && ms < System.currentTimeMillis() - 86_400_000L) { year++; ms = make(year) ?: return null }
     return ms
 }
@@ -303,6 +308,19 @@ private fun boughtAgo(at: Long): String {
 private fun freezerAmount(f: FreezerItem): String =
     if (f.byCount) "${f.count}" else "${Logic.fmt(f.lb)} lb"
 
+/** "Frozen Oct 12" (with the year when it isn't this year). */
+private fun frozenOn(at: Long): String {
+    if (at <= 0) return ""
+    val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+    val y = java.util.Calendar.getInstance().apply { timeInMillis = at }.get(java.util.Calendar.YEAR)
+    val f = java.text.SimpleDateFormat(if (y == thisYear) "MMM d" else "MMM d, yyyy", java.util.Locale.getDefault())
+    return "Frozen " + f.format(java.util.Date(at))
+}
+
+/** The typed digits (MMDDYY) for a frozen date, in your own time zone. */
+private fun frozenDigits(at: Long): String =
+    java.text.SimpleDateFormat("MMddyy", java.util.Locale.US).format(java.util.Date(at))
+
 /** "frozen today", "frozen 2 wks ago", "frozen 4 mo ago". */
 private fun frozenAgo(at: Long): String {
     if (at <= 0) return ""
@@ -349,6 +367,8 @@ private fun meatEmoji(what: String): String {
 @Composable
 private fun FreezerDialog(start: FreezerItem, isNew: Boolean, onSave: (FreezerItem) -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit) {
     var item by remember(start.id) { mutableStateOf(start) }
+    var frozenText by remember(start.id) { mutableStateOf(if (start.frozenAt > 0) frozenDigits(start.frozenAt) else "") }
+    val frozenBad = frozenText.isNotEmpty() && parseTypedDate(frozenText, past = true) == null
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (isNew) "Add to freezer" else item.name) },
@@ -381,12 +401,24 @@ private fun FreezerDialog(start: FreezerItem, isNew: Boolean, onSave: (FreezerIt
                         item = if (item.byCount) item.copy(count = item.count + 1) else item.copy(lb = item.lb + 0.25)
                     }) { Text("+") }
                 }
+                // The day it went in the freezer (today unless you change it).
+                OutlinedTextField(
+                    frozenText,
+                    { v ->
+                        frozenText = v.filter { it.isDigit() }.take(8)
+                        // Typed dates are midnight UTC; noon keeps it on the same day in your time zone.
+                        parseTypedDate(frozenText, past = true)?.let { item = item.copy(frozenAt = it + 12 * 3_600_000L) }
+                    },
+                    label = { Text("Date frozen") },
+                    placeholder = { Text("MM/DD/YY") },
+                    singleLine = true,
+                    isError = frozenBad,
+                    supportingText = if (frozenBad) { { Text("Not a real date") } } else if (item.frozenAt > 0) { { Text(frozenAgo(item.frozenAt).replaceFirstChar { it.uppercase() }) } } else null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = DateSlashes,
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                )
                 if (!isNew) {
-                    Text(
-                        frozenAgo(item.frozenAt), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    )
                     TextButton(onClick = onRemove, modifier = Modifier.padding(top = 4.dp)) {
                         Text("Remove from freezer", color = MaterialTheme.colorScheme.error)
                     }
@@ -546,7 +578,8 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
     Scaffold(
         // Shown under the app's top bar, so the status bar is already accounted for.
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        modifier = Modifier.swipeBack(onBack),
+        // Swipe right: from a zone back to the Kitchen overview, from the overview out of the Kitchen.
+        modifier = Modifier.swipeBack { if (zone != null) zone = null else onBack() },
     ) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
             item {
@@ -708,7 +741,7 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                                 )
                                 Text(freezerAmount(f), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    frozenAgo(f.frozenAt), fontSize = 10.sp,
+                                    frozenOn(f.frozenAt).removePrefix("Frozen "), fontSize = 10.sp,
                                     color = if (old) LOW else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
