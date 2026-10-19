@@ -20,6 +20,7 @@ object Packs {
         "bone-in skin-on chicken thigh" to 2.5, "chicken breast" to 5.0, "chicken thigh" to 2.0,
         "chicken tenderloin" to 1.5, "chicken wing" to 2.5, "drumstick" to 2.5, "whole chicken" to 4.5,
         "ground beef" to 1.0, "ground turkey" to 1.0, "ground chicken" to 1.0, "ground pork" to 1.0,
+        "ground sausage" to 1.0, "ground lamb" to 1.0, "ground meat" to 1.0,
         "chuck roast" to 3.0, "beef chuck" to 3.0, "stew meat" to 1.5, "sirloin" to 1.0, "flank steak" to 1.5,
         "skirt steak" to 1.5, "ribeye" to 1.0, "cube steak" to 1.0, "steak" to 1.0,
         "pork chop" to 1.5, "pork loin" to 3.0, "pork tenderloin" to 1.25, "pork shoulder" to 4.0, "ham steak" to 1.0,
@@ -36,6 +37,9 @@ object Packs {
         val n = name.lowercase()
         return list.filter { n.contains(it.first) }.maxByOrNull { it.first.length }?.second
     }
+
+    /** Ground meat: bought in 1 lb packs and used up completely (no leftovers to freeze). */
+    fun isGround(term: String): Boolean = Regex("\\bground (beef|turkey|chicken|pork|sausage|lamb|meat)\\b").containsMatchIn(term.lowercase())
 
     /** True for fresh meat and fish bought by weight (not bacon, sausage links, deli meat). */
     fun weighed(term: String): Boolean = lookup(regular, term) != null

@@ -1506,12 +1506,20 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val upc = product?.upc.orEmpty()
         val key = if (upc.isNotEmpty()) upc else "term:$term"
         val yours = st.packWeights[key] ?: st.packWeights["term:$term"]
-        val pack = Packs.packFor(term, title, size, yours)
-        val price = sale?.promo ?: product?.let { it.promo ?: it.price } ?: Prices.perLb(term) ?: return null
+        val listed = Packs.packFor(term, title, size, yours)
+        var price = sale?.promo ?: product?.let { it.promo ?: it.price } ?: Prices.perLb(term) ?: return null
+        val ground = Packs.isGround(term)
+        // Ground meat: 1 lb packs (unless you set a size). A bigger listed pack is priced per pound.
+        val pack = if (ground && yours == null) {
+            if (!listed.perLb && listed.lb > 1.05) price /= listed.lb
+            Packs.Pack(1.0, true, listed.source)
+        } else listed
         // Typical prices are per pound, so a fixed-size pack still costs weight × price.
         val p = if (sale == null && product == null) pack.copy(perLb = true) else pack
         val (packs, cost) = Packs.cost(needLb, price, p)
-        return MeatPack(p, packs, cost, (packs * p.lb - needLb).coerceAtLeast(0.0), key)
+        // Ground meat is used up completely: no leftovers.
+        val leftover = if (ground) 0.0 else (packs * p.lb - needLb).coerceAtLeast(0.0)
+        return MeatPack(p, packs, cost, leftover, key)
     }
 
     /** Whole cuts: how many packs for [pieces], priced by the pack. */
