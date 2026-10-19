@@ -626,6 +626,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         if (s.cookingId == id) s.copy(cookScroll = scroll, cookDone = done) else s
     }
 
+    fun toggleShelf(key: String) = edit { s ->
+        s.copy(openShelves = if (key in s.openShelves) s.openShelves - key else s.openShelves + key)
+    }
+
     fun stopCooking() = edit { it.copy(cookingId = null, cookScroll = 0, cookDone = emptySet()) }
 
     fun setBubblePos(x: Float, y: Float) = edit { it.copy(bubbleX = x, bubbleY = y) }

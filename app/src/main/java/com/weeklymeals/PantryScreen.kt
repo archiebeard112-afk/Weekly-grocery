@@ -152,25 +152,38 @@ private fun digitsFor(at: Long): String {
 
 private val DATE_RED = Color(0xFFE24B4A)
 
-/** Which dot a jar gets: "date" (past its date), "low" (running low or getting old), or "". */
-private fun dotFor(p: PantryItem): String {
-    val fresh = Pantry.freshness(p)
-    return when {
-        fresh == Pantry.Fresh.EXPIRED && !p.useAnyway && !Pantry.isSpice(p) -> "date"
-        Pantry.isLow(p) || fresh == Pantry.Fresh.SOON || (fresh == Pantry.Fresh.EXPIRED && !p.useAnyway) -> "low"
-        else -> ""
+/** Order on a shelf: past best-by, past sell-by, low, then the rest. */
+private val MARK_ORDER = listOf("best", "sell", "low", "")
+
+/**
+ * What a jar is marked with: "best" (past its best-by), "sell" (past its sell-by plus the
+ * usual grace, or a spice past its date), "low", or "".
+ */
+private fun markFor(p: PantryItem): String {
+    if (!p.useAnyway && Pantry.freshness(p) == Pantry.Fresh.EXPIRED) {
+        return if (p.dateKind == "sell" || Pantry.isSpice(p)) "sell" else "best"
+    }
+    return if (Pantry.isLow(p)) "low" else ""
+}
+
+/** Red ✕ (past best-by) or orange ? (past sell-by) in a little circle. */
+@Composable
+private fun JarMark(kind: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier.size(16.dp)
+            .background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.CircleShape)
+            .padding(1.5.dp)
+            .background(if (kind == "best") DATE_RED else SELL_ORANGE, androidx.compose.foundation.shape.CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            if (kind == "best") "✕" else "?", color = Color.White,
+            fontSize = 9.sp, lineHeight = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        )
     }
 }
 
-@Composable
-private fun StatusDot(color: Color, modifier: Modifier = Modifier) {
-    Box(
-        modifier.size(12.dp)
-            .background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.CircleShape)
-            .padding(2.dp)
-            .background(color, androidx.compose.foundation.shape.CircleShape),
-    )
-}
+private val SELL_ORANGE = Color(0xFFEF9F27)
 
 private fun boughtAgo(at: Long): String {
     val days = ((System.currentTimeMillis() - at) / 86_400_000L).toInt()
@@ -292,6 +305,17 @@ val PantryIcon: ImageVector by lazy {
     }.build()
 }
 
+/** A barcode: tap to scan something into the pantry. */
+val BarcodeIcon: ImageVector by lazy {
+    ImageVector.Builder("Barcode", 24.dp, 24.dp, 24f, 24f).apply {
+        fun r(x: Float, w: Float) = addPath(
+            PathData { moveTo(x, 5f); horizontalLineToRelative(w); verticalLineToRelative(14f); horizontalLineToRelative(-w); close() },
+            fill = SolidColor(Color.Black),
+        )
+        r(2f, 2f); r(5f, 1f); r(7f, 2.5f); r(10.5f, 1f); r(12.5f, 2f); r(15.5f, 1f); r(17.5f, 2.5f); r(21f, 1f)
+    }.build()
+}
+
 /** Outline of a container in a 100 x 120 box, scaled to [w] x [h]. */
 private fun containerPath(kind: String, w: Float, h: Float): Path {
     val sx = w / 100f
@@ -380,11 +404,13 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
             .addOnFailureListener { adding = shelf ?: "" }
     }
     var freezingNew by remember { mutableStateOf(false) }
-    val lowCount = st.pantry.count { dotFor(it) == "low" }
-    val dateCount = st.pantry.count { dotFor(it) == "date" }
-    var showOnly by remember { mutableStateOf("") } // "", "low" or "date"
-    LaunchedEffect(lowCount, dateCount) {
-        if ((showOnly == "low" && lowCount == 0) || (showOnly == "date" && dateCount == 0)) showOnly = ""
+    val lowCount = st.pantry.count { markFor(it) == "low" }
+    val bestCount = st.pantry.count { markFor(it) == "best" }
+    val sellCount = st.pantry.count { markFor(it) == "sell" }
+    var showOnly by remember { mutableStateOf("") } // "", "best", "sell" or "low"
+    LaunchedEffect(lowCount, bestCount, sellCount) {
+        val n = when (showOnly) { "low" -> lowCount; "best" -> bestCount; "sell" -> sellCount; else -> 1 }
+        if (n == 0) showOnly = ""
     }
 
     Scaffold(
@@ -399,13 +425,9 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     Text("Pantry", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     FilledTonalButton(
                         onClick = { scanFirst(null) },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                         modifier = Modifier.height(34.dp),
-                    ) {
-                        Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Add item")
-                    }
+                    ) { Icon(BarcodeIcon, "Scan an item", Modifier.size(22.dp)) }
                 }
             }
             item {
@@ -417,43 +439,59 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 8.dp),
                 )
             }
-            if (st.pantry.isNotEmpty() && (lowCount > 0 || dateCount > 0)) {
+            if (st.pantry.isNotEmpty() && (lowCount > 0 || bestCount > 0 || sellCount > 0)) {
                 item(key = "filters") {
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()).padding(start = 4.dp, bottom = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         FilterChip(selected = showOnly == "", onClick = { showOnly = "" }, label = { Text("All") })
-                        if (lowCount > 0) {
-                            FilterChip(
-                                selected = showOnly == "low", onClick = { showOnly = if (showOnly == "low") "" else "low" },
-                                label = { Text("$lowCount low") },
-                                leadingIcon = { StatusDot(LOW) },
+                        @Composable
+                        fun chip(key: String, n: Int, text: String, mark: @Composable () -> Unit) {
+                            if (n > 0) FilterChip(
+                                selected = showOnly == key, onClick = { showOnly = if (showOnly == key) "" else key },
+                                label = { Text(text) }, leadingIcon = mark,
                             )
                         }
-                        if (dateCount > 0) {
-                            FilterChip(
-                                selected = showOnly == "date", onClick = { showOnly = if (showOnly == "date") "" else "date" },
-                                label = { Text("$dateCount check date") },
-                                leadingIcon = { StatusDot(DATE_RED) },
-                            )
-                        }
+                        chip("best", bestCount, "$bestCount past best-by") { JarMark("best") }
+                        chip("sell", sellCount, "$sellCount past sell-by") { JarMark("sell") }
+                        chip("low", lowCount, "$lowCount low") { Box(Modifier.size(12.dp).background(LOW, RoundedCornerShape(2.dp))) }
                     }
                 }
             }
             Pantry.SHELVES.forEach { (key, label) ->
-                val onShelf = st.pantry.filter { it.shelf == key && (showOnly == "" || dotFor(it) == showOnly) }.sortedBy { it.term }
+                // Problems first (past a date, then low), so they show even with the shelf closed.
+                val onShelf = st.pantry.filter { it.shelf == key && (showOnly == "" || markFor(it) == showOnly) }
+                    .sortedWith(compareBy({ MARK_ORDER.indexOf(markFor(it)) }, { it.term }))
                 if (showOnly != "" && onShelf.isEmpty()) return@forEach
                 item(key = "shelf_$key") {
-                    Text(
-                        label, style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 4.dp),
-                    )
-                    // Four across, wrapping to more rows: the whole shelf at a glance.
-                    // Jars line up along the top, so an extra line under one never shifts the others.
+                    // Closed shelves show their first row; tap the name to open the rest.
+                    val open = key in st.openShelves || showOnly != ""
                     val cells: List<PantryItem?> = onShelf + (if (showOnly == "") listOf(null) else emptyList())
-                    cells.chunked(4).forEach { row ->
+                    val more = cells.size > 4
+                    Row(
+                        Modifier.fillMaxWidth().clickable(enabled = more) { vm.toggleShelf(key) }
+                            .padding(start = 4.dp, top = 6.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            label + if (onShelf.isNotEmpty()) " · ${onShelf.size}" else "",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (more) {
+                            Text(
+                                if (open) "▾" else (onShelf.size - cells.take(4).count { it != null }).let { n -> if (n > 0) "+$n ▸" else "▸" },
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(end = 6.dp),
+                            )
+                        }
+                    }
+                    // Four across, wrapping to more rows when the shelf is open.
+                    // Jars line up along the top, so an extra line under one never shifts the others.
+                    (if (open) cells.chunked(4) else cells.chunked(4).take(1)).forEach { row ->
                         Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.Top) {
                             row.forEach { p ->
                                 Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
@@ -463,7 +501,7 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                                                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
                                                 .clickable { scanFirst(key) },
                                             contentAlignment = Alignment.Center,
-                                        ) { Icon(Icons.Filled.Add, "Add to $label", tint = MaterialTheme.colorScheme.outline) }
+                                        ) { Icon(BarcodeIcon, "Scan into $label", tint = MaterialTheme.colorScheme.outline) }
                                     } else {
                                         Column(
                                             Modifier.fillMaxWidth().clickable { editing = p; editingNew = false }.padding(horizontal = 2.dp),
@@ -471,12 +509,9 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                                         ) {
                                             Box {
                                                 ContainerView(p.kind, p.level, Pantry.isLow(p), Modifier.size(52.dp, 62.dp))
-                                                // A dot on the lid: amber = low or use soon, red = check the date.
-                                                when (dotFor(p)) {
-                                                    "date" -> StatusDot(DATE_RED, Modifier.align(Alignment.TopEnd))
-                                                    "low" -> StatusDot(LOW, Modifier.align(Alignment.TopEnd))
-                                                    else -> {}
-                                                }
+                                                // On the lid: red ✕ = past best-by, orange ? = past sell-by. Low is just the amber fill.
+                                                val mark = markFor(p)
+                                                if (mark == "best" || mark == "sell") JarMark(mark, Modifier.align(Alignment.TopEnd))
                                             }
                                             Text(
                                                 p.term.replaceFirstChar { it.uppercase() },
@@ -507,7 +542,20 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                         .border(1.dp, FREEZER.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                         .padding(10.dp),
                 ) {
-                    Text("🧊 Freezer", style = MaterialTheme.typography.labelLarge, color = FREEZER)
+                    val freezerOpen = "freezer" in st.openShelves
+                    val freezerMore = st.freezer.size > 4
+                    Row(
+                        Modifier.fillMaxWidth().clickable(enabled = freezerMore) { vm.toggleShelf("freezer") },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "🧊 Freezer" + if (st.freezer.isNotEmpty()) " · ${st.freezer.size}" else "",
+                            style = MaterialTheme.typography.labelLarge, color = FREEZER, modifier = Modifier.weight(1f),
+                        )
+                        if (freezerMore) {
+                            Text(if (freezerOpen) "▾" else "+${st.freezer.size - 4} ▸", style = MaterialTheme.typography.labelLarge, color = FREEZER)
+                        }
+                    }
                     if (st.freezer.isEmpty()) {
                         Text(
                             "Leftover meat goes here when you finish a week.",
@@ -517,7 +565,7 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                         )
                     }
                     LazyRow(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Bottom) {
-                        items(st.freezer, key = { it.id }) { f ->
+                        items(if (freezerOpen) st.freezer else st.freezer.take(4), key = { it.id }) { f ->
                             val old = System.currentTimeMillis() - f.frozenAt > 90L * 86_400_000L
                             Column(
                                 Modifier.width(76.dp).clickable { freezing = f; freezingNew = false }.padding(bottom = 4.dp),
@@ -552,10 +600,12 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
             }
             item {
                 Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    StatusDot(LOW)
-                    Text(" Low or use soon     ", style = MaterialTheme.typography.bodySmall)
-                    StatusDot(DATE_RED)
-                    Text(" Check the date", style = MaterialTheme.typography.bodySmall)
+                    JarMark("best")
+                    Text(" Past best-by    ", style = MaterialTheme.typography.bodySmall)
+                    JarMark("sell")
+                    Text(" Past sell-by    ", style = MaterialTheme.typography.bodySmall)
+                    Box(Modifier.size(12.dp).background(LOW, RoundedCornerShape(2.dp)))
+                    Text(" Low", style = MaterialTheme.typography.bodySmall)
                 }
                 Spacer(Modifier.height(24.dp))
             }

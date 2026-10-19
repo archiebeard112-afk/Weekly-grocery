@@ -158,6 +158,8 @@ data class UserState(
     /** Where you dragged the cooking bubble (offset from its usual corner, in pixels). */
     val bubbleX: Float = 0f,
     val bubbleY: Float = 0f,
+    /** Pantry shelves you've opened up (the rest show just their first row). */
+    val openShelves: Set<String> = emptySet(),
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */
