@@ -12,6 +12,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashLog.install(this)
         Timers.ensureChannel(this)
         // Normal layout: status bar and navigation bar showing, drawn in the app's dark colors.
         enableEdgeToEdge()

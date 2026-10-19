@@ -421,6 +421,35 @@ fun App(vm: MealsViewModel) {
         }
     }
 
+    // The app crashed last time: show what happened so it can be sent in and fixed.
+    var crash by remember { mutableStateOf(CrashLog.pending(ctx)) }
+    crash?.let { text ->
+        val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { CrashLog.clear(ctx); crash = null },
+            title = { Text("The app closed unexpectedly") },
+            text = {
+                Column {
+                    Text("Copy the details and send them over so it can be fixed.")
+                    Text(
+                        text.lines().take(8).joinToString("\n"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    clip.setText(androidx.compose.ui.text.AnnotatedString(text))
+                    vm.message.value = "Crash details copied"
+                    CrashLog.clear(ctx); crash = null
+                }) { Text("Copy details") }
+            },
+            dismissButton = { TextButton(onClick = { CrashLog.clear(ctx); crash = null }) { Text("Close") } },
+        )
+    }
+
     if (askOverlay) {
         AlertDialog(
             onDismissRequest = { askOverlay = false; vm.setOverlayAsked() },
