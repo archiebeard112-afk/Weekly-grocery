@@ -310,19 +310,31 @@ private fun frozenAgo(at: Long): String {
 
 /** A freezer bag with a frosty fill; amber edge when it's been frozen over 3 months. */
 @Composable
-private fun FreezerBag(modifier: Modifier, old: Boolean) {
-    val outline = if (old) LOW else FREEZER
-    Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        val bag = RoundRect(w * 0.12f, h * 0.18f, w * 0.88f, h * 0.96f, CornerRadius(w * 0.12f, w * 0.12f))
-        val path = Path().apply { addRoundRect(bag) }
-        drawPath(path, FREEZER.copy(alpha = 0.25f))
-        drawPath(path, outline, style = Stroke(2.dp.toPx()))
-        // Zip seal across the top.
-        drawLine(outline, Offset(w * 0.12f, h * 0.30f), Offset(w * 0.88f, h * 0.30f), strokeWidth = 2.dp.toPx())
-        // Label.
-        drawRoundRect(Color.White.copy(alpha = 0.7f), Offset(w * 0.26f, h * 0.45f), Size(w * 0.48f, h * 0.22f), CornerRadius(3f, 3f))
+private fun FreezerBag(modifier: Modifier, old: Boolean, what: String) {
+    // The food's own emoji with a little snowflake; an amber ring once it's been frozen 3+ months.
+    Box(
+        modifier
+            .background(FREEZER.copy(alpha = 0.14f), RoundedCornerShape(12.dp))
+            .border(if (old) 2.dp else 0.dp, if (old) LOW else Color.Transparent, RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(meatEmoji(what), fontSize = 30.sp)
+        Text("❄️", fontSize = 13.sp, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 2.dp, bottom = 1.dp))
+    }
+}
+
+/** Emoji for what's in the freezer: 🍗 chicken, 🐟 fish, 🍤 shrimp, 🌭 sausage, 🥓 bacon, 🍖 ribs/pork, 🍔 patties, else 🥩. */
+private fun meatEmoji(what: String): String {
+    val n = what.lowercase()
+    return when {
+        Regex("shrimp|prawn").containsMatchIn(n) -> "🍤"
+        Regex("salmon|tilapia|\\bcod\\b|tuna|fish|halibut|trout|mahi|catfish|pollock").containsMatchIn(n) -> "🐟"
+        Regex("sausage|brat|hot dog|kielbasa|chorizo").containsMatchIn(n) -> "🌭"
+        Regex("bacon").containsMatchIn(n) -> "🥓"
+        Regex("patt|burger").containsMatchIn(n) -> "🍔"
+        Regex("chicken|turkey|poultry|wing|drumstick|thigh").containsMatchIn(n) && !n.contains("ground turkey") -> "🍗"
+        Regex("\\bribs?\\b|pork|ham\\b").containsMatchIn(n) -> "🍖"
+        else -> "🥩"
     }
 }
 
@@ -674,14 +686,15 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                             modifier = Modifier.padding(top = 2.dp),
                         )
                     }
-                    LazyRow(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Bottom) {
+                    // Lined up along the top so the text under an item never shifts its icon.
+                    LazyRow(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Top) {
                         items(st.freezer, key = { it.id }) { f ->
                             val old = System.currentTimeMillis() - f.frozenAt > 90L * 86_400_000L
                             Column(
                                 Modifier.width(76.dp).clickable { freezing = f; freezingNew = false }.padding(bottom = 4.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                FreezerBag(Modifier.size(52.dp, 56.dp), old)
+                                FreezerBag(Modifier.size(52.dp, 56.dp), old, f.term + " " + f.name)
                                 Text(
                                     f.name, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp),
@@ -695,7 +708,7 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                         }
                         item {
                             Box(
-                                Modifier.padding(start = 6.dp, bottom = 34.dp).size(50.dp, 56.dp)
+                                Modifier.padding(start = 6.dp).size(50.dp, 56.dp)
                                     .border(1.dp, FREEZER.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                                     .clickable { newFreezerItem() },
                                 contentAlignment = Alignment.Center,
