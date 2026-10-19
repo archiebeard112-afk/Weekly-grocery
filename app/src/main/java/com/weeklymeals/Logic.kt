@@ -256,8 +256,14 @@ object Logic {
 
     // ---- How many packages to buy --------------------------------------------
 
-    /** How much the recipes call for, in pounds and/or whole pieces. */
-    data class Need(val lb: Double = 0.0, val count: Double = 0.0)
+    /**
+     * How much the recipes call for: pounds (meat), whole pieces, and grams for anything measured
+     * by volume or weight (cups, tbsp, fl oz, oz…), plus the typical weight of one piece.
+     */
+    data class Need(val lb: Double = 0.0, val count: Double = 0.0, val grams: Double = 0.0, val pieceLb: Double = 0.0,
+        /** Measured by volume (cups, tbsp…): an "oz" package size then means fluid ounces. */
+        val volume: Boolean = false,
+    )
 
     /** Rough weight of one piece, for recipes that count meat or fish by the piece. */
     private val pieceLb = listOf(
@@ -269,17 +275,26 @@ object Logic {
     fun needOf(items: List<ShopItem>): Need {
         var lb = 0.0
         var count = 0.0
+        var grams = 0.0
+        var piece = 0.0
+        var volume = false
         for (i in items) {
+            if (i.unit in setOf("cup", "cups", "tbsp", "tsp", "fl oz", "ml", "l", "qt", "pt", "gal", "quart", "pint")) volume = true
             when (i.unit) {
                 "lb" -> lb += i.qty
                 "oz" -> lb += i.qty / 16.0
                 "" -> {
                     val w = pieceLb.firstOrNull { i.name.lowercase().contains(it.first) }?.second
-                    if (w != null) lb += i.qty * w else count += i.qty
+                    if (w != null) lb += i.qty * w else {
+                        count += i.qty
+                        if (piece <= 0) piece = (Nutrition.grams(Ingredient(1.0, "", i.name)) ?: 0.0) / 453.6
+                    }
                 }
+                else -> grams += Nutrition.grams(Ingredient(i.qty, i.unit, i.name)) ?: 0.0
             }
         }
-        return Need(lb, count)
+        // Weights in lb/oz also count toward grams (for packages sized in oz or fl oz).
+        return Need(lb, count, grams + lb * 453.6, piece, volume)
     }
 
     private val sizeRx = Regex("(\\d+(?:\\.\\d+)?)\\s*(lbs?|oz|ct|count|pk|pack|each|ea)\\b")
@@ -300,16 +315,28 @@ object Logic {
      */
     fun suggestQty(need: Need, p: Product?): Int {
         if (p == null) return 1
-        val m = sizeRx.find(p.size.lowercase())
-        val v = m?.groupValues?.get(1)?.toDoubleOrNull()?.takeIf { it > 0 }
-        val unit = m?.groupValues?.get(2).orEmpty()
+        val size = p.size.lowercase()
+        val parsed = Pantry.parseSize(size)
+        val v = parsed?.first?.takeIf { it > 0 }
+        val unit = parsed?.second.orEmpty()
+        val counted = unit == "ct" || unit == "count"
+        // Loose produce: priced per pound ("1 lb") or "1 ct", but you order it one at a time.
+        val each = Regex("\\b(each|ea)\\b").containsMatchIn(size) ||
+            (unit.startsWith("lb") && (v ?: 0.0) <= 1.0) || (counted && v == 1.0)
+        val packG = if (unit == "oz" && need.volume && v != null) v * 29.57 else Prices.productGrams(size)
         val q = when {
+            need.count > 0 && each ->
+                need.count + if (need.pieceLb > 0) (need.grams - need.lb * 453.6).coerceAtLeast(0.0) / (need.pieceLb * 453.6) else 0.0
+            need.count > 0 && v != null && counted -> need.count / v
+            // A bag by weight (3 lb onions): how many bags hold that many pieces.
+            need.count > 0 && v != null && unit.startsWith("lb") && need.pieceLb > 0 -> need.count * need.pieceLb / v
             need.lb > 0 && v != null && unit.startsWith("lb") -> need.lb / v
-            need.lb > 0 && v != null && unit == "oz" -> need.lb * 16 / v
-            need.count > 0 && v != null && unit in setOf("ct", "count", "pk", "pack") -> need.count / v
-            need.count > 0 && (v == null || unit in setOf("each", "ea")) -> need.count
+            // Volume or weight against the package size: 36 fl oz of broth in 12 oz cans -> 3.
+            need.grams > 0 && packG != null && packG > 0 -> need.grams / packG
+            need.count > 0 && v == null -> need.count
             else -> 1.0
         }
+        // Round up so you're never short; a sliver over (under 5%) doesn't add another package.
         return ceil(q - 0.05).toInt().coerceIn(1, 20)
     }
 
