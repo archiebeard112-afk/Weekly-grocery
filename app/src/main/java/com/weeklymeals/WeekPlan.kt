@@ -123,7 +123,7 @@ fun WeekScreen(
     // Roughly how tall each day's tile needs to be (dp): a day with store items is taller.
     fun estDp(index: Int, hasRecipe: Boolean): Float {
         val n = if (index < 7) st.storeMeals.count { it.day == index } else 0
-        return if (n == 0) 46f else 16f + (if (hasRecipe) 46f else 0f) + 32f * n + 28f
+        return if (n == 0) 46f else 16f + (if (hasRecipe) 46f else 0f) + 32f * n + 4f
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -267,13 +267,6 @@ fun WeekScreen(
                     }
                     meals.forEach { m ->
                         StoreLine(m, onClick = { openMeal = m }, onRemove = { vm.removeStoreMeal(m.id) })
-                    }
-                    if (meals.isNotEmpty()) {
-                        Text(
-                            "＋ Add another",
-                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable { onAddStore() }.padding(vertical = 6.dp),
-                        )
                     }
                 }
             }
