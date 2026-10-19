@@ -113,7 +113,9 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
             onDismissRequest = { kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet() },
             title = { Text("Add these to your Kitchen too?") },
             text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
+              Column {
+                // Only the list scrolls; the two buttons below stay put.
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                     lines.forEach { l ->
                         val on = l.term !in kitchenOff
                         Row(
@@ -139,6 +141,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp),
                     )
+                }
                     // Cart only, or cart plus the Kitchen (same icon as the Kitchen button at the top).
                     Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         KitchenAskButton("Cart only", false, Modifier.weight(1f), onClick = {
