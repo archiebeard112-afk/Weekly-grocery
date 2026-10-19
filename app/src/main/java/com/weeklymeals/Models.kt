@@ -138,6 +138,12 @@ data class UserState(
     val pantryBuy: Set<String> = emptySet(),
     /** Shop items you left out of the Kitchen when adding to cart (probably only for the week's meals); they start unticked next time. */
     val skipKitchen: Set<String> = emptySet(),
+    /** King Soopers products planned as meals this week (frozen pizza), each on a day. Cleared on Finish week. */
+    val storeMeals: List<StoreMeal> = emptyList(),
+    /** The last 10 store meals you added, offered again in Browse → King Soopers. */
+    val recentStoreMeals: List<StoreMeal> = emptyList(),
+    /** Where the Browse search looks: "app", "web" (online recipes) or "store" (King Soopers). */
+    val browseScope: String = "app",
     /** A meal counts as "on sale" when it saves at least this much. */
     val saleMin: Double = 2.0,
     /** A meal is "budget" when what you'd buy for it costs this much or less. */
@@ -176,6 +182,21 @@ data class UserState(
 @Serializable
 data class StoreSide(val upc: String, val title: String)
 
+/**
+ * A King Soopers product eaten as a meal on a day (a frozen pizza): not a recipe, never saved to recipes or favorites.
+ * [day] is 0 (Mon) .. 6 (Sun); recent ones (kept for one-tap re-adding) have day -1.
+ */
+@Serializable
+data class StoreMeal(
+    val id: String,
+    val upc: String,
+    val title: String,
+    val size: String = "",
+    /** The price when it was added (sale price if there was one). */
+    val price: Double? = null,
+    val day: Int = -1,
+)
+
 @Serializable
 data class PastWeek(
     /** When the week was finished, in milliseconds. */
@@ -183,6 +204,8 @@ data class PastWeek(
     val recipes: List<Int>,
     val sides: Map<Int, String> = emptyMap(),
     val servings: Int = 2,
+    /** Store-bought meals that week, like "Wed · Frozen pizza". */
+    val storeMeals: List<String> = emptyList(),
 )
 
 /**

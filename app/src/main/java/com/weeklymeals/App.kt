@@ -319,7 +319,7 @@ fun App(vm: MealsViewModel) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = tab == 0 && overlay == Overlay.None, onClick = { tab = 0; overlay = Overlay.None },
-                        icon = { CountIcon(st.week.size) { Icon(Icons.Filled.DateRange, null) } },
+                        icon = { CountIcon(st.week.size + st.storeMeals.size) { Icon(Icons.Filled.DateRange, null) } },
                         label = { TabLabel("Week") },
                     )
                     NavigationBarItem(
@@ -349,6 +349,7 @@ fun App(vm: MealsViewModel) {
                     0 -> WeekScreen(
                         vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 }, flashId = flashId,
                         onLeftovers = { pendingFilter = "leftovers"; tab = 1 },
+                        onAddStore = { vm.setBrowseScope(BrowseScope.STORE); tab = 1 },
                     ) { flashId = null }
                     1 -> BrowseScreen(
                         vm, st, toggleFav,
@@ -766,6 +767,7 @@ private fun BrowseScreen(
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 when {
+                    st.browseScope != BrowseScope.APP -> "Search"
                     searching -> "Search"
                     saleOnly -> "On sale"
                     else -> "10 ideas"
@@ -776,6 +778,9 @@ private fun BrowseScreen(
             FiltersButton(filters.size + if (saleOnly) 1 else 0, showLabel = true) { showFilters = true }
         }
         CompactSearch(query, { query = it }, Modifier.padding(top = 6.dp, bottom = 4.dp))
+        // Where to search, one at a time: this app's recipes, online recipes, or King Soopers products.
+        val scopeKey = st.browseScope
+        ScopeChips(scopeKey, { vm.setBrowseScope(it) }, Modifier.padding(bottom = 4.dp))
         if (showFilters) {
             FiltersDialog(
                 filters, onChange = { filters = it }, onDismiss = { showFilters = false },
@@ -797,11 +802,38 @@ private fun BrowseScreen(
             return@Column
         }
 
-        // Online results load about a second after you stop typing.
+        // Online and store results load a moment after you stop typing (only for the place you picked).
         val web by vm.webSearch.collectAsState()
-        LaunchedEffect(query, st.spoonKey, st.webSource) {
-            delay(900)
-            vm.searchWeb(query)
+        LaunchedEffect(query, st.spoonKey, st.webSource, scopeKey) {
+            when (scopeKey) {
+                BrowseScope.WEB -> { delay(900); vm.searchWeb(query) }
+                BrowseScope.STORE -> { delay(500); vm.searchStore(query) }
+                else -> {}
+            }
+        }
+
+        if (scopeKey == BrowseScope.STORE) {
+            StoreSearch(vm, st, query, onSettings, Modifier.weight(1f))
+            return@Column
+        }
+        if (scopeKey == BrowseScope.WEB) {
+            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
+                when {
+                    RecipeSources.effective(st) == RecipeSources.OFF -> {
+                        Text(
+                            "Online recipe search is turned off. You can turn it on in Settings.",
+                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
+                        )
+                        TextButton(onClick = onSettings) { Text("Open Settings") }
+                    }
+                    query.trim().length < 3 -> Text(
+                        "Type at least 3 letters to search online recipes.",
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
+                    )
+                    else -> OnlineResults(vm, st, web, query, onWeb, onSettings)
+                }
+            }
+            return@Column
         }
 
         if (searching) {
@@ -814,7 +846,6 @@ private fun BrowseScreen(
                 // Uses-leftovers filter: the meals that save you the most come first.
                 if ("leftovers" in filters) list.sortedByDescending { vm.leftoverSavings(st, it) } else list.sortedBy { it.name }
             }
-            val showWeb = query.trim().length >= 3 && RecipeSources.effective(st) != RecipeSources.OFF
             LazyVerticalGrid(
                 state = resultsState,
                 columns = GridCells.Fixed(2),
@@ -825,8 +856,7 @@ private fun BrowseScreen(
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "inapp") {
                     Text(
-                        if (showWeb) "In the app · ${matches.size}"
-                        else "${matches.size} match${if (matches.size == 1) "" else "es"}",
+                        "${matches.size} match${if (matches.size == 1) "" else "es"}",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
@@ -844,11 +874,6 @@ private fun BrowseScreen(
                         leftover = vm.usesLeftovers(st, r),
                 leftoverSave = vm.leftoverSavings(st, r),
                     )
-                }
-                if (showWeb) {
-                    item(span = { GridItemSpan(maxLineSpan) }, key = "online") {
-                        OnlineResults(vm, st, web, query, onWeb, onSettings)
-                    }
                 }
             }
             return@Column
@@ -1379,7 +1404,7 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
                 Card(colors = cardColors, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp)) {
                         Text("Week of ${fmt.format(java.util.Date(w.date))}", style = MaterialTheme.typography.titleMedium)
-                        Text("${w.recipes.size} meals · cooking for ${w.servings}", style = MaterialTheme.typography.bodySmall)
+                        Text("${w.recipes.size + w.storeMeals.size} meals · cooking for ${w.servings}", style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.padding(4.dp))
                         w.recipes.forEach { id ->
                             val r = all[id]
@@ -1406,6 +1431,7 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
                                 }
                             }
                         }
+                        w.storeMeals.forEach { Text("• 🛒 $it", style = MaterialTheme.typography.bodyMedium) }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Button(onClick = {
                                 vm.repeatWeek(w)

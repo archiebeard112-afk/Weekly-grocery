@@ -610,6 +610,79 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         suggestions.value = emptyList()
     }
 
+    // ---- Store-bought meals: a King Soopers product on a day (frozen pizza) -------------
+
+    /** King Soopers products matching the Browse search while its scope is "King Soopers". */
+    val storeResults = MutableStateFlow<List<Product>>(emptyList())
+    val storeSearching = MutableStateFlow(false)
+    private var latestStoreQuery = ""
+
+    fun setBrowseScope(scope: String) = edit { it.copy(browseScope = scope) }
+
+    fun searchStore(query: String) {
+        val q = query.trim()
+        latestStoreQuery = q
+        val k = state.value.kroger
+        if (q.length < 2 || k.store.id.isEmpty() || k.clientId.isBlank()) {
+            storeResults.value = emptyList()
+            storeSearching.value = false
+            return
+        }
+        storeSearching.value = true
+        viewModelScope.launch {
+            val found = runCatching { api.searchProducts(appToken(k), k.store.id, q, limit = 30) }.getOrDefault(emptyList())
+            if (q == latestStoreQuery) {
+                storeResults.value = found.filter { it.available }.distinctBy { it.upc }.take(20)
+                storeSearching.value = false
+            }
+        }
+    }
+
+    /** Puts a King Soopers product on a day as a meal. Not a recipe: it isn't saved to recipes or favorites. */
+    fun addStoreMeal(day: Int, p: Product) {
+        val title = p.title.trim()
+        if (title.isEmpty() || day !in 0..6) return
+        val term = Logic.searchTerm(title)
+        val meal = StoreMeal(UUID.randomUUID().toString(), p.upc, title, p.size, p.promo ?: p.price, day)
+        // The same product on two days is two in the cart.
+        val n = state.value.storeMeals.count { it.upc == p.upc } + 1
+        products.update { it + (term to CartLine(term = term, search = title, options = listOf(p), selected = 0, quantity = n)) }
+        edit { s ->
+            s.copy(
+                storeMeals = s.storeMeals + meal,
+                recentStoreMeals = (listOf(meal.copy(day = -1)) + s.recentStoreMeals.filterNot { it.upc == p.upc }).take(10),
+                kroger = s.kroger.copy(choices = s.kroger.choices + ("term:$term" to Choice(p.upc, title, title))),
+            )
+        }
+        message.value = "Added to ${Logic.DAY_LONG[day]}"
+    }
+
+    /** Adds one of the recent store meals again, with today's price (or says it's not available). */
+    fun addRecentStoreMeal(day: Int, m: StoreMeal) {
+        val k = state.value.kroger
+        viewModelScope.launch {
+            val fresh = if (k.store.id.isNotEmpty() && k.clientId.isNotBlank())
+                runCatching { api.productsById(appToken(k), k.store.id, listOf(m.upc)) }.getOrNull()?.firstOrNull { it.upc == m.upc }
+            else null
+            if (fresh != null && !fresh.available) {
+                message.value = "That's not available at your store right now"
+                return@launch
+            }
+            addStoreMeal(day, fresh ?: Product(m.upc, m.title, m.size, m.price))
+        }
+    }
+
+    fun removeStoreMeal(id: String) {
+        val cur = state.value.storeMeals
+        val gone = cur.firstOrNull { it.id == id } ?: return
+        val remaining = cur.count { it.upc == gone.upc && it.id != id }
+        val term = Logic.searchTerm(gone.title)
+        if (remaining > 0) products.update { m -> m[term]?.let { m + (term to it.copy(quantity = remaining)) } ?: m }
+        edit { s -> s.copy(storeMeals = s.storeMeals.filterNot { it.id == id }) }
+    }
+
+    fun forgetRecentStoreMeal(upc: String) = edit { s -> s.copy(recentStoreMeals = s.recentStoreMeals.filterNot { it.upc == upc }) }
+
     /** The recipe waiting for a side to be picked before it's added (shows the "Pick a side" pop-up). */
     val sidePicker = MutableStateFlow<Int?>(null)
 
@@ -649,16 +722,18 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** Saves this week to History, then clears it so you can plan the next one. */
     fun finishWeek() = edit { s0 ->
         val s = if (s0.week.isEmpty()) s0 else s0.copy(pantry = binAfterWeek(s0, usedUp(s0)), freezer = freezerAfterWeek(s0))
-        if (s.week.isEmpty() && s.snacks.isEmpty()) s else s.copy(
-            history = if (s.week.isEmpty()) s.history else
+        if (s.week.isEmpty() && s.snacks.isEmpty() && s.storeMeals.isEmpty()) s else s.copy(
+            history = if (s.week.isEmpty() && s.storeMeals.isEmpty()) s.history else
                 listOf(
                     PastWeek(
                         System.currentTimeMillis(),
                         Logic.dayPlan(s.week, s.days).let { p -> p.slots.filterNotNull() + p.extras },
                         s.sides.filterKeys { it in s.week }, s.servings,
+                        storeMeals = s.storeMeals.sortedBy { it.day }.map { Logic.DAY_SHORT.getOrElse(it.day) { "" } + " · " + it.title },
                     ),
                 ) +
                     s.history.take(99),
+            storeMeals = emptyList(),
             week = emptyList(),
             usedAll = emptyMap(),
             days = emptyMap(),
@@ -944,7 +1019,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                         val title = storeSideTitle(sd)
                         ShopItem("side:${key.removePrefix("buy:")}", title, "", n.toDouble(), Logic.aisle(title))
                     }
-                }
+                } +
+            // Store-bought meals (frozen pizza on Wednesday): one of the product per day it's planned.
+            st.storeMeals.groupBy { it.upc }.map { (upc, list) ->
+                ShopItem("meal:$upc", list.first().title, "", list.size.toDouble(), Logic.aisle(list.first().title))
+            }
 
     /** Shopping list grouped by what you'd buy at the store, in store-section order. */
     fun shopGroups(st: UserState = state.value): List<ShopGroup> {
@@ -960,6 +1039,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             st.sides[id]?.let { sideMap[it] }?.let { sd ->
                 sd.ingredients.forEach { from.getOrPut("${it.name}|${it.u}".lowercase()) { mutableSetOf() } += sd.label.substringAfter(" ") }
             }
+        }
+        for (m in st.storeMeals) {
+            from.getOrPut("meal:${m.upc}") { mutableSetOf() } += "Store meal · " + Logic.DAY_SHORT.getOrElse(m.day) { "" }
         }
         fun sourceOf(i: ShopItem): List<String> = when {
             i.key.startsWith("snack:") -> listOf("Snacks")
@@ -1245,9 +1327,12 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         } else null
         val needAmount = Logic.needOf(g.items)
         val sel = if (remembered >= 0) remembered else 0
+        // Store-bought meals and sides are exact products: one per day or meal, whatever the package size says.
+        val exact = g.items.isNotEmpty() && g.items.all { it.key.startsWith("meal:") || it.key.startsWith("side:") }
         return CartLine(
             term = g.term, search = search, options = options, selected = sel, needAmount = needAmount,
-            note = note, quantity = Logic.suggestQty(needAmount, options.getOrNull(sel)),
+            note = note,
+            quantity = if (exact) g.items.sumOf { it.qty }.toInt().coerceAtLeast(1) else Logic.suggestQty(needAmount, options.getOrNull(sel)),
         )
     }
 

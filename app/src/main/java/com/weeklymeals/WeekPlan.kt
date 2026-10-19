@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -29,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,21 +52,54 @@ import kotlin.math.roundToInt
 private val ROW_HEIGHT = 64.dp
 private val ROW_GAP = 6.dp
 
+/** One store-bought meal under a day: 🛒 name, price, and ✕ to take it off. Tap for details. */
+@Composable
+private fun StoreLine(m: StoreMeal, onClick: () -> Unit, onRemove: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("🛒", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.width(8.dp))
+        Text(m.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        m.price?.let {
+            Text(Sales.money(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp))
+        }
+        Text(
+            "✕", color = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.clickable(onClick = onRemove).padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+    }
+}
+
 /** The Week tab: Monday-Sunday, one dinner per day. Hold and drag a meal to move it. */
 @Composable
 fun WeekScreen(
     vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrowse: () -> Unit,
-    flashId: Int? = null, onLeftovers: () -> Unit = {}, onFlashed: () -> Unit = {},
+    flashId: Int? = null, onLeftovers: () -> Unit = {}, onAddStore: () -> Unit = {}, onFlashed: () -> Unit = {},
 ) {
     val all = vm.recipes(st)
     val plan = Logic.dayPlan(st.week, st.days)
     val today = Logic.todayIndex()
     val density = LocalDensity.current
-    // A standard week (no extras) fits on one screen; extras make the page scroll.
-    val fits = plan.extras.isEmpty()
+    // A standard week (no extras, no store meals) fits on one screen; extras and store meals make the page scroll.
+    val fits = plan.extras.isEmpty() && st.storeMeals.isEmpty()
     val gapPx = with(density) { ROW_GAP.toPx() }
     var rowPx by remember { mutableFloatStateOf(with(density) { ROW_HEIGHT.toPx() }) }
-    val stepPx = rowPx + gapPx
+    // Each tile's real height (tiles with store items are taller), so dragging lands on the right day.
+    val heights = remember { mutableStateMapOf<Int, Float>() }
+    fun topOf(i: Int): Float {
+        var y = 0f
+        for (j in 0 until i) y += (heights[j] ?: rowPx) + gapPx
+        return y
+    }
+    fun targetFor(from: Int, dy: Float): Int {
+        val center = topOf(from) + (heights[from] ?: rowPx) / 2f + dy
+        var t = 0
+        for (i in 0..6) if (topOf(i) <= center) t = i
+        return t
+    }
+    var openMeal by remember { mutableStateOf<StoreMeal?>(null) }
     var dragId by remember { mutableStateOf<Int?>(null) }
     var dragFrom by remember { mutableIntStateOf(0) }
     var dragY by remember { mutableFloatStateOf(0f) }
@@ -80,7 +115,7 @@ fun WeekScreen(
         flash.animateTo(0f, androidx.compose.animation.core.tween(1400))
         onFlashed()
     }
-    val target = if (dragId != null) (dragFrom + (dragY / stepPx).roundToInt()).coerceIn(0, 6) else -1
+    val target = if (dragId != null) targetFor(dragFrom, dragY) else -1
 
     // Rows: the 7 days, then any extra meals.
     val rows: List<Pair<String, Int?>> =
@@ -156,8 +191,11 @@ fun WeekScreen(
             }
             var rowMod = Modifier
                 .fillMaxWidth()
-                .then(if (fits) Modifier.weight(1f) else Modifier.height(ROW_HEIGHT))
-                .then(if (index == 0) Modifier.onSizeChanged { rowPx = it.height.toFloat() } else Modifier)
+                .then(if (fits) Modifier.weight(1f) else Modifier.heightIn(min = ROW_HEIGHT))
+                .onSizeChanged {
+                    heights[index] = it.height.toFloat()
+                    if (index == 0) rowPx = it.height.toFloat()
+                }
                 .zIndex(if (dragged) 1f else 0f)
                 .graphicsLayer { translationY = if (dragged) dragY else 0f }
                 .then(if (dragged) Modifier.shadow(8.dp, RoundedCornerShape(14.dp)) else Modifier)
@@ -169,7 +207,7 @@ fun WeekScreen(
                         detectDragGesturesAfterLongPress(
                             onDragStart = { dragId = id; dragFrom = index; dragY = 0f },
                             onDragEnd = {
-                                val to = (dragFrom + (dragY / stepPx).roundToInt()).coerceIn(0, 6)
+                                val to = targetFor(dragFrom, dragY)
                                 vm.moveToDay(id, to)
                                 dragId = null; dragY = 0f
                             },
@@ -183,35 +221,55 @@ fun WeekScreen(
             } else {
                 rowMod = rowMod.clickable { onBrowse() }
             }
-            Row(rowMod.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Store-bought meals on this day (frozen pizza): the tile grows by a line for each.
+            val meals = if (index < 7) st.storeMeals.filter { it.day == index } else emptyList()
+            Row(
+                rowMod.padding(horizontal = 12.dp, vertical = if (meals.isEmpty()) 0.dp else 8.dp),
+                verticalAlignment = if (meals.isEmpty()) Alignment.CenterVertically else Alignment.Top,
+            ) {
                 Text(
                     label,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
                     color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(46.dp),
+                    modifier = Modifier.width(46.dp).padding(top = if (meals.isEmpty()) 0.dp else 6.dp),
                 )
-                if (r == null) {
-                    Text("+ Add a meal", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
-                } else {
-                    Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(r.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        val side = st.sides[r.id]?.let { vm.sideMap[it] }
+                Column(Modifier.weight(1f)) {
+                    if (r == null && meals.isEmpty()) {
+                        Text("+ Add a meal", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
+                    }
+                    if (r != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(r.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                val side = st.sides[r.id]?.let { vm.sideMap[it] }
+                                Text(
+                                    listOfNotNull(side?.label, "⏱ " + Logic.fmtShort(Logic.cookMinutes(r))).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text("⋮⋮", color = MaterialTheme.colorScheme.outline)
+                        }
+                    }
+                    meals.forEach { m ->
+                        StoreLine(m, onClick = { openMeal = m }, onRemove = { vm.removeStoreMeal(m.id) })
+                    }
+                    if (meals.isNotEmpty()) {
                         Text(
-                            listOfNotNull(side?.label, "⏱ " + Logic.fmtShort(Logic.cookMinutes(r))).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            "＋ Add another",
+                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { onAddStore() }.padding(vertical = 6.dp),
                         )
                     }
-                    Text("⋮⋮", color = MaterialTheme.colorScheme.outline)
                 }
             }
         }
 
-        if (st.week.isNotEmpty()) {
+        if (st.week.isNotEmpty() || st.storeMeals.isNotEmpty()) {
             Box(Modifier.fillMaxWidth().padding(top = 2.dp), contentAlignment = Alignment.Center) {
                 OutlinedButton(
                     onClick = { confirmFinish = true },
@@ -223,13 +281,33 @@ fun WeekScreen(
         if (!fits) Spacer(Modifier.height(12.dp))
     }
 
+    openMeal?.let { m ->
+        AlertDialog(
+            onDismissRequest = { openMeal = null },
+            title = { Text("🛒 " + m.title) },
+            text = {
+                Column {
+                    val detail = listOfNotNull(m.size.ifBlank { null }, m.price?.let { Sales.money(it) }).joinToString(" · ")
+                    if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "${Logic.DAY_LONG.getOrElse(m.day) { "" }} · from King Soopers. Nothing to cook: it's on your Shop list.",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.removeStoreMeal(m.id); openMeal = null }) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { openMeal = null }) { Text("Close") } },
+        )
+    }
+
     if (confirmFinish) {
         AlertDialog(
             onDismissRequest = { confirmFinish = false },
             title = { Text("Finish this week?") },
             text = {
                 Text(
-                    "Your ${st.week.size} meals will be saved to History, and the week and shopping list will be cleared." +
+                    "Your ${st.week.size + st.storeMeals.size} meals will be saved to History, and the week and shopping list will be cleared." +
                         if (st.pantry.isNotEmpty()) " Your pantry will be updated for what these meals used." else "",
                 )
             },

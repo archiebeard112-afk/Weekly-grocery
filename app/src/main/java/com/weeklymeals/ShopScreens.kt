@@ -197,7 +197,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("Shopping list", style = MaterialTheme.typography.titleLarge)
-                    val meals = st.week.size
+                    val meals = st.week.size + st.storeMeals.size
                     val parts = listOfNotNull(
                         if (meals > 0) "$meals meal${if (meals == 1) "" else "s"}" else null,
                         if (st.snacks.isNotEmpty()) "${st.snacks.size} snack${if (st.snacks.size == 1) "" else "s"}" else null,
