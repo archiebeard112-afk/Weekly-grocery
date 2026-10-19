@@ -160,6 +160,8 @@ data class UserState(
     val bubbleY: Float = 0f,
     /** Pantry shelves you've opened up (the rest show just their first row). */
     val openShelves: Set<String> = emptySet(),
+    /** Asked once whether the cooking bubble may float over other apps. */
+    val overlayAsked: Boolean = false,
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */

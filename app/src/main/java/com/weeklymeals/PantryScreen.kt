@@ -825,7 +825,7 @@ private fun PantryItemDialog(
                 } else if (life != null) {
                     Text("Usually good for ${Pantry.lifeText(life)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                val dateWord = if (item.dateKind == "sell") "sell-by" else "best-by"
+                val dateWord = when (item.dateKind) { "sell" -> "sell-by"; "biub" -> "BIUB"; else -> "best-by" }
                 when (fresh) {
                     Pantry.Fresh.EXPIRED -> Text(
                         if (Pantry.isSpice(item)) "Past its $dateWord: may be weak" else "Past its $dateWord date",
@@ -843,8 +843,10 @@ private fun PantryItemDialog(
                 }
                 // The date off the package: pick which kind, then type it (slashes fill in).
                 Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(selected = item.dateKind != "sell", onClick = { item = item.copy(dateKind = "best") }, label = { Text("Best by") })
+                    FilterChip(selected = item.dateKind == "best", onClick = { item = item.copy(dateKind = "best") }, label = { Text("Best by") })
                     FilterChip(selected = item.dateKind == "sell", onClick = { item = item.copy(dateKind = "sell") }, label = { Text("Sell by") })
+                    // "Best if used by": what spice jars say.
+                    FilterChip(selected = item.dateKind == "biub", onClick = { item = item.copy(dateKind = "biub") }, label = { Text("BIUB") })
                 }
                 val badNote: (@Composable () -> Unit)? = if (dateBad) { { Text("Not a real date") } } else null
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -856,7 +858,7 @@ private fun PantryItemDialog(
                             if (dateDigits.isEmpty()) item = item.copy(bestBy = 0L)
                             else if (ms != null) item = item.copy(bestBy = ms)
                         },
-                        label = { Text(if (item.dateKind == "sell") "Sell-by date" else "Best-by date") },
+                        label = { Text(when (item.dateKind) { "sell" -> "Sell-by date"; "biub" -> "Best if used by"; else -> "Best-by date" }) },
                         placeholder = { Text("MM/DD/YY") },
                         singleLine = true,
                         isError = dateBad,
@@ -904,7 +906,14 @@ private fun PantryItemDialog(
                 Text("Shelf", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Pantry.SHELVES.forEach { (k, label) ->
-                        FilterChip(selected = item.shelf == k, onClick = { item = item.copy(shelf = k) }, label = { Text(label) })
+                        FilterChip(
+                            selected = item.shelf == k,
+                            onClick = {
+                                // Moving to Spices with no date yet: spice jars say "Best if used by".
+                                item = item.copy(shelf = k, dateKind = if (k == "spices" && item.bestBy == 0L && item.dateKind == "best") "biub" else item.dateKind)
+                            },
+                            label = { Text(label) },
+                        )
                     }
                 }
                 if (!isNew) {

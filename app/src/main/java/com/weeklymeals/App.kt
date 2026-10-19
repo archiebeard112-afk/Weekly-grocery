@@ -165,6 +165,28 @@ fun App(vm: MealsViewModel) {
     var addFromLink by rememberSaveable { mutableStateOf<String?>(null) }
     var addLinkMode by rememberSaveable { mutableStateOf(false) }
     var askAddMode by remember { mutableStateOf(false) }
+    var askOverlay by remember { mutableStateOf(false) }
+
+    // The floating bubble outside the app: tell it what's cooking, and open the steps when it's tapped.
+    val bubbleCtx = LocalContext.current
+    val appVisible by CookOverlay.appVisible.collectAsState()
+    val cookOn = cookBubbleOn(st)
+    LaunchedEffect(cookOn, st.cookingId, st.timers, appVisible) {
+        val id = st.cookingId
+        CookOverlay.info.value = if (cookOn && id != null) vm.recipes(st)[id]?.let { r ->
+            CookOverlay.Info(id, r.name, st.timers.filterKeys { it.startsWith("r$id:") || it.startsWith("r${id}side:") }.values.toList())
+        } else null
+        if (appVisible) CookOverlay.sync(bubbleCtx)
+    }
+    val openCook by vm.openCook.collectAsState()
+    LaunchedEffect(openCook, st.cookingId) {
+        if (openCook && st.cookingId != null) {
+            vm.openCook.value = false
+            overlay = Overlay.None
+            cooking = st.cookingId
+            st.cookingId?.let { vm.startCooking(it) }
+        }
+    }
     val sharedLink by vm.sharedLink.collectAsState()
     LaunchedEffect(sharedLink) {
         sharedLink?.let {
@@ -262,7 +284,12 @@ fun App(vm: MealsViewModel) {
         ) { webViewing = null; sideWebFor = null }
     } else if (overlay == Overlay.None && viewing != null) {
         RecipeScreen(
-            vm, st, viewing!!, toggleFav, timerCtl, onCook = { viewing?.let { vm.startCooking(it) }; cooking = viewing },
+            vm, st, viewing!!, toggleFav, timerCtl, onCook = {
+                viewing?.let { vm.startCooking(it) }
+                CookOverlay.hiddenFor = null
+                cooking = viewing
+                if (!st.overlayAsked && !CookOverlay.canDraw(ctx)) askOverlay = true
+            },
             // After holding to remove: back to Week to see the open day.
             onRemoved = { viewing = null; overlay = Overlay.None; tab = 0 },
         ) { viewing = null }
@@ -330,7 +357,7 @@ fun App(vm: MealsViewModel) {
         }
     }
     SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
-    // Left cooking mode mid-cook: a bubble to get back to it from anywhere.
+    // Left cooking mode mid-cook: a bubble to get back to it from anywhere in the app.
     if (cooking == null && picking == null && cookBubbleOn(st)) {
         CookBubble(
             vm, st,
@@ -349,6 +376,26 @@ fun App(vm: MealsViewModel) {
                 onOnlineSide = { ref -> sideWebFor = id; webViewing = ref },
             )
         }
+    }
+
+    if (askOverlay) {
+        AlertDialog(
+            onDismissRequest = { askOverlay = false; vm.setOverlayAsked() },
+            title = { Text("Keep the bubble outside the app?") },
+            text = {
+                Text(
+                    "The cooking bubble can float over your home screen and other apps, so you can jump back " +
+                        "to your steps. Turn on \"Allow display over other apps\" for Weekly Meals on the next screen.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    askOverlay = false; vm.setOverlayAsked()
+                    runCatching { ctx.startActivity(CookOverlay.permissionIntent(ctx)) }
+                }) { Text("Turn on") }
+            },
+            dismissButton = { TextButton(onClick = { askOverlay = false; vm.setOverlayAsked() }) { Text("Not now") } },
+        )
     }
 
     if (askAddMode) {

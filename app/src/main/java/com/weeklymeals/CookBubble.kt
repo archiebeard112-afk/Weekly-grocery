@@ -17,7 +17,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.Image
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -118,20 +120,11 @@ fun CookBubble(vm: MealsViewModel, st: UserState, modifier: Modifier = Modifier,
                     .padding(horizontal = 8.dp, vertical = 2.dp),
             )
         }
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            shadowElevation = 6.dp,
-            modifier = Modifier.padding(top = 4.dp).size(56.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text("🍳", fontSize = 26.sp)
-                Text(
-                    r.emoji, fontSize = 14.sp,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 2.dp),
-                )
-            }
-        }
+        // Red pot with steam.
+        Image(
+            painterResource(R.drawable.ic_cook_bubble), "Back to cooking ${r.name}",
+            modifier = Modifier.padding(top = 4.dp).size(56.dp).shadow(6.dp, CircleShape),
+        )
     }
 
     if (confirm) {

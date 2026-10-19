@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cooking bubble: a pot with steam on a deep red circle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="56dp"
+    android:height="56dp"
+    android:viewportWidth="68"
+    android:viewportHeight="68">
+    <path android:fillColor="#791F1F" android:pathData="M34,0a34,34 0,1 1,0 68a34,34 0,1 1,0 -68z" />
+    <path android:fillColor="#F09595" android:pathData="M14,33h40v14a8,8 0,0 1,-8 8H22a8,8 0,0 1,-8 -8z" />
+    <path android:fillColor="#FCEBEB" android:pathData="M12.5,30h43a2.5,2.5 0,0 1,0 5h-43a2.5,2.5 0,0 1,0 -5z" />
+    <path android:strokeColor="#FCEBEB" android:strokeWidth="2.5" android:strokeLineCap="round"
+        android:pathData="M24,25c-3,-4 3,-6 0,-11M34,25c-3,-4 3,-6 0,-11M44,25c-3,-4 3,-6 0,-11" />
+</vector>

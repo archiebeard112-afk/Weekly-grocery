@@ -26,7 +26,24 @@ class MainActivity : ComponentActivity() {
         handle(intent)
     }
 
+    // The floating cooking bubble shows only while the app is off screen.
+    override fun onStart() {
+        super.onStart()
+        CookOverlay.appVisible.value = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        CookOverlay.appVisible.value = false
+    }
+
     private fun handle(intent: Intent?) {
+        // Tapped the cooking bubble (or its notification): back to your steps.
+        if (intent?.getBooleanExtra(CookOverlay.EXTRA_OPEN_COOK, false) == true) {
+            vm.openCook.value = true
+            intent.removeExtra(CookOverlay.EXTRA_OPEN_COOK)
+            return
+        }
         // Share → Weekly Meals from a browser: import the recipe link.
         if (intent?.action == Intent.ACTION_SEND) {
             intent.getStringExtra(Intent.EXTRA_TEXT)?.let { Importer.findUrl(it) }?.let { vm.sharedLink.value = it }

@@ -226,9 +226,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         // Pantry items from before freshness tracking start their clock today.
         viewModelScope.launch {
             store.update { s ->
-                if (s.pantry.none { it.addedAt == 0L }) s else {
+                // Spice jars say "Best if used by": spices with no date yet default to BIUB.
+                fun spiceBiub(p: PantryItem) = p.shelf == "spices" && p.bestBy == 0L && p.dateKind == "best"
+                if (s.pantry.none { it.addedAt == 0L || spiceBiub(it) }) s else {
                     val now = System.currentTimeMillis()
-                    s.copy(pantry = s.pantry.map { if (it.addedAt == 0L) it.copy(addedAt = now) else it })
+                    s.copy(pantry = s.pantry.map {
+                        val a = if (it.addedAt == 0L) it.copy(addedAt = now) else it
+                        if (spiceBiub(a)) a.copy(dateKind = "biub") else a
+                    })
                 }
             }
         }
@@ -629,6 +634,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleShelf(key: String) = edit { s ->
         s.copy(openShelves = if (key in s.openShelves) s.openShelves - key else s.openShelves + key)
     }
+
+    /** Set when the floating cooking bubble is tapped: open the cook screen. */
+    val openCook = MutableStateFlow(false)
+
+    fun setOverlayAsked() = edit { it.copy(overlayAsked = true) }
 
     fun stopCooking() = edit { it.copy(cookingId = null, cookScroll = 0, cookDone = emptySet()) }
 
@@ -1292,6 +1302,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             id = java.util.UUID.randomUUID().toString(), name = title.trim(), term = term,
             shelf = shelf ?: guessShelf, kind = kind, upc = upc, size = size,
             measure = measure, full = full, left = full, addedAt = System.currentTimeMillis(),
+            dateKind = if ((shelf ?: guessShelf) == "spices") "biub" else "best",
         )
     }
 
