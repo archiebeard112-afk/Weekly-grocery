@@ -619,7 +619,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setBrowseScope(scope: String) = edit { it.copy(browseScope = scope) }
 
-    fun setSharedOpen(open: Boolean) = edit { it.copy(sharedOpen = open) }
+    fun setSharedOpen(open: Boolean) = edit { it.copy(sharedClosed = !open) }
 
     fun searchStore(query: String) {
         val q = query.trim()

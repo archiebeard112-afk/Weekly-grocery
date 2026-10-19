@@ -53,7 +53,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 /**
  * The cooking bubble outside the app. While you're cooking, a small service keeps a red pot
  * bubble floating over your home screen and other apps (needs "Display over other apps").
- * Tap it to jump back to your steps, drag it to move it, hold it to hide it until next time.
+ * Tap it to jump back to your steps, drag it to move it, hold it to close it (stops cooking everywhere).
  */
 object CookOverlay {
     /** True while the app is on screen (the in-app bubble shows then instead). */
@@ -222,14 +222,15 @@ class CookBubbleService : Service() {
             y = savedY ?: (metrics.heightPixels * 0.62f).toInt()
         }
 
-        // Tap: back to the app. Drag: move. Hold: hide until you cook again.
+        // Tap: back to the app. Drag: move. Hold: close it (stops cooking, so the in-app bubble goes too).
         val slop = ViewConfiguration.get(this).scaledTouchSlop
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var moved = false
         val hold = Runnable {
             if (!moved) {
                 CookOverlay.hiddenFor = CookOverlay.info.value?.id
                 hideBubble()
-                Toast.makeText(this, "Bubble hidden. It's still in the app.", Toast.LENGTH_SHORT).show()
+                CookOverlay.vm(application).stopCooking()
+                Toast.makeText(this, "Cooking bubble closed. Timers keep going.", Toast.LENGTH_SHORT).show()
             }
         }
         box.setOnTouchListener { _, e ->

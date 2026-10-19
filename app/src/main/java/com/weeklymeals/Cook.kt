@@ -608,7 +608,7 @@ private fun SharedNotes(vm: MealsViewModel, st: UserState, id: Int) {
     val usedHere = st.usedAll.filterValues { it == id }.keys
     if (shares.isEmpty() && usedHere.isEmpty()) return
     Spacer(Modifier.height(14.dp))
-    val open = st.sharedOpen
+    val open = !st.sharedClosed
     // Tap the heading to fold or open the list (remembered).
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { vm.setSharedOpen(!open) }.padding(vertical = 4.dp),
