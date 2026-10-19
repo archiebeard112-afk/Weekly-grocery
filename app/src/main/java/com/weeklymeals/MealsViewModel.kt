@@ -366,6 +366,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         }
         val order = groups.keys.shuffled()
         val picked = mutableListOf<Int>()
+        // Up to 3 meals that use up this week's leftovers go in first.
+        pool.filter { usesLeftovers(st, it) }.shuffled().take(3).forEach { r ->
+            picked += r.id
+            groups.values.forEach { g -> g.removeAll { it.id == r.id } }
+        }
         while (picked.size < 10 && groups.values.any { it.isNotEmpty() }) {
             for (k in order) {
                 val g = groups.getValue(k)
@@ -632,6 +637,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 ) +
                     s.history.take(99),
             week = emptyList(),
+            usedAll = emptyMap(),
             days = emptyMap(),
             sides = emptyMap(),
             checked = emptySet(),
@@ -685,6 +691,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     val openCook = MutableStateFlow(false)
 
     fun setOverlayAsked() = edit { it.copy(overlayAsked = true) }
+
+    /** "Used it all": the other meals that shared this get their own (back on the Shop list). */
+    fun useAll(term: String, id: Int) = edit { it.copy(usedAll = it.usedAll + (term to id)) }
+
+    fun undoUseAll(term: String) = edit { it.copy(usedAll = it.usedAll - term) }
 
     fun stopCooking() = edit { it.copy(cookingId = null, cookScroll = 0, cookDone = emptySet()) }
 
@@ -890,6 +901,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun shopItems(st: UserState = state.value): List<ShopItem> =
         Logic.shopList(st.week, st.sides, recipes(st), sideMap, st.servings) +
+            // A shared ingredient you used all of in one meal: buy it again for the others ("… #2").
+            st.usedAll.flatMap { (term, used) ->
+                st.week.filter { it != used }.flatMap { id -> mealItems(st, id)[term].orEmpty() }
+                    .mapIndexed { n, i -> ShopItem("rebuy:$term|$n", "$term #2", i.unit, i.qty, Logic.aisle(term)) }
+            } +
             st.snacks.sorted().map { n ->
                 ShopItem("snack:${n.lowercase()}", n, "", SnackCatalog.find(n).qty, EXTRAS)
             } +
@@ -926,6 +942,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             i.key.startsWith("snack:") -> listOf("Snacks")
             i.key.startsWith("usual:") -> listOf("Usual items")
             i.key.startsWith("extra:") -> listOf("Added")
+            i.key.startsWith("rebuy:") -> listOf("Again (used it all earlier)")
             else -> from[i.key]?.toList().orEmpty()
         }
         return shopItems(st).groupBy { Logic.searchTerm(it.name) }.map { (term, items) ->
@@ -1645,7 +1662,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val key = listOf(
             r.id, r.ingredients.hashCode(), side, st.servings, st.pantry, st.haveTerms, prods.size,
             sales.day, sales.options.size, st.packWeights, if (r.id in st.week) st.week else null, st.sides,
-            st.freezer, st.wholeCuts, st.packCounts,
+            st.freezer, st.wholeCuts, st.packCounts, st.usedAll, st.days,
         )
         if (costCache.size > 2000) costCache.clear()
         return costCache.getOrPut(key) {
@@ -1659,6 +1676,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             val lines = mutableMapOf<String, PriceLine>()
             // Sale prices found for "On sale this week" win over everything else.
             val onSale = Sales.lines(r, st.servings, sales).associateBy { it.term }
+            // Shared with an earlier meal this week (or left over from one): already paid for.
+            val shares = if (r.id in st.week) weekShares(st) else emptyMap()
+            val leftover = if (r.id !in st.week) weekLeftovers(st).map { it.term }.toSet() else emptySet()
             items.groupBy { Logic.searchTerm(it.name) }.forEach { (term, list) ->
                 val sale = onSale[term]?.sale
                 val cut = Packs.wholeCut(term, st.wholeCuts)
@@ -1682,15 +1702,26 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                         Triple(m.cost * need / weekNeed, note, m)
                     }
                 } else null
-                val c = meat?.first
+                var c = meat?.first
                     ?: onSale[term]?.let { it.sale.promo * it.packages }
                     ?: Prices.cost(term + " " + list.first().name, list, prods[term]?.product)
                     ?: return@forEach
+                var reuseNote = ""
+                if (meat == null) {
+                    val sh = shares[term]
+                    if (sh != null && sh.meals.firstOrNull() != r.id) {
+                        c = 0.0
+                        reuseNote = "♻️ bought for " + Shares.mealLabel(st, sh.meals.first(), recipes(st)[sh.meals.first()]?.name ?: "").substringBefore(" ·")
+                    } else if (term in leftover) {
+                        c = 0.0
+                        reuseNote = "♻️ left over this week"
+                    }
+                }
                 known++
                 val g = ShopGroup(term, list, list.first().aisle, emptyList())
                 val have = term in st.haveTerms || pantryStatus(st, g) == PantryStatus.COVERED || fromFreezer
                 if (have) saved += c else total += c
-                lines[term] = PriceLine(c, have, meat?.second.orEmpty())
+                lines[term] = PriceLine(c, have, meat?.second ?: reuseNote)
             }
             if (known == 0) null else MealCost(total, saved, lines)
         }

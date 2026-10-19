@@ -128,10 +128,16 @@ object Prices {
     }
 
     /** Typical price per pound for meat and fish sold by weight (null if not one of those). */
+    /** Grams in the usual package of something sold by the package (null if sold by weight or unknown). */
+    fun packGrams(name: String): Double? = find(name.lowercase())?.takeIf { !it.byWeight }?.grams
+
+    /** Grams in a store size like "5 oz" (public for leftovers). */
+    fun productGrams(size: String): Double? = packGramsOf(size)
+
     fun perLb(name: String): Double? = find(name.lowercase())?.takeIf { it.byWeight }?.price
 
     /** Grams in a store package size like "16 oz", "2 lb", "32 fl oz" (null if it doesn't say). */
-    private fun packGrams(size: String): Double? {
+    private fun packGramsOf(size: String): Double? {
         val (n, unit) = Pantry.parseSize(size) ?: return null
         return when (unit) {
             "oz" -> n * 28.35
@@ -158,7 +164,7 @@ object Prices {
         val grams = items.mapNotNull { Nutrition.grams(Ingredient(it.qty, it.unit, it.name)) }.sum()
         product?.let { p ->
             val price = p.promo ?: p.price ?: return@let
-            val pack = packGrams(p.size)
+            val pack = packGramsOf(p.size)
             val packs = if (pack != null && grams > 0) ceil(grams / pack - 1e-6).coerceAtLeast(1.0) else 1.0
             return price * packs
         }

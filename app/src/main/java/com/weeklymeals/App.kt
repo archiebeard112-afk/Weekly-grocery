@@ -166,6 +166,7 @@ fun App(vm: MealsViewModel) {
     var addLinkMode by rememberSaveable { mutableStateOf(false) }
     var askAddMode by remember { mutableStateOf(false) }
     var askOverlay by remember { mutableStateOf(false) }
+    var pendingFilter by remember { mutableStateOf<String?>(null) }
 
     // The floating bubble outside the app: tell it what's cooking, and open the steps when it's tapped.
     val bubbleCtx = LocalContext.current
@@ -244,6 +245,8 @@ fun App(vm: MealsViewModel) {
     // so search results are still there when you go back from one.
     LaunchedEffect(tab, overlay) {
         listOf(browseSearch, favSearch).forEach { it.query.value = ""; it.filters.value = emptyList() }
+        // From the Week tab's leftovers card: open Browse filtered to meals that use them up.
+        pendingFilter?.let { browseSearch.filters.value = listOf(it); pendingFilter = null }
         launch { runCatching { browseResults.scrollToItem(0) } }
         launch { runCatching { favGridState.scrollToItem(0) } }
     }
@@ -343,7 +346,10 @@ fun App(vm: MealsViewModel) {
                     overlay == Overlay.History -> HistoryScreen(vm, st) { overlay = Overlay.None }
                     overlay == Overlay.Settings -> SettingsScreen(vm, st) { overlay = Overlay.None }
                     else -> when (tab) {
-                    0 -> WeekScreen(vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 }, flashId = flashId) { flashId = null }
+                    0 -> WeekScreen(
+                        vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 }, flashId = flashId,
+                        onLeftovers = { pendingFilter = "leftovers"; tab = 1 },
+                    ) { flashId = null }
                     1 -> BrowseScreen(
                         vm, st, toggleFav,
                         browseSearch, browseResults, onHold = { confirmDelete = it },
@@ -792,7 +798,7 @@ private fun BrowseScreen(
             val q = query.trim().lowercase()
             val matches = all.values.filter { r ->
                 r.id !in st.removed &&
-                matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }) && (!saleOnly || Sales.savings(r, st.servings, cache) >= st.saleMin)
+                matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }, { vm.usesLeftovers(st, it) }) && (!saleOnly || Sales.savings(r, st.servings, cache) >= st.saleMin)
             }.sortedBy { it.name }
             val showWeb = query.trim().length >= 3 && RecipeSources.effective(st) != RecipeSources.OFF
             LazyVerticalGrid(
@@ -821,6 +827,7 @@ private fun BrowseScreen(
                         calories = vm.mealCalories(st, r),
                 cost = vm.mealCost(st, r),
                         filters = filters,
+                        leftover = vm.usesLeftovers(st, r),
                     )
                 }
                 if (showWeb) {
@@ -881,6 +888,7 @@ private fun BrowseScreen(
                             calories = vm.mealCalories(st, r),
                 cost = vm.mealCost(st, r),
                             filters = filters,
+                            leftover = vm.usesLeftovers(st, r),
                         )
                     }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -901,6 +909,7 @@ private fun RecipeTile(
     calories: Int? = null,
     cost: MealsViewModel.MealCost? = null,
     filters: List<String> = emptyList(),
+    leftover: Boolean = false,
 ) {
     val inWeek = r.id in st.week
     Card(
@@ -912,6 +921,7 @@ private fun RecipeTile(
             // At most 2 badges: on sale, then cooking method, then Budget. A badge you're
             // filtering by always gets a spot, so you can see why the meal matched.
             val all = (if (saleSave >= st.saleMin) listOf("sale" to "🏷️" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
+                (if (leftover) listOf("leftovers" to "♻️") else emptyList()) +
                 Logic.badgeKeys(r, cost?.let { it.total <= st.budgetMax } ?: false)
             val keep = (all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = all.filter { it in keep }.map { it.second }
@@ -1190,6 +1200,7 @@ private val BUDGET_GREEN = androidx.compose.ui.graphics.Color(0xFF5DCAA5)
 private fun matchesFilters(
     r: Recipe, q: String, filters: List<String>,
     calories: (Recipe) -> Int? = { null }, budget: (Recipe) -> Boolean = { false },
+    leftovers: (Recipe) -> Boolean = { false },
 ): Boolean =
     (q.isEmpty() || r.name.lowercase().contains(q) || r.ingredients.any { it.name.lowercase().contains(q) }) &&
         filters.all { f ->
@@ -1198,6 +1209,7 @@ private fun matchesFilters(
                 // 600 or less per serving, side included; unknown calories don't count.
                 "lowcal" -> calories(r)?.let { it <= LOW_CAL } ?: false
                 "budget" -> budget(r)
+                "leftovers" -> leftovers(r)
                 else -> f in r.tags
             }
         }
@@ -1237,6 +1249,7 @@ private val FAV_FILTERS = listOf(
     "crockpot" to "🍲 Crock-Pot", "instantpot" to "⚡ Instapot", "airfryer" to "🌬️ Air Fryer",
     "sheetpan" to "♨️ Sheet-Pan", "grill" to "🔥 Grill", "onepan" to "🍳 One-Pan",
     "budget" to "💲 Budget", "quick" to "⏱ Quick", "lowcal" to "$LOW_CAL cal",
+    "leftovers" to "♻️ Uses leftovers",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1251,7 +1264,7 @@ private fun FavoritesScreen(
     val cache = vm.salesCache(st)
     val favs = vm.recipes(st).values.filter { Logic.isFav(it, st) }.sortedBy { it.name }
     val q = query.trim().lowercase()
-    val shown = favs.filter { r -> matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }) }
+    val shown = favs.filter { r -> matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }, { vm.usesLeftovers(st, it) }) }
     // Same layout and spacing as Browse so the title, search bar and tiles line up.
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1306,6 +1319,7 @@ private fun FavoritesScreen(
                 calories = vm.mealCalories(st, r),
                 cost = vm.mealCost(st, r),
                 filters = filters,
+                leftover = vm.usesLeftovers(st, r),
             )
         }
     }

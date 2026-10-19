@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -311,6 +312,7 @@ fun CookScreen(
                     .padding(horizontal = 18.dp, vertical = 12.dp),
             ) {
                 IngredientsPage(r, side, sideName, serv, steps)
+                SharedNotes(vm, st, id)
                 Spacer(Modifier.height(22.dp))
                 Text("Steps", style = MaterialTheme.typography.headlineSmall)
                 Text(
@@ -351,6 +353,14 @@ fun CookScreen(
                             textDecoration = if (done) TextDecoration.LineThrough else null,
                             modifier = Modifier.padding(start = 34.dp, top = 4.dp),
                         )
+                        // This step uses something split with another meal: how much to use now.
+                        if (!done) shareForStep(vm, st, id, step.text)?.let { note ->
+                            Text(
+                                note, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.padding(start = 34.dp, top = 4.dp),
+                            )
+                        }
                         if (step.times.isNotEmpty() && !done) {
                             val ctl = if (step.isSide) sideCtl else mainCtl
                             Row(
@@ -560,6 +570,78 @@ internal fun MiniCook(vm: MealsViewModel, st: UserState, id: Int, onOpenApp: () 
                 }
                 Spacer(Modifier.height(12.dp))
             }
+        }
+    }
+}
+
+
+private fun termTitle(t: String) = t.replaceFirstChar { it.uppercase() }
+
+/** "🔁 Use ½ lb · save the rest for Thu" (or "the ½ lb saved from Mon") if this step uses a shared ingredient. */
+private fun shareForStep(vm: MealsViewModel, st: UserState, id: Int, text: String): String? {
+    if (id !in st.week) return null
+    val t = text.lowercase()
+    val sh = vm.weekShares(st).values.firstOrNull { s ->
+        id in s.meals && (t.contains(s.term) || t.contains(s.term.substringAfterLast(' ').trimEnd('s')))
+    } ?: return null
+    val all = vm.recipes(st)
+    val amount = sh.amounts[id] ?: return null
+    return if (sh.meals.first() == id) {
+        val later = sh.meals.drop(1).joinToString(", ") { Shares.mealLabel(st, it, all[it]?.name ?: "").substringBefore(" ·") }
+        "🔁 Use $amount ${sh.term} · save the rest for $later"
+    } else {
+        val from = sh.meals.first().let { Shares.mealLabel(st, it, all[it]?.name ?: "").substringBefore(" ·") }
+        "🔁 Use the $amount ${sh.term} saved from $from"
+    }
+}
+
+/**
+ * Ingredients this meal shares with others this week: how much to use now and what to save.
+ * "Used it all" puts the other meals' share back on the Shop list.
+ */
+@Composable
+private fun SharedNotes(vm: MealsViewModel, st: UserState, id: Int) {
+    if (id !in st.week) return
+    val all = vm.recipes(st)
+    val shares = vm.weekShares(st).values.filter { id in it.meals }
+    val usedHere = st.usedAll.filterValues { it == id }.keys
+    if (shares.isEmpty() && usedHere.isEmpty()) return
+    Spacer(Modifier.height(14.dp))
+    Text("Shared this week", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.tertiary)
+    shares.forEach { sh ->
+        val first = sh.meals.first() == id
+        val label = { m: Int -> Shares.mealLabel(st, m, all[m]?.name ?: "") }
+        Column(
+            Modifier.fillMaxWidth().padding(top = 6.dp)
+                .background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Text(
+                if (first) "🔁 ${termTitle(sh.term)}: use ${sh.amounts[id]}" + (sh.pack?.let { " of the $it" } ?: "") +
+                    ". Save the rest for " + sh.meals.drop(1).joinToString(", ") { label(it) } + "."
+                else "🔁 ${termTitle(sh.term)}: use the ${sh.amounts[id]} saved from ${label(sh.meals.first())}.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            if (first) {
+                TextButton(onClick = { vm.useAll(sh.term, id) }, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                    Text("Used it all")
+                }
+            }
+        }
+    }
+    usedHere.forEach { term ->
+        Row(
+            Modifier.fillMaxWidth().padding(top = 6.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
+                .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "✓ Used all the $term here. The other meals get their own (it's back on your Shop list).",
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { vm.undoUseAll(term) }) { Text("Undo") }
         }
     }
 }

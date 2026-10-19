@@ -52,7 +52,7 @@ private val ROW_GAP = 6.dp
 @Composable
 fun WeekScreen(
     vm: MealsViewModel, st: UserState, onOpen: (Int) -> Unit, onBrowse: () -> Unit,
-    flashId: Int? = null, onFlashed: () -> Unit = {},
+    flashId: Int? = null, onLeftovers: () -> Unit = {}, onFlashed: () -> Unit = {},
 ) {
     val all = vm.recipes(st)
     val plan = Logic.dayPlan(st.week, st.days)
@@ -115,6 +115,20 @@ fun WeekScreen(
                 contentPadding = PaddingValues(0.dp),
                 modifier = Modifier.height(34.dp).width(40.dp),
             ) { Text("+") }
+        }
+
+        // Fresh things you'll have extra of: tap to see meals that use them up.
+        val left = vm.weekLeftovers(st)
+        if (left.isNotEmpty()) {
+            Text(
+                "♻️ Left over: " + left.take(4).joinToString(" · ") { "${it.label} ${it.term}" } +
+                    (if (left.size > 4) " +${left.size - 4}" else "") + "  ›",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().clickable { onLeftovers() }.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
         }
 
         rows.forEachIndexed { index, (label, id) ->

@@ -166,6 +166,8 @@ data class UserState(
     val skippedVersion: Int = 0,
     /** True once Quick add has been seeded from your receipts. */
     val receiptsSeeded: Boolean = false,
+    /** Shared ingredients you used all of in one meal: term -> that meal (the others get their own). */
+    val usedAll: Map<String, Int> = emptyMap(),
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */
