@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.AlertDialog
@@ -1137,7 +1138,13 @@ private fun RecipeScreen(
             TopAppBar(
                 title = { },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
-                actions = { FavButton(r, st, toggleFav) },
+                actions = {
+                    val ctx = LocalContext.current
+                    IconButton(onClick = { shareRecipe(ctx, r, st.servings, if (inWeek) side else null) }) {
+                        Icon(Icons.Filled.Share, "Share recipe")
+                    }
+                    FavButton(r, st, toggleFav)
+                },
             )
         },
     ) { pad ->
@@ -1209,6 +1216,45 @@ private fun RecipeScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+/** The recipe as plain text (amounts for your Cooking for number), for texting or email. No prices or Kitchen info. */
+fun recipeShareText(r: Recipe, serv: Int, side: Side?): String = buildString {
+    appendLine("${r.emoji} ${r.name}")
+    val info = listOfNotNull(
+        "Serves $serv",
+        Logic.fmtShort(Logic.cookMinutes(r)),
+        Nutrition.perServing(r)?.let { "%,d cal".format(it) },
+    )
+    appendLine(info.joinToString(" · "))
+    appendLine()
+    appendLine("Ingredients")
+    r.ingredients.forEach { appendLine("• " + Logic.ingText(it, serv, r.base)) }
+    if (side != null && side.ingredients.isNotEmpty()) {
+        appendLine()
+        appendLine("Side: ${side.label}")
+        side.ingredients.forEach { appendLine("• " + Logic.ingText(it, serv, 4)) }
+    }
+    appendLine()
+    appendLine("Steps")
+    r.steps.forEachIndexed { n, t -> appendLine("${n + 1}. $t") }
+    if (side != null && side.steps.isNotEmpty()) {
+        appendLine()
+        appendLine("Side: ${side.label}")
+        side.steps.forEachIndexed { n, t -> appendLine("${n + 1}. $t") }
+    }
+    appendLine()
+    append("Shared from Weekly Meals")
+}
+
+/** Opens the phone's share menu (texts, email, notes…) with the recipe as text. */
+fun shareRecipe(ctx: android.content.Context, r: Recipe, serv: Int, side: Side?) {
+    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(android.content.Intent.EXTRA_SUBJECT, r.name)
+        putExtra(android.content.Intent.EXTRA_TEXT, recipeShareText(r, serv, side))
+    }
+    runCatching { ctx.startActivity(android.content.Intent.createChooser(send, "Share ${r.name}")) }
 }
 
 /** Slim one-line "Search" box used on Browse and Favorites. */
