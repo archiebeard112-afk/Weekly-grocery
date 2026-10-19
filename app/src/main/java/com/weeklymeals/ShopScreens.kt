@@ -332,6 +332,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         ShopRow(
                             vm, g, products[g.term], hasStore, pantryNote, vm.shopPack(st, g), freezerNote, noteZone = zone,
                             usePantry = if (status == MealsViewModel.PantryStatus.EXPIRED) ({ vm.setUseAnyway(g.term, true) }) else null,
+                            showHave = status == null,
                         )
                     }
                 }
@@ -476,6 +477,8 @@ private fun ShopRow(
     freezerNote: String? = null,
     usePantry: (() -> Unit)? = null,
     noteZone: String? = null,
+    /** False when the Kitchen already has this item: "Have it" would only repeat what the Kitchen says. */
+    showHave: Boolean = true,
 ) {
     var editPack by remember { mutableStateOf(false) }
     val highlight = MaterialTheme.colorScheme.primary
@@ -490,7 +493,7 @@ private fun ShopRow(
                 modifier = Modifier.weight(1f),
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
-            TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Have it") }
+            if (showHave) TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Have it") }
         }
         pantryNote?.let {
             val amber = Color(0xFFBA7517)
