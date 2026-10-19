@@ -238,6 +238,21 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        // One time: seed Quick add with what your receipts show you buy most.
+        viewModelScope.launch {
+            store.update { s ->
+                if (s.receiptsSeeded) s else {
+                    // Mountain Dew can't be delivered, so it's not suggested.
+                    val bought = s.bought.filterKeys { !it.contains("mountain dew") }.toMutableMap()
+                    Receipts.quickAdd.forEach { (name, weeks) ->
+                        val term = Logic.searchTerm(name)
+                        val old = bought[term]
+                        bought[term] = Bought(old?.name ?: name, maxOf(old?.count ?: 0, weeks), maxOf(old?.last ?: 0L, Receipts.LATEST))
+                    }
+                    s.copy(receiptsSeeded = true, bought = bought)
+                }
+            }
+        }
         // One time: seed Quick add with the snacks and usual items picked before.
         viewModelScope.launch {
             store.update { s ->
@@ -1178,7 +1193,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun lookup(token: String, k: KrogerState, g: ShopGroup): CartLine {
-        val saved = k.choices["term:${g.term}"] ?: g.items.firstNotNullOfOrNull { k.choices[it.key] }
+        // Your pick, or else the product your receipts show you usually buy.
+        val saved = k.choices["term:${g.term}"] ?: g.items.firstNotNullOfOrNull { k.choices[it.key] } ?: Receipts.usual(g.term)
         val search = saved?.search?.ifBlank { null } ?: g.term
         val all = runCatching { api.searchProducts(token, k.store.id, search) }.getOrDefault(emptyList())
         // Leave out anything out of stock, not sold here, or not deliverable.

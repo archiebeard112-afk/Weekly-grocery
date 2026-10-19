@@ -164,6 +164,8 @@ data class UserState(
     val overlayAsked: Boolean = false,
     /** A version you chose to skip in the update pop-up (0 = none). */
     val skippedVersion: Int = 0,
+    /** True once Quick add has been seeded from your receipts. */
+    val receiptsSeeded: Boolean = false,
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */
