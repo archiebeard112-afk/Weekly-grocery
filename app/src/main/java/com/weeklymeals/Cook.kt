@@ -608,24 +608,27 @@ private fun SharedNotes(vm: MealsViewModel, st: UserState, id: Int) {
     if (shares.isEmpty() && usedHere.isEmpty()) return
     Spacer(Modifier.height(14.dp))
     Text("Shared this week", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.tertiary)
+    // One short line per ingredient: each meal and how much it gets (this meal last).
     shares.forEach { sh ->
         val first = sh.meals.first() == id
-        val label = { m: Int -> Shares.mealLabel(st, m, all[m]?.name ?: "") }
-        Column(
-            Modifier.fillMaxWidth().padding(top = 6.dp)
-                .background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
+        val order = sh.meals.filter { it != id } + id
+        val meals = order.joinToString(" · ") { m ->
+            Shares.mealLabel(st, m, all[m]?.name ?: "").replace(" · ", " ") + (sh.amounts[m]?.let { " $it" } ?: "")
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (first) "🔁 ${termTitle(sh.term)}: use ${sh.amounts[id]}" + (sh.pack?.let { " of the $it" } ?: "") +
-                    ". Save the rest for " + sh.meals.drop(1).joinToString(", ") { label(it) } + "."
-                else "🔁 ${termTitle(sh.term)}: use the ${sh.amounts[id]} saved from ${label(sh.meals.first())}.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                androidx.compose.ui.text.buildAnnotatedString {
+                    withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)) {
+                        append(termTitle(sh.term) + ": ")
+                    }
+                    append(meals)
+                },
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
             )
+            // The first meal can use it all (the others then get their own on the Shop list).
             if (first) {
-                TextButton(onClick = { vm.useAll(sh.term, id) }, contentPadding = PaddingValues(horizontal = 0.dp)) {
-                    Text("Used it all")
+                TextButton(onClick = { vm.useAll(sh.term, id) }, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                    Text("Used it all", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

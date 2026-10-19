@@ -1204,15 +1204,7 @@ private fun RecipeScreen(
             }
             if (inWeek) WeekControls(vm, st, r, side)
             SaleSection(vm, st, r)
-            val shared = if (!inWeek) emptyList() else vm.weekShares(st).values.filter { r.id in it.meals }.map { sh ->
-                val all = vm.recipes(st)
-                // Other meals first, this one last.
-                val order = sh.meals.filter { it != r.id } + r.id
-                sh.term.replaceFirstChar { it.uppercase() } to order.joinToString(" · ") { m ->
-                    Shares.mealLabel(st, m, all[m]?.name ?: "").replace(" · ", " ") + (sh.amounts[m]?.let { " $it" } ?: "")
-                }
-            }
-            RecipeDetails(r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax, expired = vm.expiredTerms(st), shared = shared)
+            RecipeDetails(r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax, expired = vm.expiredTerms(st))
             ReviewsSection(r.id, r.rating, r.ratingCount, r.countLabel, r.reviews)
             Spacer(Modifier.height(24.dp))
         }
