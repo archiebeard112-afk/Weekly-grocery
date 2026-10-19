@@ -276,9 +276,32 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun recipes(st: UserState = state.value): Map<Int, Recipe> {
         recipeMemo?.let { (c, w, m) -> if (c === st.custom && w == st.wholeCuts) return m }
-        val m = (bundle.recipes + st.custom).map { wholeCuts(it, st.wholeCuts) }.associateBy { it.id }
+        val m = (bundle.recipes + st.custom).map { juiceOnly(wholeCuts(it, st.wholeCuts)) }.associateBy { it.id }
         recipeMemo = Triple(st.custom, st.wholeCuts, m)
         return m
+    }
+
+    /**
+     * A recipe that lists whole limes or lemons but only uses their juice (no zest) needs juice:
+     * "1 lime" becomes "2 tbsp lime juice (1 lime)", so a bottle in the fridge covers it.
+     */
+    private fun juiceOnly(r: Recipe): Recipe {
+        val steps = r.steps.joinToString(" ").lowercase()
+        var changed = false
+        val ings = r.ingredients.map { i ->
+            val term = Logic.searchTerm(i.name)
+            val fruit = when (term) { "limes" -> "lime"; "lemons" -> "lemon"; else -> null }
+            val n = i.name.lowercase()
+            if (fruit != null && i.u in setOf("", "whole") && "$fruit juice" in steps && "zest" !in steps && "zest" !in n &&
+                "wedge" !in n && "slice" !in n
+            ) {
+                changed = true
+                val perFruit = if (fruit == "lime") 2.0 else 3.0 // tbsp of juice in one
+                val count = Logic.fmt(i.q)
+                Ingredient(i.q * perFruit, "tbsp", "$fruit juice ($count $fruit${if (i.q > 1) "s" else ""})")
+            } else i
+        }
+        return if (changed) r.copy(ingredients = ings) else r
     }
 
     private fun wholeCuts(r: Recipe, cuts: Set<String>): Recipe {
