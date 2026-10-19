@@ -219,9 +219,18 @@ object Pantry {
     }
 
     /** An amount from a recipe, in the item's measure (null = can't tell). */
+    /** True when this pantry item covers a shopping-list term (e.g. "garlic" / minced garlic covers garlic cloves). */
+    fun covers(item: PantryItem, term: String): Boolean =
+        item.term == term || Logic.searchTerm(item.term) == term
+
+    private fun isGarlic(item: PantryItem) =
+        Regex("\\bgarlic\\b").containsMatchIn(item.term + " " + item.name) &&
+            !Regex("powder|salt|sauce|paste|bread").containsMatchIn(item.term + " " + item.name)
+
     fun usage(item: PantryItem, q: Double, u: String): Double? = when (item.measure) {
         COUNT -> if (u == "" || u == "can" || u == "cans") q else null
-        TSP -> when (u) {
+        // Jarred minced garlic: ½ tsp = 1 clove.
+        TSP -> if (isGarlic(item) && (u == "" || u == "clove" || u == "cloves")) q * 0.5 else when (u) {
             "tsp" -> q
             "tbsp" -> q * 3
             "cup" -> q * 48

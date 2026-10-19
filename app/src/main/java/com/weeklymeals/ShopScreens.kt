@@ -242,7 +242,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         )
                     }
                     items(section, key = { "g_" + it.term }) { g ->
-                        val inFridge = st.pantry.any { it.term == g.term && it.shelf == "fridge" }
+                        val inFridge = st.pantry.any { Pantry.covers(it, g.term) && it.shelf == "fridge" }
                         val status = vm.pantryStatus(st, g)
                         val pantryNote = when (status) {
                             MealsViewModel.PantryStatus.EXPIRED -> {
@@ -292,7 +292,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         ) {
                             val fromPantry = g.term !in st.haveTerms
                             val fromFreezer = fromPantry && vm.freezerCovers(st, g)
-                            val fromFridge = fromPantry && st.pantry.any { it.term == g.term && it.shelf == "fridge" }
+                            val fromFridge = fromPantry && st.pantry.any { Pantry.covers(it, g.term) && it.shelf == "fridge" }
                             Text(
                                 g.term.replaceFirstChar { it.uppercase() } +
                                     if (fromFreezer) "  · 🧊 in freezer" else if (fromFridge) "  · 🥛 in fridge" else if (fromPantry) "  · 🫙 in pantry" else "",

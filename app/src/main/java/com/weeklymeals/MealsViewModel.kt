@@ -1280,7 +1280,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             .map { Logic.searchTerm(it.name) }.toSet()
     }
 
-    fun pantryItem(st: UserState, term: String): PantryItem? = st.pantry.firstOrNull { it.term == term }
+    fun pantryItem(st: UserState, term: String): PantryItem? =
+        st.pantry.firstOrNull { it.term == term } ?: st.pantry.firstOrNull { Pantry.covers(it, term) }
 
     /** How much of a shopping-list group the week needs, in the pantry item's measure (null = can't tell). */
     private fun need(item: PantryItem, g: ShopGroup): Double? {
@@ -1297,11 +1298,14 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Ingredients on a recipe page that are past their date in the pantry: term -> label. */
     fun expiredTerms(st: UserState): Map<String, String> =
-        st.pantry.filter { isExpired(it) }.associate { it.term to if (Pantry.isSpice(it)) "may be weak" else "check date" }
+        st.pantry.filter { isExpired(it) }.flatMap { p ->
+            val label = if (Pantry.isSpice(p)) "may be weak" else "check date"
+            listOf(p.term to label, Logic.searchTerm(p.term) to label)
+        }.toMap()
 
     /** Keep using an item past its date (or stop). */
     fun setUseAnyway(term: String, on: Boolean) = edit { s ->
-        s.copy(pantry = s.pantry.map { if (it.term == term) it.copy(useAnyway = on) else it })
+        s.copy(pantry = s.pantry.map { if (Pantry.covers(it, term)) it.copy(useAnyway = on) else it })
     }
 
     /** Whether the pantry covers this item for the week, is short, or doesn't have it (null). */
@@ -1355,7 +1359,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val used = Logic.shopList(s.week, s.sides, recipes(s), sideMap, s.servings)
             .groupBy { Logic.searchTerm(it.name) }
         return s.pantry.map { item ->
-            val items = used[item.term] ?: return@map item
+            val items = used[item.term] ?: used[Logic.searchTerm(item.term)] ?: return@map item
             if (item.measure == "") return@map item
             var total = 0.0
             for (i in items) total += Pantry.usage(item, i.qty, i.unit) ?: 0.0

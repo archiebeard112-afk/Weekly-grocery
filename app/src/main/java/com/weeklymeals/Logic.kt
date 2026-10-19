@@ -205,6 +205,10 @@ object Logic {
         "celery stalks" to "celery",
         "scallion" to "green onions", "scallions" to "green onions",
         "garlic" to "garlic bulb",
+        // However a recipe words it, garlic cloves are the same thing to buy (or have).
+        "garlic clove" to "garlic bulb", "garlic cloves" to "garlic bulb",
+        "clove garlic" to "garlic bulb", "cloves garlic" to "garlic bulb",
+        "clove of garlic" to "garlic bulb", "cloves of garlic" to "garlic bulb",
         "fresh ginger" to "ginger root",
         "tomato" to "tomatoes", "large tomato" to "tomatoes",
         "bell pepper" to "bell peppers",
