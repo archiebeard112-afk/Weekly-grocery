@@ -24,6 +24,8 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -92,6 +94,23 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                 if (k.store.id.isEmpty()) "No store yet" else k.store.name,
                 if (vm.signedIn) "Signed in" else "Not signed in",
             ).joinToString(" · ")
+            // How many you cook for (moved here from the Week tab).
+            SettingsCard("🍽️", "Cooking for", "${st.servings} ${if (st.servings == 1) "person" else "people"}") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Recipes and the Shop list scale to", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    FilledTonalButton(
+                        onClick = { vm.setServings(st.servings - 1) },
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.height(34.dp).width(40.dp),
+                    ) { Text("−") }
+                    Text("${st.servings}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 10.dp))
+                    FilledTonalButton(
+                        onClick = { vm.setServings(st.servings + 1) },
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.height(34.dp).width(40.dp),
+                    ) { Text("+") }
+                }
+            }
             SettingsCard("🛒", "King Soopers", storeLine) {
                 Text(
                     "Create a free app at developer.kroger.com. Set its redirect URI to ${KrogerApi.REDIRECT} " +

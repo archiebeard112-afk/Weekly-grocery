@@ -94,7 +94,7 @@ fun WeekScreen(
         verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("This week", style = MaterialTheme.typography.titleLarge)
+            Text("This week", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             // ♻️ Fresh things you'll have extra of: tap for the list and meals that use them up.
             val left = vm.weekLeftovers(st)
             var showLeft by remember { mutableStateOf(false) }
@@ -102,7 +102,7 @@ fun WeekScreen(
                 Text(
                     "♻️ ${left.size}",
                     style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(start = 8.dp)
+                    modifier = Modifier.padding(end = 4.dp)
                         .clip(RoundedCornerShape(50))
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
                         .clickable { showLeft = true }
@@ -136,29 +136,6 @@ fun WeekScreen(
                     dismissButton = { TextButton(onClick = { showLeft = false }) { Text("Close") } },
                 )
             }
-            Spacer(Modifier.weight(1f))
-            Text(
-                "Cooking for",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(end = 8.dp),
-            )
-            // Same height and style as Browse's More button.
-            FilledTonalButton(
-                onClick = { vm.setServings(st.servings - 1) },
-                contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.height(34.dp).width(40.dp),
-            ) { Text("−") }
-            Text(
-                "${st.servings}",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 10.dp),
-            )
-            FilledTonalButton(
-                onClick = { vm.setServings(st.servings + 1) },
-                contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.height(34.dp).width(40.dp),
-            ) { Text("+") }
         }
 
         rows.forEachIndexed { index, (label, id) ->
