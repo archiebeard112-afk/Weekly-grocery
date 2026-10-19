@@ -305,7 +305,7 @@ fun App(vm: MealsViewModel) {
                     actions = {
                         // Tap to open below the bar (highlighted); tap again to close.
                         val toggle: (Overlay) -> Unit = { o -> overlay = if (overlay == o) Overlay.None else o }
-                        TopIcon(PantryIcon, "Pantry", overlay == Overlay.Pantry) { toggle(Overlay.Pantry) }
+                        TopIcon(PantryIcon, "Kitchen", overlay == Overlay.Pantry) { toggle(Overlay.Pantry) }
                         TopIcon(Icons.Filled.List, "History", overlay == Overlay.History) { toggle(Overlay.History) }
                         TopIcon(Icons.Filled.Settings, "Settings", overlay == Overlay.Settings) { toggle(Overlay.Settings) }
                         Spacer(Modifier.width(4.dp))

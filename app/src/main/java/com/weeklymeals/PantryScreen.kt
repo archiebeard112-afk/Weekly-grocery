@@ -60,6 +60,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -70,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathData
@@ -166,20 +169,120 @@ private fun markFor(p: PantryItem): String {
     return if (Pantry.isLow(p)) "low" else ""
 }
 
-/** Red ✕ (past best-by) or orange ? (past sell-by) in a little circle. */
+/** Red ✕ (past best-by) or orange ? (past sell-by) in a little circle, drawn so it sits dead center. */
 @Composable
 private fun JarMark(kind: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier.size(16.dp)
-            .background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.CircleShape)
-            .padding(1.5.dp)
-            .background(if (kind == "best") DATE_RED else SELL_ORANGE, androidx.compose.foundation.shape.CircleShape),
-        contentAlignment = Alignment.Center,
+    val ring = MaterialTheme.colorScheme.surface
+    Canvas(modifier.size(16.dp)) {
+        val r = size.minDimension / 2
+        drawCircle(ring, r)
+        drawCircle(if (kind == "best") DATE_RED else SELL_ORANGE, r - 1.5.dp.toPx())
+        val c = center
+        val w = 1.8.dp.toPx()
+        if (kind == "best") {
+            val d = r * 0.38f
+            drawLine(Color.White, Offset(c.x - d, c.y - d), Offset(c.x + d, c.y + d), w, StrokeCap.Round)
+            drawLine(Color.White, Offset(c.x + d, c.y - d), Offset(c.x - d, c.y + d), w, StrokeCap.Round)
+        } else {
+            // A question mark: hook, stem, dot.
+            val u = r * 0.12f
+            val path = Path().apply {
+                moveTo(c.x - 2.6f * u, c.y - 2.2f * u)
+                cubicTo(c.x - 2.6f * u, c.y - 5.4f * u, c.x + 2.8f * u, c.y - 5.4f * u, c.x + 2.8f * u, c.y - 2.2f * u)
+                cubicTo(c.x + 2.8f * u, c.y + 0.2f * u, c.x, c.y + 0.2f * u, c.x, c.y + 2.0f * u)
+            }
+            drawPath(path, Color.White, style = Stroke(w, cap = StrokeCap.Round))
+            drawCircle(Color.White, w * 0.65f, Offset(c.x, c.y + 4.6f * u))
+        }
+    }
+}
+
+/** Kitchen zones and which shelves are in each. */
+private data class Zone(val key: String, val label: String, val color: Color)
+private val ZONES = listOf(
+    Zone("pantry", "Pantry", Color(0xFFBA7517)),
+    Zone("fridge", "Fridge", Color(0xFF378ADD)),
+    Zone("freezer", "Freezer", Color(0xFF85B7EB)),
+    Zone("produce", "Produce", Color(0xFF639922)),
+)
+private fun zoneOf(shelf: String) = when (shelf) { "fridge" -> "fridge"; "produce" -> "produce"; else -> "pantry" }
+
+/** A zone on the Kitchen overview: icon, name, count and anything that needs a look. */
+@Composable
+private fun ZoneCard(z: Zone, st: UserState, modifier: Modifier, onClick: () -> Unit) {
+    val items = st.pantry.filter { zoneOf(it.shelf) == z.key }
+    val best = items.count { markFor(it) == "best" }
+    val sell = items.count { markFor(it) == "sell" }
+    val low = items.count { markFor(it) == "low" }
+    Column(
+        modifier
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+            .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
     ) {
+        ZoneIcon(z.key, z.color, Modifier.size(34.dp))
+        Text(z.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp))
+        val count = if (z.key == "freezer") st.freezer.size else items.size
         Text(
-            if (kind == "best") "✕" else "?", color = Color.White,
-            fontSize = 9.sp, lineHeight = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            "$count " + (if (z.key == "freezer") (if (count == 1) "bag" else "bags") else if (count == 1) "item" else "items"),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Row(Modifier.padding(top = 6.dp).height(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (z.key == "freezer") {
+                val oldest = st.freezer.minOfOrNull { it.frozenAt }
+                Text(
+                    if (oldest == null) "Empty" else "Oldest " + frozenAgo(oldest).removePrefix("frozen "),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (best + sell + low == 0) {
+                Text(if (items.isEmpty()) "Empty" else "All good", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                if (best > 0) { JarMark("best"); Text(" $best  ", style = MaterialTheme.typography.bodySmall) }
+                if (sell > 0) { JarMark("sell"); Text(" $sell  ", style = MaterialTheme.typography.bodySmall) }
+                if (low > 0) Text("$low low", style = MaterialTheme.typography.bodySmall, color = LOW)
+            }
+        }
+    }
+}
+
+/** Drawn zone icons: cupboard with jars, fridge, freezer chest with a snowflake, produce basket. */
+@Composable
+private fun ZoneIcon(kind: String, color: Color, modifier: Modifier) {
+    Canvas(modifier) {
+        val u = size.minDimension / 34f
+        val w = 2f * u
+        fun p(x: Float, y: Float) = Offset(x * u, y * u)
+        fun box(x: Float, y: Float, bw: Float, bh: Float, r: Float = 3f, fill: Boolean = false) =
+            if (fill) drawRoundRect(color, p(x, y), Size(bw * u, bh * u), CornerRadius(r * u))
+            else drawRoundRect(color, p(x, y), Size(bw * u, bh * u), CornerRadius(r * u), style = Stroke(w))
+        when (kind) {
+            "pantry" -> {
+                box(4f, 3f, 26f, 28f)
+                drawLine(color, p(17f, 3f), p(17f, 31f), w)
+                box(7f, 8f, 4f, 7f, 1f, fill = true); box(21f, 7f, 5f, 8f, 1f, fill = true)
+                drawCircle(color, 1.4f * u, p(14f, 24f)); drawCircle(color, 1.4f * u, p(20f, 24f))
+            }
+            "fridge" -> {
+                box(8f, 2f, 18f, 30f)
+                drawLine(color, p(8f, 12f), p(26f, 12f), w)
+                drawLine(color, p(11.5f, 6f), p(11.5f, 9f), w, StrokeCap.Round)
+                drawLine(color, p(11.5f, 16f), p(11.5f, 21f), w, StrokeCap.Round)
+            }
+            "freezer" -> {
+                box(3f, 7f, 28f, 22f)
+                drawLine(color, p(17f, 11f), p(17f, 25f), w * 0.9f, StrokeCap.Round)
+                drawLine(color, p(11f, 14f), p(23f, 22f), w * 0.9f, StrokeCap.Round)
+                drawLine(color, p(23f, 14f), p(11f, 22f), w * 0.9f, StrokeCap.Round)
+            }
+            else -> {
+                val basket = Path().apply { moveTo(5f * u, 14f * u); lineTo(29f * u, 14f * u); lineTo(26f * u, 29f * u); lineTo(8f * u, 29f * u); close() }
+                drawPath(basket, color, style = Stroke(w))
+                drawLine(color, p(11f, 14f), p(16f, 6f), w, StrokeCap.Round)
+                drawLine(color, p(23f, 14f), p(18f, 6f), w, StrokeCap.Round)
+                drawCircle(color.copy(alpha = 0.7f), 2.5f * u, p(13f, 21f)); drawCircle(color.copy(alpha = 0.7f), 2.5f * u, p(20f, 22f))
+            }
+        }
     }
 }
 
@@ -404,6 +507,14 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
             .addOnFailureListener { adding = shelf ?: "" }
     }
     var freezingNew by remember { mutableStateOf(false) }
+    // Which zone is open (null = the Kitchen overview). Back returns to the overview.
+    var zone by rememberSaveable { mutableStateOf<String?>(null) }
+    BackHandler(enabled = zone != null) { zone = null }
+    fun newFreezerItem() {
+        freezing = FreezerItem(java.util.UUID.randomUUID().toString(), "", "", count = 1,
+            frozenAt = System.currentTimeMillis(), byCount = true)
+        freezingNew = true
+    }
     val lowCount = st.pantry.count { markFor(it) == "low" }
     val bestCount = st.pantry.count { markFor(it) == "best" }
     val sellCount = st.pantry.count { markFor(it) == "sell" }
@@ -420,53 +531,52 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
     ) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
             item {
-                // Same title spot and button style as Favorites' "Add recipe".
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Pantry", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    if (zone != null) {
+                        IconButton(onClick = { zone = null }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Filled.ArrowBack, "Back to Kitchen")
+                        }
+                    }
+                    Text(
+                        ZONES.firstOrNull { it.key == zone }?.label ?: "Kitchen",
+                        style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f),
+                    )
                     FilledTonalButton(
-                        onClick = { scanFirst(null) },
+                        onClick = {
+                            when (zone) {
+                                "freezer" -> newFreezerItem()
+                                "fridge", "produce" -> scanFirst(zone)
+                                else -> scanFirst(null)
+                            }
+                        },
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                         modifier = Modifier.height(34.dp),
-                    ) { Icon(BarcodeIcon, "Scan an item", Modifier.size(22.dp)) }
+                    ) { Icon(if (zone == "freezer") Icons.Filled.Add else BarcodeIcon, "Add an item", Modifier.size(22.dp)) }
                 }
             }
-            item {
-                Text(
-                    if (st.pantry.isEmpty()) "Your pantry is empty. Tap + to scan or search for what you have."
-                    else "${st.pantry.size} item${if (st.pantry.size == 1) "" else "s"}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 8.dp),
-                )
-            }
-            if (st.pantry.isNotEmpty() && (lowCount > 0 || bestCount > 0 || sellCount > 0)) {
-                item(key = "filters") {
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()).padding(start = 4.dp, bottom = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        FilterChip(selected = showOnly == "", onClick = { showOnly = "" }, label = { Text("All") })
-                        @Composable
-                        fun chip(key: String, n: Int, text: String, mark: @Composable () -> Unit) {
-                            if (n > 0) FilterChip(
-                                selected = showOnly == key, onClick = { showOnly = if (showOnly == key) "" else key },
-                                label = { Text(text) }, leadingIcon = mark,
-                            )
+            if (zone == null) {
+                // The whole kitchen at a glance: tap a zone to see what's in it.
+                item(key = "zones") {
+                    Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ZONES.chunked(2).forEach { pair ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                pair.forEach { z ->
+                                    ZoneCard(z, st, Modifier.weight(1f)) { zone = z.key }
+                                }
+                            }
                         }
-                        chip("best", bestCount, "$bestCount past best-by") { JarMark("best") }
-                        chip("sell", sellCount, "$sellCount past sell-by") { JarMark("sell") }
-                        chip("low", lowCount, "$lowCount low") { Box(Modifier.size(12.dp).background(LOW, RoundedCornerShape(2.dp))) }
                     }
                 }
             }
-            Pantry.SHELVES.forEach { (key, label) ->
+            if (zone != null && zone != "freezer") Pantry.SHELVES.filter { zoneOf(it.first) == zone }.forEach { (key, label) ->
                 // Problems first (past a date, then low), so they show even with the shelf closed.
                 val onShelf = st.pantry.filter { it.shelf == key && (showOnly == "" || markFor(it) == showOnly) }
                     .sortedWith(compareBy({ MARK_ORDER.indexOf(markFor(it)) }, { it.term }))
                 if (showOnly != "" && onShelf.isEmpty()) return@forEach
                 item(key = "shelf_$key") {
                     // Closed shelves show their first row; tap the name to open the rest.
-                    val open = key in st.openShelves || showOnly != ""
+                    // Fridge and produce are one shelf each: always open.
+                    val open = key in st.openShelves || showOnly != "" || zone != "pantry"
                     val cells: List<PantryItem?> = onShelf + (if (showOnly == "") listOf(null) else emptyList())
                     val more = cells.size > 4
                     Row(
@@ -535,15 +645,15 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                 }
             }
             // The freezer: leftover meat, counted by the piece (whole cuts) or by the pound.
-            item(key = "freezer") {
+            if (zone == "freezer") item(key = "freezer") {
                 Column(
                     Modifier.fillMaxWidth().padding(top = 4.dp)
                         .background(FREEZER.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
                         .border(1.dp, FREEZER.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                         .padding(10.dp),
                 ) {
-                    val freezerOpen = "freezer" in st.openShelves
-                    val freezerMore = st.freezer.size > 4
+                    val freezerOpen = true
+                    val freezerMore = false
                     Row(
                         Modifier.fillMaxWidth().clickable(enabled = freezerMore) { vm.toggleShelf("freezer") },
                         verticalAlignment = Alignment.CenterVertically,
@@ -565,7 +675,7 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                         )
                     }
                     LazyRow(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Bottom) {
-                        items(if (freezerOpen) st.freezer else st.freezer.take(4), key = { it.id }) { f ->
+                        items(st.freezer, key = { it.id }) { f ->
                             val old = System.currentTimeMillis() - f.frozenAt > 90L * 86_400_000L
                             Column(
                                 Modifier.width(76.dp).clickable { freezing = f; freezingNew = false }.padding(bottom = 4.dp),
@@ -587,11 +697,7 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                             Box(
                                 Modifier.padding(start = 6.dp, bottom = 34.dp).size(50.dp, 56.dp)
                                     .border(1.dp, FREEZER.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        freezing = FreezerItem(java.util.UUID.randomUUID().toString(), "", "", count = 1,
-                                            frozenAt = System.currentTimeMillis(), byCount = true)
-                                        freezingNew = true
-                                    },
+                                    .clickable { newFreezerItem() },
                                 contentAlignment = Alignment.Center,
                             ) { Icon(Icons.Filled.Add, "Add to freezer", tint = FREEZER) }
                         }
