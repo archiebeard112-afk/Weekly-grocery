@@ -820,6 +820,7 @@ private fun BrowseScreen(
                         onHold = { onHold(r) },
                         calories = vm.mealCalories(st, r),
                 cost = vm.mealCost(st, r),
+                        filters = filters,
                     )
                 }
                 if (showWeb) {
@@ -879,6 +880,7 @@ private fun BrowseScreen(
                             onHold = { onHold(r) },
                             calories = vm.mealCalories(st, r),
                 cost = vm.mealCost(st, r),
+                            filters = filters,
                         )
                     }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -898,6 +900,7 @@ private fun RecipeTile(
     onHold: (() -> Unit)? = null,
     calories: Int? = null,
     cost: MealsViewModel.MealCost? = null,
+    filters: List<String> = emptyList(),
 ) {
     val inWeek = r.id in st.week
     Card(
@@ -906,9 +909,12 @@ private fun RecipeTile(
     ) {
         Column(Modifier.fillMaxSize().padding(start = 10.dp, top = 3.dp, end = 2.dp, bottom = 1.dp)) {
             // Icon-only badges so they always fit (full labels are on the recipe page).
-            val badges =
-                (if (saleSave >= st.saleMin) listOf("🏷️" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
-                    Logic.badges(r, cost?.let { it.total <= st.budgetMax } ?: false).map { it.substringBefore(" ") }
+            // At most 2 badges: on sale, then cooking method, then Budget. A badge you're
+            // filtering by always gets a spot, so you can see why the meal matched.
+            val all = (if (saleSave >= st.saleMin) listOf("sale" to "🏷️" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
+                Logic.badgeKeys(r, cost?.let { it.total <= st.budgetMax } ?: false)
+            val keep = (all.filter { it.first in filters } + all).distinct().take(2).toSet()
+            val badges = all.filter { it in keep }.map { it.second }
             // Emoji on the left; name with badges right under it, so nothing overlaps.
             Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
@@ -1299,6 +1305,7 @@ private fun FavoritesScreen(
                 onHold = { onHold(r) },
                 calories = vm.mealCalories(st, r),
                 cost = vm.mealCost(st, r),
+                filters = filters,
             )
         }
     }
