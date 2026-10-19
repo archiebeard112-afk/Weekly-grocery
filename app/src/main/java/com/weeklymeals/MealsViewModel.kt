@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.async
@@ -466,6 +467,35 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 UpdateState.Error(e.message ?: "Could not check for updates")
             }
         }
+    }
+
+    /** A newer version found when the app opened: shows the update pop-up. */
+    val autoUpdate = MutableStateFlow<AppRelease?>(null)
+    private var lastAutoCheck = 0L
+
+    /** Quietly looks for a newer version (when the app opens, or after 30+ minutes away). */
+    fun autoCheck() {
+        val now = System.currentTimeMillis()
+        if (now - lastAutoCheck < 30 * 60_000L) return
+        if (update.value is UpdateState.Checking || update.value is UpdateState.Downloading) return
+        lastAutoCheck = now
+        viewModelScope.launch {
+            try {
+                val r = Updater.latest() ?: return@launch
+                val mine = Updater.currentVersionCode(getApplication())
+                if (r.versionCode > mine) {
+                    update.value = UpdateState.Available(r)
+                    if (r.versionCode != store.flow.first().skippedVersion) autoUpdate.value = r
+                }
+            } catch (_: Exception) {
+                // No internet or GitHub unreachable: try again next time.
+            }
+        }
+    }
+
+    fun skipVersion(r: AppRelease) {
+        autoUpdate.value = null
+        edit { it.copy(skippedVersion = r.versionCode) }
     }
 
     fun downloadUpdate(r: AppRelease) {

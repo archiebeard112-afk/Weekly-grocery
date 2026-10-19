@@ -162,6 +162,8 @@ data class UserState(
     val openShelves: Set<String> = emptySet(),
     /** Asked once whether the cooking bubble may float over other apps. */
     val overlayAsked: Boolean = false,
+    /** A version you chose to skip in the update pop-up (0 = none). */
+    val skippedVersion: Int = 0,
 )
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */

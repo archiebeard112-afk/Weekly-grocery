@@ -378,6 +378,49 @@ fun App(vm: MealsViewModel) {
         }
     }
 
+    // A newer version came out: offer it (not while you're cooking).
+    val newVersion by vm.autoUpdate.collectAsState()
+    newVersion?.let { rel ->
+        if (cooking == null) {
+            val up by vm.update.collectAsState()
+            LaunchedEffect(up) {
+                (up as? UpdateState.Ready)?.let { r ->
+                    if (Updater.canInstall(ctx)) Updater.install(ctx, r.file) else Updater.openInstallPermission(ctx)
+                    vm.autoUpdate.value = null
+                }
+            }
+            val busy = up is UpdateState.Downloading
+            AlertDialog(
+                onDismissRequest = { if (!busy) vm.autoUpdate.value = null },
+                title = { Text("Update available") },
+                text = {
+                    Column {
+                        Text("${rel.name} is ready to install.")
+                        (up as? UpdateState.Downloading)?.let { d ->
+                            LinearProgressIndicator(
+                                progress = { d.percent / 100f },
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                            )
+                            Text("Downloading… ${d.percent}%", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        (up as? UpdateState.Error)?.let { e ->
+                            Text(e.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(enabled = !busy, onClick = { vm.downloadUpdate(rel) }) { Text("Update") }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(enabled = !busy, onClick = { vm.skipVersion(rel) }) { Text("Skip this version") }
+                        TextButton(enabled = !busy, onClick = { vm.autoUpdate.value = null }) { Text("Later") }
+                    }
+                },
+            )
+        }
+    }
+
     if (askOverlay) {
         AlertDialog(
             onDismissRequest = { askOverlay = false; vm.setOverlayAsked() },

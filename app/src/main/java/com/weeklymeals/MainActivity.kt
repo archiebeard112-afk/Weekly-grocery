@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         CookOverlay.appVisible.value = true
+        vm.autoCheck()
     }
 
     override fun onStop() {
