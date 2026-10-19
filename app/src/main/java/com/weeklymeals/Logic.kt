@@ -197,9 +197,11 @@ object Logic {
 
     /** Recipe ingredients you get from buying something else (lemon zest -> lemons). */
     private val buyAs = mapOf(
-        "lemon zest" to "lemons", "lemon juice" to "lemons", "lemon" to "lemons",
-        "lime zest" to "limes", "lime juice" to "limes", "lime" to "limes",
-        "orange zest" to "oranges", "orange juice" to "oranges", "orange" to "oranges",
+        "lemon zest" to "lemons", "lemon" to "lemons",
+        "lime zest" to "limes", "lime" to "limes",
+        "orange zest" to "oranges", "orange" to "oranges",
+        // Juice is its own item (the bottle), not the fruit.
+        "fresh lemon juice" to "lemon juice", "fresh lime juice" to "lime juice", "fresh orange juice" to "orange juice",
         "cooked rice" to "long grain white rice", "cooked chicken" to "rotisserie chicken",
         "egg" to "eggs", "large egg" to "eggs", "large eggs" to "eggs",
         "celery stalks" to "celery",
