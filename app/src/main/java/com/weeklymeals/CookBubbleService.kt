@@ -159,6 +159,9 @@ class CookBubbleService : Service() {
             textSize = 12f
             setTextColor(0xFFF1EFE8.toInt())
             setPadding(dp(8), dp(2), dp(8), dp(2))
+            gravity = Gravity.CENTER
+            // Same-width digits so the pill doesn't jiggle as it counts down.
+            fontFeatureSettings = "tnum"
             visibility = View.GONE
         }
         val icon = ImageView(this).apply {
@@ -168,7 +171,10 @@ class CookBubbleService : Service() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            addView(label)
+            // Pill sized to its text and centered over the pot (not stretched across the bubble).
+            addView(label, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.CENTER_HORIZONTAL })
             addView(icon, LinearLayout.LayoutParams(dp(56), dp(56)).apply { topMargin = dp(4) })
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
