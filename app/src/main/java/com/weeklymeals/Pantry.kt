@@ -21,11 +21,11 @@ object Pantry {
         return Regex("\\bbutter\\b").containsMatchIn(n) && !n.contains("peanut") && !n.contains("buttermilk")
     }
 
-    /** Eggs: kept in the Fridge, counted one by one (a carton is 12, 18...). */
+    /** Eggs: kept in the Fridge, counted one by one (a carton is 12, 18...). An egg white or yolk counts as 1 egg. */
     fun isEgg(name: String): Boolean {
         val n = name.lowercase()
         return Regex("\\beggs?\\b").containsMatchIn(n) &&
-            !Regex("noodle|roll|wrap|\\bnog\\b|substitute|beater|white|yolk|salad|replac|plant").containsMatchIn(n)
+            !Regex("noodle|roll|wrap|\\bnog\\b|substitute|beater|salad|replac|plant").containsMatchIn(n)
     }
 
     /** Eggs in a carton size like "12 ct", "18 count" or "1 dozen" (null if it doesn't say). */

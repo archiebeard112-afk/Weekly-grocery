@@ -204,6 +204,9 @@ object Logic {
         "fresh lemon juice" to "lemon juice", "fresh lime juice" to "lime juice", "fresh orange juice" to "orange juice",
         "cooked rice" to "long grain white rice", "cooked chicken" to "rotisserie chicken",
         "egg" to "eggs", "large egg" to "eggs", "large eggs" to "eggs",
+        // An egg white or yolk is bought as a whole egg (2 egg whites = 2 eggs).
+        "egg white" to "eggs", "egg whites" to "eggs", "egg yolk" to "eggs", "egg yolks" to "eggs",
+        "large egg white" to "eggs", "large egg whites" to "eggs", "large egg yolk" to "eggs", "large egg yolks" to "eggs",
         "celery stalks" to "celery",
         "scallion" to "green onions", "scallions" to "green onions",
         "garlic" to "garlic bulb",

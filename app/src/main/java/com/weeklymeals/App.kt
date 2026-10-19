@@ -620,6 +620,7 @@ private fun RecipeDetails(
     r: Recipe, serv: Int, side: Side?, ctl: TimerCtl? = null,
     cost: MealsViewModel.MealCost? = null, budgetMax: Double = 0.0,
     expired: Map<String, String> = emptyMap(),
+    shared: List<Pair<String, String>> = emptyList(),
 ) {
     // Each shopping item's price shows once, on its first ingredient line.
     val priced = mutableSetOf<String>()
@@ -649,6 +650,10 @@ private fun RecipeDetails(
                         Box(Modifier.size(16.dp)) {
                             if (first && price?.have == true) HaveIcon(zone ?: "pantry")
                         }
+                        // ♻️ = shared with another meal this week (or left over): always right by the price.
+                        if (first && price != null && price.note.startsWith("♻️")) {
+                            Text("♻️", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 4.dp))
+                        }
                         Spacer(Modifier.width(4.dp))
                         Text(
                             when {
@@ -663,7 +668,7 @@ private fun RecipeDetails(
                         )
                     }
                     // Meat: the pack it comes from (this meal's share of it).
-                    if (first && price != null && price.note.isNotEmpty()) {
+                    if (first && price != null && price.note.isNotEmpty() && !price.note.startsWith("♻️")) {
                         Text(
                             price.note, style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -704,6 +709,19 @@ private fun RecipeDetails(
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         )
+    }
+    // Shared this week: one line per ingredient, each meal and how much it gets.
+    if (shared.isNotEmpty()) {
+        Heading("Shared this week")
+        shared.forEach { (name, meals) ->
+            Text(
+                androidx.compose.ui.text.buildAnnotatedString {
+                    withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.SemiBold)) { append("$name: ") }
+                    append(meals)
+                },
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 1.dp),
+            )
+        }
     }
     Heading("Steps")
     Steps(r.steps, ctl)
@@ -1186,7 +1204,15 @@ private fun RecipeScreen(
             }
             if (inWeek) WeekControls(vm, st, r, side)
             SaleSection(vm, st, r)
-            RecipeDetails(r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax, expired = vm.expiredTerms(st))
+            val shared = if (!inWeek) emptyList() else vm.weekShares(st).values.filter { r.id in it.meals }.map { sh ->
+                val all = vm.recipes(st)
+                // Other meals first, this one last.
+                val order = sh.meals.filter { it != r.id } + r.id
+                sh.term.replaceFirstChar { it.uppercase() } to order.joinToString(" · ") { m ->
+                    Shares.mealLabel(st, m, all[m]?.name ?: "").replace(" · ", " ") + (sh.amounts[m]?.let { " $it" } ?: "")
+                }
+            }
+            RecipeDetails(r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax, expired = vm.expiredTerms(st), shared = shared)
             ReviewsSection(r.id, r.rating, r.ratingCount, r.countLabel, r.reviews)
             Spacer(Modifier.height(24.dp))
         }
