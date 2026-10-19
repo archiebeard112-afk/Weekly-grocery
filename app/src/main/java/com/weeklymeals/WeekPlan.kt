@@ -123,14 +123,14 @@ fun WeekScreen(
     // Roughly how tall each day's tile needs to be (dp): a day with store items is taller.
     fun estDp(index: Int, hasRecipe: Boolean): Float {
         val n = if (index < 7) st.storeMeals.count { it.day == index } else 0
-        return if (n == 0) 64f else 16f + (if (hasRecipe) 52f else 0f) + 36f * n + 32f
+        return if (n == 0) 46f else 16f + (if (hasRecipe) 46f else 0f) + 32f * n + 28f
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
     // The week stays on one screen (days with store items take more room, the rest squeeze a little).
     // It only scrolls if there are extra meals or it truly can't fit.
     val needDp = 12f + 44f + 40f + rows.withIndex().sumOf { (i, row) -> estDp(i, row.second != null).toDouble() }.toFloat() + 6f * (rows.size + 2)
-    val fits = plan.extras.isEmpty() && maxHeight.value >= needDp
+    val fits = plan.extras.isEmpty() && (st.storeMeals.isEmpty() || maxHeight.value >= needDp)
     Column(
         Modifier.fillMaxSize()
             .then(if (fits) Modifier else Modifier.verticalScroll(scroll))
