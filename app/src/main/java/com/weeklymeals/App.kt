@@ -799,7 +799,10 @@ private fun BrowseScreen(
             val matches = all.values.filter { r ->
                 r.id !in st.removed &&
                 matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }, { vm.usesLeftovers(st, it) }) && (!saleOnly || Sales.savings(r, st.servings, cache) >= st.saleMin)
-            }.sortedBy { it.name }
+            }.let { list ->
+                // Uses-leftovers filter: the meals that save you the most come first.
+                if ("leftovers" in filters) list.sortedByDescending { vm.leftoverSavings(st, it) } else list.sortedBy { it.name }
+            }
             val showWeb = query.trim().length >= 3 && RecipeSources.effective(st) != RecipeSources.OFF
             LazyVerticalGrid(
                 state = resultsState,
@@ -828,6 +831,7 @@ private fun BrowseScreen(
                 cost = vm.mealCost(st, r),
                         filters = filters,
                         leftover = vm.usesLeftovers(st, r),
+                leftoverSave = vm.leftoverSavings(st, r),
                     )
                 }
                 if (showWeb) {
@@ -889,6 +893,7 @@ private fun BrowseScreen(
                 cost = vm.mealCost(st, r),
                             filters = filters,
                             leftover = vm.usesLeftovers(st, r),
+                leftoverSave = vm.leftoverSavings(st, r),
                         )
                     }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -910,6 +915,7 @@ private fun RecipeTile(
     cost: MealsViewModel.MealCost? = null,
     filters: List<String> = emptyList(),
     leftover: Boolean = false,
+    leftoverSave: Double = 0.0,
 ) {
     val inWeek = r.id in st.week
     Card(
@@ -921,7 +927,7 @@ private fun RecipeTile(
             // At most 2 badges: on sale, then cooking method, then Budget. A badge you're
             // filtering by always gets a spot, so you can see why the meal matched.
             val all = (if (saleSave >= st.saleMin) listOf("sale" to "🏷️" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
-                (if (leftover) listOf("leftovers" to "♻️") else emptyList()) +
+                (if (leftover) listOf("leftovers" to "♻️" + (leftoverSave.takeIf { it >= 0.5 }?.let { Sales.money(it).substringBefore(".") } ?: "")) else emptyList()) +
                 Logic.badgeKeys(r, cost?.let { it.total <= st.budgetMax } ?: false)
             val keep = (all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = all.filter { it in keep }.map { it.second }
@@ -1320,6 +1326,7 @@ private fun FavoritesScreen(
                 cost = vm.mealCost(st, r),
                 filters = filters,
                 leftover = vm.usesLeftovers(st, r),
+                leftoverSave = vm.leftoverSavings(st, r),
             )
         }
     }

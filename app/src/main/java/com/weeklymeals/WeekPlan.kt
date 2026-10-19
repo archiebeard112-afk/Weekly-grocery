@@ -2,6 +2,7 @@ package com.weeklymeals
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -92,7 +94,49 @@ fun WeekScreen(
         verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("This week", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text("This week", style = MaterialTheme.typography.titleLarge)
+            // ♻️ Fresh things you'll have extra of: tap for the list and meals that use them up.
+            val left = vm.weekLeftovers(st)
+            var showLeft by remember { mutableStateOf(false) }
+            if (left.isNotEmpty()) {
+                Text(
+                    "♻️ ${left.size}",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(start = 8.dp)
+                        .clip(RoundedCornerShape(50))
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
+                        .clickable { showLeft = true }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+            if (showLeft) {
+                AlertDialog(
+                    onDismissRequest = { showLeft = false },
+                    title = { Text("Left over this week") },
+                    text = {
+                        Column {
+                            Text(
+                                "Fresh things you'll only use part of. Most valuable first.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            left.forEach { l ->
+                                HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("${l.label} ${l.term}", style = MaterialTheme.typography.bodyMedium)
+                                        Text("keeps ${l.keeps}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (l.value >= 0.05) Text(Sales.money(l.value), style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showLeft = false; onLeftovers() }) { Text("See meals that use them") } },
+                    dismissButton = { TextButton(onClick = { showLeft = false }) { Text("Close") } },
+                )
+            }
+            Spacer(Modifier.weight(1f))
             Text(
                 "Cooking for",
                 style = MaterialTheme.typography.bodyMedium,
@@ -115,20 +159,6 @@ fun WeekScreen(
                 contentPadding = PaddingValues(0.dp),
                 modifier = Modifier.height(34.dp).width(40.dp),
             ) { Text("+") }
-        }
-
-        // Fresh things you'll have extra of: tap to see meals that use them up.
-        val left = vm.weekLeftovers(st)
-        if (left.isNotEmpty()) {
-            Text(
-                "♻️ Left over: " + left.take(4).joinToString(" · ") { "${it.label} ${it.term}" } +
-                    (if (left.size > 4) " +${left.size - 4}" else "") + "  ›",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().clickable { onLeftovers() }.padding(horizontal = 4.dp, vertical = 2.dp),
-            )
         }
 
         rows.forEachIndexed { index, (label, id) ->

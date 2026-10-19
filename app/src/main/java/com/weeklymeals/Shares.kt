@@ -16,7 +16,13 @@ data class Share(
     val pack: String?,
 )
 
-data class Leftover(val term: String, val frac: Double, val label: String)
+data class Leftover(
+    val term: String, val frac: Double, val label: String,
+    /** What the unused part is worth (what using it in another meal saves). */
+    val value: Double,
+    /** Roughly how long it keeps once opened, e.g. "~5 days". */
+    val keeps: String,
+)
 
 object Shares {
     fun amountText(items: List<ShopItem>): String =
@@ -35,8 +41,19 @@ object Shares {
             "spinach|greens|lettuce|cabbage|celery|mushroom|zucchini|pepper|cucumber|herb|ricotta|cheese|yogurt|milk",
     )
 
+    /** Keeps for weeks (goes to the Fridge or Produce bin instead of being a "leftover"). */
+    private val keepsLong = Regex("carrot|celery|potato|onion|garlic|cabbage|squash|apple|lemon|lime|orange|ginger|butter|egg")
+
     fun isPerishable(g: ShopGroup): Boolean =
-        g.aisle == Logic.AISLES[0] || g.aisle == Logic.AISLES[2] || perishable.containsMatchIn(g.term)
+        !keepsLong.containsMatchIn(g.term) &&
+            (g.aisle == Logic.AISLES[0] || g.aisle == Logic.AISLES[2] || perishable.containsMatchIn(g.term))
+
+    fun keeps(term: String): String = when {
+        Regex("greens|lettuce|spinach|cilantro|parsley|basil|dill|herb|mushroom").containsMatchIn(term) -> "~5 days"
+        Regex("coconut milk|broth|stock|tomato sauce|salsa").containsMatchIn(term) -> "~4 days once opened"
+        Regex("tortilla|bun|bread").containsMatchIn(term) -> "~1 week"
+        else -> "~1 week"
+    }
 
     /** Pantry staples (spices, oils, baking) aren't "shared": they live in the Pantry. */
     fun isStaple(term: String): Boolean = Pantry.classify(term)?.first in setOf("spices", "oils", "baking")
@@ -85,10 +102,22 @@ fun MealsViewModel.weekLeftovers(st: UserState): List<Leftover> {
         if (need <= 0 || pack <= 0) return@mapNotNull null
         val packs = ceil(need / pack - 1e-6).coerceAtLeast(1.0)
         val frac = Math.round((packs * pack - need) / pack * 4) / 4.0
-        if (frac < 0.25 || frac >= 1.0) null else Leftover(g.term, frac, Logic.fmt(frac))
+        if (frac < 0.25 || frac >= 1.0) return@mapNotNull null
+        val p = products.value[g.term]?.product
+        val price = p?.let { it.promo ?: it.price } ?: Prices.packPrice(g.term + " " + g.items.first().name) ?: 0.0
+        Leftover(g.term, frac, Logic.fmt(frac), frac * price, Shares.keeps(g.term))
     }
-    leftMemo = key to out
-    return out
+    val sorted = out.sortedByDescending { it.value }
+    leftMemo = key to sorted
+    return sorted
+}
+
+/** What a meal (not already planned) saves by using this week's leftovers. */
+fun MealsViewModel.leftoverSavings(st: UserState, r: Recipe): Double {
+    if (r.id in st.week) return 0.0
+    val left = weekLeftovers(st).associateBy { it.term }
+    if (left.isEmpty()) return 0.0
+    return r.ingredients.map { Logic.searchTerm(it.name) }.distinct().sumOf { left[it]?.value ?: 0.0 }
 }
 
 /** True when a meal (not already planned) would use up something left over this week. */

@@ -134,6 +134,9 @@ object Prices {
     /** Grams in a store size like "5 oz" (public for leftovers). */
     fun productGrams(size: String): Double? = packGramsOf(size)
 
+    /** Price of the usual package of something sold by the package. */
+    fun packPrice(name: String): Double? = find(name.lowercase())?.takeIf { !it.byWeight }?.price
+
     fun perLb(name: String): Double? = find(name.lowercase())?.takeIf { it.byWeight }?.price
 
     /** Grams in a store package size like "16 oz", "2 lb", "32 fl oz" (null if it doesn't say). */
