@@ -3,6 +3,7 @@ package com.weeklymeals
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -607,32 +608,51 @@ private fun SharedNotes(vm: MealsViewModel, st: UserState, id: Int) {
     val usedHere = st.usedAll.filterValues { it == id }.keys
     if (shares.isEmpty() && usedHere.isEmpty()) return
     Spacer(Modifier.height(14.dp))
-    Text("Shared this week", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.tertiary)
-    // One short line per ingredient: each meal and how much it gets (this meal last).
-    shares.forEach { sh ->
-        val first = sh.meals.first() == id
-        val order = sh.meals.filter { it != id } + id
-        val meals = order.joinToString(" · ") { m ->
-            Shares.mealLabel(st, m, all[m]?.name ?: "").replace(" · ", " ") + (sh.amounts[m]?.let { " $it" } ?: "")
-        }
-        Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                androidx.compose.ui.text.buildAnnotatedString {
-                    withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)) {
-                        append(termTitle(sh.term) + ": ")
-                    }
-                    append(meals)
-                },
-                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
-            )
-            // The first meal can use it all (the others then get their own on the Shop list).
-            if (first) {
-                TextButton(onClick = { vm.useAll(sh.term, id) }, contentPadding = PaddingValues(horizontal = 6.dp)) {
-                    Text("Used it all", style = MaterialTheme.typography.labelMedium)
+    val open = st.sharedOpen
+    // Tap the heading to fold or open the list (remembered).
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { vm.setSharedOpen(!open) }.padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Shared this week" + if (shares.isNotEmpty()) " (${shares.size})" else "",
+            style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.weight(1f),
+        )
+        Text(if (open) "▾" else "▸", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.tertiary)
+    }
+    if (open) {
+        // Each ingredient, with its meals stacked and indented under it (this meal last).
+        shares.forEach { sh ->
+            val first = sh.meals.first() == id
+            val order = sh.meals.filter { it != id } + id
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    termTitle(sh.term), style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, modifier = Modifier.weight(1f),
+                )
+                // The first meal can use it all (the others then get their own on the Shop list).
+                if (first) {
+                    TextButton(
+                        onClick = { vm.useAll(sh.term, id) }, contentPadding = PaddingValues(horizontal = 6.dp),
+                        modifier = Modifier.height(30.dp),
+                    ) { Text("Used it all", style = MaterialTheme.typography.labelMedium) }
+                }
+            }
+            order.forEach { m ->
+                val here = m == id
+                Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 1.dp)) {
+                    Text(
+                        Shares.mealLabel(st, m, all[m]?.name ?: "").replace(" · ", "  ") + if (here) "  (this meal)" else "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (here) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(sh.amounts[m].orEmpty(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
                 }
             }
         }
-    }
     usedHere.forEach { term ->
         Row(
             Modifier.fillMaxWidth().padding(top = 6.dp)
@@ -646,5 +666,6 @@ private fun SharedNotes(vm: MealsViewModel, st: UserState, id: Int) {
             )
             TextButton(onClick = { vm.undoUseAll(term) }) { Text("Undo") }
         }
+    }
     }
 }

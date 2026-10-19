@@ -93,9 +93,12 @@ fun MealsViewModel.mealItems(st: UserState, id: Int): Map<String, List<ShopItem>
         .filter { it.aisle != EXTRAS && !it.key.startsWith("side:") }
         .groupBy { Logic.searchTerm(it.name) }
 
-/** Ingredients used by two or more of this week's meals (unless you used it all in one). */
+/**
+ * Ingredients used by two or more of this week's meals (unless you used it all in one).
+ * Not shared: what your Kitchen already has enough of (jarred garlic), and whole pieces bought one at a time.
+ */
 fun MealsViewModel.weekShares(st: UserState): Map<String, Share> {
-    val key = listOf(st.week, st.days, st.sides, st.servings, st.custom, st.usedAll, products.value.size, st.packWeights)
+    val key = listOf(st.week, st.days, st.sides, st.servings, st.custom, st.usedAll, products.value.size, st.packWeights, st.pantry, st.haveTerms, st.pantryBuy, st.freezer)
     shareMemo?.let { (k, v) -> if (k == key) return v }
     val plan = Logic.dayPlan(st.week, st.days)
     val order = st.week.sortedBy { plan.dayOf(it) ?: 99 }
@@ -107,7 +110,9 @@ fun MealsViewModel.weekShares(st: UserState): Map<String, Share> {
         Shares.soldEach(products.value[term]?.product, term) &&
             perMeal.values.all { m -> m[term]?.let { Shares.wholePieces(it) } ?: true }
     }.toSet()
-    val out = terms.filter { it !in st.usedAll && !Shares.isStaple(it) && it !in ownPieces }.associateWith { term ->
+    // Already on hand (Kitchen has enough, or you said you have it): every meal just uses what's there.
+    val onHand = terms.filter { t -> groups[t]?.let { isHave(st, it) } ?: false }.toSet()
+    val out = terms.filter { it !in st.usedAll && !Shares.isStaple(it) && it !in ownPieces && it !in onHand }.associateWith { term ->
         val meals = order.filter { term in perMeal.getValue(it) }
         val pack = if (Packs.weighed(term)) groups[term]?.let { g -> shopPack(st, g) }?.let { m ->
             if (m.cut != null) "${m.packs * m.perPack} ${Packs.pieceWord(m.cut, m.packs * m.perPack)}"

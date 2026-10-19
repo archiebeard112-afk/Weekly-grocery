@@ -144,6 +144,8 @@ data class UserState(
     val recentStoreMeals: List<StoreMeal> = emptyList(),
     /** Where the Browse search looks: "app", "web" (online recipes) or "store" (King Soopers). */
     val browseScope: String = "app",
+    /** Cook screen: the "Shared this week" list is open (folded by default). */
+    val sharedOpen: Boolean = false,
     /** A meal counts as "on sale" when it saves at least this much. */
     val saleMin: Double = 2.0,
     /** A meal is "budget" when what you'd buy for it costs this much or less. */
