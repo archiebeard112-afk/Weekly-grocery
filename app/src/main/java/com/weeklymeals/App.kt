@@ -643,19 +643,23 @@ private fun RecipeDetails(
             if (cost != null) {
                 Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Same icon as its Kitchen zone (pantry, fridge, freezer, produce), in a
+                        // fixed slot on the left so every dollar amount stays in line.
+                        Box(Modifier.size(16.dp)) {
+                            if (first && price?.have == true) HaveIcon(zone ?: "pantry")
+                        }
+                        Spacer(Modifier.width(4.dp))
                         Text(
                             when {
                                 price == null -> "—"
                                 !first -> "incl. above"
-                                price.have -> "$0.00 "
+                                price.have -> "$0.00"
                                 else -> Sales.money(price.cost)
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (first && price?.have == true) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.End,
                         )
-                        // Same icon as its Kitchen zone (pantry, fridge, freezer, produce).
-                        if (first && price?.have == true) HaveIcon(zone ?: "pantry")
                     }
                     // Meat: the pack it comes from (this meal's share of it).
                     if (first && price != null && price.note.isNotEmpty()) {
@@ -696,7 +700,8 @@ private fun RecipeDetails(
         Text(
             "Prices are for whole packages, as you'd buy them.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 2.dp),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         )
     }
     Heading("Steps")

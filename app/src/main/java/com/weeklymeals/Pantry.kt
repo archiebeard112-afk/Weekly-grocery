@@ -138,7 +138,27 @@ object Pantry {
 
     /** Teaspoons per ounce (by weight, or fl oz for liquids). Checked in order, first match wins. */
     private val tspPerOz: List<Pair<String, Double>> =
-        leafy.map { it to 30.0 } + listOf(
+        // Specific foods first (so "peanut butter" is found before "peanut", "almond milk" before "almond").
+        listOf(
+            // Thin liquids and milks.
+            "almond milk" to 6.0, "oat milk" to 6.0, "soy milk" to 6.0, "coconut milk" to 6.0, "coconut water" to 6.0,
+            "rice vinegar" to 6.0, "rice wine" to 6.0, "sesame oil" to 6.0, "peanut oil" to 6.0,
+            "heavy cream" to 6.0, "half and half" to 6.0,
+            // Spreads, sauces and creamy things.
+            "peanut butter" to 5.3, "almond butter" to 5.3, "cashew butter" to 5.3, "sunflower butter" to 5.3,
+            "tahini" to 5.7, "jam" to 4.3, "jelly" to 4.3, "preserves" to 4.3, "marmalade" to 4.3,
+            "salsa" to 5.2, "marinara" to 5.4, "pasta sauce" to 5.4, "spaghetti sauce" to 5.4, "pizza sauce" to 5.4,
+            "pesto" to 5.3, "hummus" to 5.5, "bbq sauce" to 4.9, "barbecue" to 4.9, "sriracha" to 5.7,
+            "tomato paste" to 5.3, "pumpkin puree" to 5.6, "applesauce" to 5.6, "relish" to 5.5,
+            "sour cream" to 5.7, "cream cheese" to 5.9, "yogurt" to 5.6,
+            // Nuts, seeds, dried fruit and other dry goods.
+            "almond flour" to 14.2, "coconut flour" to 12.0, "oat flour" to 11.0,
+            "almond" to 9.5, "walnut" to 13.6, "pecan" to 13.6, "peanut" to 9.3, "cashew" to 10.0, "pistachio" to 10.0,
+            "sunflower seed" to 9.7, "pumpkin seed" to 10.4, "sesame" to 9.5, "chia" to 7.0, "flax" to 12.0,
+            "raisin" to 9.4, "dried cranberries" to 11.4, "shredded coconut" to 17.0, "coconut flakes" to 17.0,
+            "granola" to 13.6, "nutritional yeast" to 17.0, "yeast" to 9.0, "coffee" to 17.0,
+            "parmesan" to 13.6, "shredded cheese" to 12.0, "cheese" to 12.0,
+        ) + leafy.map { it to 30.0 } + listOf(
             "kosher salt" to 9.0, "sea salt" to 5.0, "salt" to 5.0,
         ) + ground.map { it to 12.0 } + listOf(
             "brown sugar" to 6.4, "powdered sugar" to 13.0, "sugar" to 7.0,
@@ -185,6 +205,22 @@ object Pantry {
         return tspPerOz.firstOrNull { (k, _) -> Regex("\\b" + Regex.escape(k)).containsMatchIn(n) }?.second
     }
 
+    /**
+     * Teaspoons in one ounce of this food: the cup weight you set yourself ([cupOz], 0 = not set),
+     * else the list above, else a guess from the container (jars and bottles are saucy, the rest dry).
+     */
+    fun tspPerOzFor(name: String, kind: String, cupOz: Double = 0.0): Double =
+        if (cupOz > 0) 48.0 / cupOz else density(name) ?: if (kind == "jar" || kind == "bottle") 6.0 else 9.0
+
+    /** True when the package size is a weight (oz, lb, g, kg), so a cup weight changes the math. */
+    fun isWeightSize(size: String): Boolean {
+        val unit = parseSize(size)?.second ?: return false
+        return unit == "oz" || unit == "lb" || unit == "lbs" || unit == "g" || unit == "kg"
+    }
+
+    /** Ounces in one cup of this food (what the item dialog shows as the automatic value). */
+    fun cupOzFor(name: String, kind: String, cupOz: Double = 0.0): Double = 48.0 / tspPerOzFor(name, kind, cupOz)
+
     /** "0.75 oz", "16.9 fl oz", "5 lb", "32 fl oz", "1 gal", "21 g" -> amount and unit. */
     fun parseSize(size: String): Pair<Double, String>? {
         val m = Regex("(\\d+(?:\\.\\d+)?|\\d+/\\d+)\\s*(fl\\.?\\s*oz|oz|lbs?|kg|g|ml|l|gal|qt|pt|ct|count)\\b", RegexOption.IGNORE_CASE)
@@ -196,12 +232,12 @@ object Pantry {
     }
 
     /** How a new item is measured and how much a full package holds. */
-    fun measureFor(name: String, kind: String, size: String): Pair<String, Double> {
+    fun measureFor(name: String, kind: String, size: String, cupOz: Double = 0.0): Pair<String, Double> {
         if (kind == "can") return COUNT to 1.0
         if (isBinProduce(name)) return LB to (sizeLb(size) ?: 5.0)
         if (isButter(name)) return STICK to (sizeSticks(size) ?: 4.0)
         val (n, unit) = parseSize(size) ?: return "" to 1.0
-        val d = density(name)
+        val d = tspPerOzFor(name, kind, cupOz)
         val tsp = when (unit) {
             "fl oz" -> n * 6
             "ml" -> n * 0.2029
@@ -209,10 +245,10 @@ object Pantry {
             "gal" -> n * 768
             "qt" -> n * 192
             "pt" -> n * 96
-            "oz" -> d?.let { n * it }
-            "lb", "lbs" -> d?.let { n * 16 * it }
-            "g" -> d?.let { n / 28.35 * it }
-            "kg" -> d?.let { n * 1000 / 28.35 * it }
+            "oz" -> n * d
+            "lb", "lbs" -> n * 16 * d
+            "g" -> n / 28.35 * d
+            "kg" -> n * 1000 / 28.35 * d
             else -> null
         } ?: return "" to 1.0
         return TSP to tsp
@@ -236,8 +272,10 @@ object Pantry {
             "cup" -> q * 48
             "pinch" -> q / 16
             "dash" -> q / 8
-            "oz" -> density(item.term + " " + item.name)?.let { q * it }
-            "lb" -> density(item.term + " " + item.name)?.let { q * 16 * it }
+            "oz" -> q * tspPerOzFor(item.term + " " + item.name, item.kind, item.cupOz)
+            "lb" -> q * 16 * tspPerOzFor(item.term + " " + item.name, item.kind, item.cupOz)
+            "g" -> q / 28.35 * tspPerOzFor(item.term + " " + item.name, item.kind, item.cupOz)
+            "fl oz" -> q * 6
             else -> null
         }
         // Butter sticks: 8 tbsp, ½ cup or 4 oz each.

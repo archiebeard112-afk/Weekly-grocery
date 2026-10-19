@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -68,6 +69,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AssistChip
@@ -101,6 +103,48 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
     var showHave by remember { mutableStateOf(false) }
     var newItem by remember { mutableStateOf("") }
     val suggestions by vm.suggestions.collectAsState()
+    // "Add these to your Kitchen too?" after tapping Add to cart (the items you untick stay out of the Kitchen).
+    var kitchenAsk by remember { mutableStateOf<List<CartLine>?>(null) }
+    var kitchenOff by remember { mutableStateOf(setOf<String>()) }
+    kitchenAsk?.let { lines ->
+        AlertDialog(
+            onDismissRequest = { kitchenAsk = null; kitchenOff = emptySet() },
+            title = { Text("Add these to your Kitchen too?") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    lines.forEach { l ->
+                        val on = l.term !in kitchenOff
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                kitchenOff = if (on) kitchenOff + l.term else kitchenOff - l.term
+                            },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = on, onCheckedChange = {
+                                kitchenOff = if (on) kitchenOff + l.term else kitchenOff - l.term
+                            })
+                            Text(l.term.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    Text(
+                        "Untick anything you won't actually buy.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val terms = lines.map { it.term }.filter { it !in kitchenOff }.toSet()
+                    kitchenAsk = null; kitchenOff = emptySet()
+                    vm.confirmAddToCart(terms)
+                }) { Text("Cart + Kitchen") }
+            },
+            dismissButton = {
+                TextButton(onClick = { kitchenAsk = null; kitchenOff = emptySet(); vm.confirmAddToCart() }) { Text("Cart only") }
+            },
+        )
+    }
 
     // Search King Soopers as you type (short pause so it doesn't search on every letter).
     LaunchedEffect(newItem) {
@@ -344,7 +388,13 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                     }
                 }
                 Button(
-                    onClick = { if (!vm.signedIn) openSettings() else vm.confirmAddToCart() },
+                    onClick = {
+                        if (!vm.signedIn) openSettings()
+                        else {
+                            val c = vm.kitchenCandidates()
+                            if (c.isEmpty()) vm.confirmAddToCart() else kitchenAsk = c
+                        }
+                    },
                     enabled = !busy && loading == null && (cart.isNotEmpty() || !vm.signedIn),
                 ) { Text(if (vm.signedIn) "Add to cart" else "Sign in") }
             }

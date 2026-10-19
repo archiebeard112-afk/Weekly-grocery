@@ -881,6 +881,8 @@ private fun PantryItemDialog(
     var level by remember(start.id) { mutableDoubleStateOf(start.level) }
     var confirmRemove by remember { mutableStateOf(false) }
     var dateDigits by remember(start.id) { mutableStateOf(if (start.bestBy > 0) digitsFor(start.bestBy) else "") }
+    fun plainNum(d: Double): String = if (d == Math.floor(d)) d.toLong().toString() else "%.1f".format(java.util.Locale.US, d)
+    var cupText by remember(start.id) { mutableStateOf(if (start.cupOz > 0) plainNum(start.cupOz) else "") }
     val dateBad = dateDigits.isNotEmpty() && parseTypedDate(dateDigits) == null
     val counted = item.measure == Pantry.COUNT
 
@@ -1014,6 +1016,25 @@ private fun PantryItemDialog(
                     label = { Text("Covers this shopping item") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 )
+                // Sold by weight: how much 1 cup weighs lets the app turn recipe cups and spoons into package weight.
+                if (Pantry.isWeightSize(item.size) && item.measure != Pantry.COUNT && item.measure != Pantry.STICK && item.measure != Pantry.LB) {
+                    val auto = Pantry.cupOzFor(item.term + " " + item.name, item.kind)
+                    OutlinedTextField(
+                        cupText,
+                        { v ->
+                            cupText = v.filter { it.isDigit() || it == '.' }.take(6)
+                            val oz = cupText.toDoubleOrNull() ?: 0.0
+                            val (m, full) = Pantry.measureFor(item.term + " " + item.name, item.kind, item.size, oz)
+                            item = item.copy(cupOz = oz, measure = m, full = full, left = level * full)
+                        },
+                        label = { Text("How much is 1 cup of this? (oz)") },
+                        placeholder = { Text("about ${plainNum(Math.round(auto * 10) / 10.0)} (the app's guess)") },
+                        supportingText = { Text("Optional. Helps track how much is left when recipes use cups or spoons.") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                }
                 Text("Container", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 10.dp))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Pantry.KINDS.forEach { (k, label) ->

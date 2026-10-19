@@ -208,6 +208,8 @@ data class PantryItem(
     val dateKind: String = "best",
     /** You chose to keep using it past its date (cleared when the date changes or it's refilled). */
     val useAnyway: Boolean = false,
+    /** Ounces in one cup of this food, set by you (0 = let the app guess). Used to turn recipe cups into package weight. */
+    val cupOz: Double = 0.0,
 ) {
     val level: Double get() = if (full <= 0) 0.0 else (left / full).coerceIn(0.0, 1.0)
 }

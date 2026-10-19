@@ -1422,9 +1422,13 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     private fun usedUp(s: UserState): List<PantryItem> {
         val used = Logic.shopList(s.week, s.sides, recipes(s), sideMap, s.servings)
             .groupBy { Logic.searchTerm(it.name) }
-        return s.pantry.map { item ->
-            val items = used[item.term] ?: used[Logic.searchTerm(item.term)] ?: return@map item
-            if (item.measure == "") return@map item
+        return s.pantry.map { found ->
+            val items = used[found.term] ?: used[Logic.searchTerm(found.term)] ?: return@map found
+            // A plain jar (level only) starts being measured once its size can be turned into teaspoons.
+            val item = if (found.measure != "") found else {
+                val (m, full) = Pantry.measureFor(found.term + " " + found.name, found.kind, found.size, found.cupOz)
+                if (m == Pantry.TSP) found.copy(measure = m, full = full, left = found.level * full) else return@map found
+            }
             var total = 0.0
             for (i in items) total += Pantry.usage(item, i.qty, i.unit) ?: 0.0
             item.copy(left = (item.left - total).coerceAtLeast(0.0))
@@ -1482,7 +1486,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 out[i] = if (cur.measure == "") {
                     cur.copy(left = cur.full, upc = p.upc, size = p.size.ifBlank { cur.size }, addedAt = System.currentTimeMillis(), bestBy = 0L, useAnyway = false)
                 } else {
-                    val (m, pack) = Pantry.measureFor(cur.term + " " + p.title, cur.kind, p.size)
+                    val (m, pack) = Pantry.measureFor(cur.term + " " + p.title, cur.kind, p.size, cur.cupOz)
                     val add = (if (m == cur.measure) pack else cur.full) * l.quantity
                     val left = cur.left + add
                     cur.copy(
@@ -1773,8 +1777,16 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         return shopGroups(st).filter { !isHave(st, it) }.mapNotNull { g -> m[g.term]?.takeIf { it.product != null } }
     }
 
-    /** Sends the chosen products to your King Soopers cart. */
-    fun confirmAddToCart() {
+    /** Cart lines that would also top up (or start) a Kitchen item; the pop-up on "Add to cart" lists these. */
+    fun kitchenCandidates(st: UserState = state.value): List<CartLine> = cartLines(st).filter { l ->
+        val p = l.product ?: return@filter false
+        !Pantry.loggedLeftovers(l.term + " " + p.title) &&
+            (st.pantry.any { it.term == l.term || (p.upc.isNotEmpty() && it.upc == p.upc) } ||
+                Pantry.classify(l.term + " " + p.title) != null)
+    }
+
+    /** Sends the chosen products to your King Soopers cart; [kitchenTerms] are the ones to also put in the Kitchen. */
+    fun confirmAddToCart(kitchenTerms: Set<String> = emptySet()) {
         val chosen = cartLines()
         if (chosen.isEmpty()) {
             message.value = "Nothing to add yet"
@@ -1808,7 +1820,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     s.copy(
                         kroger = s.kroger.copy(choices = s.kroger.choices + newChoices), bought = bought,
-                        pantry = refilled(s.pantry, chosen),
+                        pantry = refilled(s.pantry, chosen.filter { it.term in kitchenTerms }),
                     )
                 }
                 message.value = "Added ${chosen.size} items to your King Soopers cart"
