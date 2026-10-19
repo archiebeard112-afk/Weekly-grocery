@@ -106,9 +106,11 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
     // "Add these to your Kitchen too?" after tapping Add to cart (the items you untick stay out of the Kitchen).
     var kitchenAsk by remember { mutableStateOf<List<CartLine>?>(null) }
     var kitchenOff by remember { mutableStateOf(setOf<String>()) }
+    // Items you skipped last time start unticked (and are marked so).
+    var kitchenMem by remember { mutableStateOf(setOf<String>()) }
     kitchenAsk?.let { lines ->
         AlertDialog(
-            onDismissRequest = { kitchenAsk = null; kitchenOff = emptySet() },
+            onDismissRequest = { kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet() },
             title = { Text("Add these to your Kitchen too?") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -124,24 +126,41 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                                 kitchenOff = if (on) kitchenOff + l.term else kitchenOff - l.term
                             })
                             Text(l.term.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodyMedium)
+                            if (l.term in kitchenMem) {
+                                Text(
+                                    "  skipped last time",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                     Text(
-                        "Untick anything you won't actually buy.",
+                        "Untick anything you won't keep past this week's meals.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp),
                     )
+                    // Cart only, or cart plus the Kitchen (same icon as the Kitchen button at the top).
+                    Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        KitchenAskButton("Cart only", false, Modifier.weight(1f), onClick = {
+                            kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet()
+                            vm.confirmAddToCart()
+                        }) { Text("🛒", style = MaterialTheme.typography.headlineSmall) }
+                        KitchenAskButton("Cart + Kitchen", true, Modifier.weight(1f), onClick = {
+                            val terms = lines.map { it.term }.filter { it !in kitchenOff }.toSet()
+                            vm.rememberKitchenChoices(lines, kitchenOff)
+                            kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet()
+                            vm.confirmAddToCart(terms)
+                        }) {
+                            Text("🛒", style = MaterialTheme.typography.headlineSmall)
+                            Text("+", style = MaterialTheme.typography.titleMedium)
+                            Icon(PantryIcon, contentDescription = null, modifier = Modifier.size(28.dp))
+                        }
+                    }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    val terms = lines.map { it.term }.filter { it !in kitchenOff }.toSet()
-                    kitchenAsk = null; kitchenOff = emptySet()
-                    vm.confirmAddToCart(terms)
-                }) { Text("Cart + Kitchen") }
-            },
+            confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { kitchenAsk = null; kitchenOff = emptySet(); vm.confirmAddToCart() }) { Text("Cart only") }
+                TextButton(onClick = { kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet() }) { Text("Cancel") }
             },
         )
     }
@@ -392,7 +411,10 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         if (!vm.signedIn) openSettings()
                         else {
                             val c = vm.kitchenCandidates()
-                            if (c.isEmpty()) vm.confirmAddToCart() else kitchenAsk = c
+                            val skipped = vm.kitchenSkipped(st, c)
+                            // Nothing to ask about, or you skipped every one of these before: straight to the cart.
+                            if (c.isEmpty() || skipped.size == c.size) vm.confirmAddToCart()
+                            else { kitchenOff = skipped; kitchenMem = skipped; kitchenAsk = c }
                         }
                     },
                     enabled = !busy && loading == null && (cart.isNotEmpty() || !vm.signedIn),
@@ -636,6 +658,26 @@ fun ProductPicker(vm: MealsViewModel, term: String, onClose: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** One of the two big buttons on the "Add to your Kitchen too?" pop-up: icons on top, short label under. */
+@Composable
+private fun KitchenAskButton(
+    label: String, highlight: Boolean, modifier: Modifier, onClick: () -> Unit, icons: @Composable () -> Unit,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .background(if (highlight) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) { icons() }
+        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
     }
 }
 

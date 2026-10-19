@@ -136,6 +136,8 @@ data class UserState(
     val pantry: List<PantryItem> = emptyList(),
     /** Shop items you want to buy even though the pantry has enough (cleared each week). */
     val pantryBuy: Set<String> = emptySet(),
+    /** Shop items you left out of the Kitchen when adding to cart (probably only for the week's meals); they start unticked next time. */
+    val skipKitchen: Set<String> = emptySet(),
     /** A meal counts as "on sale" when it saves at least this much. */
     val saleMin: Double = 2.0,
     /** A meal is "budget" when what you'd buy for it costs this much or less. */

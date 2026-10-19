@@ -1785,6 +1785,21 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 Pantry.classify(l.term + " " + p.title) != null)
     }
 
+    private fun inKitchen(s: UserState, l: CartLine): Boolean {
+        val upc = l.product?.upc.orEmpty()
+        return s.pantry.any { it.term == l.term || (upc.isNotEmpty() && it.upc == upc) }
+    }
+
+    /** Of these cart lines, the ones you skipped before and don't already have in the Kitchen: they start unticked. */
+    fun kitchenSkipped(st: UserState, lines: List<CartLine>): Set<String> =
+        lines.filter { it.term in st.skipKitchen && !inKitchen(st, it) }.map { it.term }.toSet()
+
+    /** Remembers what you left out of the Kitchen (items it doesn't have yet) and forgets the ones you ticked. */
+    fun rememberKitchenChoices(shown: List<CartLine>, off: Set<String>) = edit { s ->
+        val newlySkipped = shown.filter { it.term in off && !inKitchen(s, it) }.map { it.term }
+        s.copy(skipKitchen = (s.skipKitchen - shown.map { it.term }.toSet()) + newlySkipped)
+    }
+
     /** Sends the chosen products to your King Soopers cart; [kitchenTerms] are the ones to also put in the Kitchen. */
     fun confirmAddToCart(kitchenTerms: Set<String> = emptySet()) {
         val chosen = cartLines()
