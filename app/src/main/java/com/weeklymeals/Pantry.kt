@@ -13,6 +13,7 @@ object Pantry {
     const val COUNT = "count"
     const val LB = "lb"
     const val STICK = "stick"
+    const val EGG = "egg"
 
     /** Butter: kept in the Fridge, counted in sticks (1 stick = 8 tbsp = ½ cup = 4 oz). */
     fun isButter(name: String): Boolean {
@@ -20,8 +21,22 @@ object Pantry {
         return Regex("\\bbutter\\b").containsMatchIn(n) && !n.contains("peanut") && !n.contains("buttermilk")
     }
 
+    /** Eggs: kept in the Fridge, counted one by one (a carton is 12, 18...). */
+    fun isEgg(name: String): Boolean {
+        val n = name.lowercase()
+        return Regex("\\beggs?\\b").containsMatchIn(n) &&
+            !Regex("noodle|roll|wrap|\\bnog\\b|substitute|beater|white|yolk|salad|replac|plant").containsMatchIn(n)
+    }
+
+    /** Eggs in a carton size like "12 ct", "18 count" or "1 dozen" (null if it doesn't say). */
+    fun sizeEggs(size: String): Double? {
+        Regex("(\\d+(?:\\.\\d+)?)\\s*dozen", RegexOption.IGNORE_CASE).find(size)?.let { return it.groupValues[1].toDouble() * 12 }
+        Regex("\\bdozen\\b", RegexOption.IGNORE_CASE).find(size)?.let { return 12.0 }
+        return parseSize(size)?.let { (n, u) -> if (u == "ct" || u == "count") n else null }
+    }
+
     /** Items whose leftovers are logged on Finish week (instead of refilled from the cart). */
-    fun loggedLeftovers(name: String): Boolean = isBinProduce(name) || isButter(name)
+    fun loggedLeftovers(name: String): Boolean = isBinProduce(name) || isButter(name) || isEgg(name)
 
     /** Sticks in a butter package size like "16 oz" or "1 lb" (null if it doesn't say). */
     fun sizeSticks(size: String): Double? = sizeLb(size)?.let { it * 4 }
@@ -35,6 +50,7 @@ object Pantry {
             Regex("\\b(sugar|salt|honey|vinegar)\\b").containsMatchIn(n) && !n.contains("seasoning") -> null
             isBinProduce(n) -> 28
             isButter(n) -> 90
+            isEgg(n) -> 35
             Regex("lemon juice|lime juice").containsMatchIn(n) -> 180
             item.shelf == "spices" -> 730
             item.shelf == "fridge" -> 30
@@ -180,6 +196,7 @@ object Pantry {
         return when {
             isBinProduce(n) -> "produce" to "bag"
             isButter(n) -> "fridge" to "box"
+            isEgg(n) -> "fridge" to "box"
             has(n, listOf("lemon juice", "lime juice")) -> "fridge" to "bottle"
             has(n, listOf("tomato sauce", "tomato paste", "diced tomatoes", "crushed tomatoes", "whole tomatoes",
                 "beans", "chickpeas", "garbanzo", "tuna", "coconut milk", "green chiles", "enchilada sauce",
@@ -236,6 +253,7 @@ object Pantry {
         if (kind == "can") return COUNT to 1.0
         if (isBinProduce(name)) return LB to (sizeLb(size) ?: 5.0)
         if (isButter(name)) return STICK to (sizeSticks(size) ?: 4.0)
+        if (isEgg(name)) return EGG to (sizeEggs(size) ?: 12.0)
         val (n, unit) = parseSize(size) ?: return "" to 1.0
         val d = tspPerOzFor(name, kind, cupOz)
         val tsp = when (unit) {
@@ -288,6 +306,8 @@ object Pantry {
             "", "stick", "sticks" -> q
             else -> null
         }
+        // Eggs: counted one by one.
+        EGG -> if (u == "" || u == "egg" || u == "eggs" || u == "large" || u == "medium" || u == "small" || u == "extra large") q else null
         // Pounds: weights directly, otherwise through the food's typical weight (1 potato ≈ ½ lb).
         LB -> when (u) {
             "lb" -> q
@@ -308,6 +328,10 @@ object Pantry {
             amount < 3 -> "about ${Logic.fmt(Math.round(amount * 4) / 4.0)} tsp"
             amount < 48 -> "about ${Logic.fmt(Math.round(amount / 3 * 4) / 4.0)} tbsp"
             else -> "about ${Logic.fmt(Math.round(amount / 48 * 4) / 4.0)} cups"
+        }
+        EGG -> {
+            val c = Math.round(amount).toInt()
+            if (c <= 0) "Out" else "$c ${if (c == 1) "egg" else "eggs"}"
         }
         LB -> if (amount <= 0.05) "Out" else "${Logic.fmt(Math.round(amount * 4) / 4.0)} lb left"
         STICK -> {

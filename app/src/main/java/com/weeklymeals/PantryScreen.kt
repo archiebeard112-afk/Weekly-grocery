@@ -647,7 +647,7 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                                                 fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                                 textAlign = TextAlign.Center, modifier = Modifier.padding(top = 3.dp),
                                             )
-                                            if (p.measure == Pantry.LB || p.measure == Pantry.STICK) {
+                                            if (p.measure == Pantry.LB || p.measure == Pantry.STICK || p.measure == Pantry.EGG) {
                                                 Text(Pantry.amountText(p), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                             }
                                         }
@@ -1017,7 +1017,7 @@ private fun PantryItemDialog(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 )
                 // Sold by weight: how much 1 cup weighs lets the app turn recipe cups and spoons into package weight.
-                if (Pantry.isWeightSize(item.size) && item.measure != Pantry.COUNT && item.measure != Pantry.STICK && item.measure != Pantry.LB) {
+                if (Pantry.isWeightSize(item.size) && item.measure != Pantry.COUNT && item.measure != Pantry.STICK && item.measure != Pantry.LB && item.measure != Pantry.EGG) {
                     val auto = Pantry.cupOzFor(item.term + " " + item.name, item.kind)
                     OutlinedTextField(
                         cupText,

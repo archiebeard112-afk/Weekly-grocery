@@ -1521,28 +1521,35 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Finish week: what's left of bagged produce (potatoes) goes in the Produce bin —
-     * the bag size from King Soopers (or 5 lb) minus what the meals used, if it's ½ lb or more.
+     * Finish week: what's left of bagged produce (potatoes), butter and eggs goes in the Kitchen —
+     * the package size from King Soopers (5 lb, 4 sticks, 12 eggs) minus what the meals used,
+     * if at least ½ lb, ¼ stick or 1 egg is left.
      */
     private fun binAfterWeek(s: UserState, pantry: List<PantryItem>): List<PantryItem> {
         val out = pantry.toMutableList()
         val now = System.currentTimeMillis()
         for (g in shopGroups(s)) {
             val butter = Pantry.isButter(g.term)
-            if (!(Pantry.isBinProduce(g.term) || butter) || g.term in s.haveTerms) continue
-            val probe = PantryItem("", g.term, g.term, if (butter) "fridge" else "produce", if (butter) "box" else "bag",
-                measure = if (butter) Pantry.STICK else Pantry.LB)
+            val egg = Pantry.isEgg(g.term)
+            if (!(Pantry.isBinProduce(g.term) || butter || egg) || g.term in s.haveTerms) continue
+            val probe = PantryItem("", g.term, g.term, if (butter || egg) "fridge" else "produce", if (butter || egg) "box" else "bag",
+                measure = if (egg) Pantry.EGG else if (butter) Pantry.STICK else Pantry.LB)
             val need = g.items.sumOf { Pantry.usage(probe, it.qty, it.unit) ?: 0.0 }
             if (need <= 0) continue
             val before = s.pantry.firstOrNull { it.term == g.term }?.left ?: 0.0
             val buy = need - before
             if (buy <= 1e-6) continue // the bin covered it (already taken out above)
             val size = products.value[g.term]?.product?.size.orEmpty()
-            val bag = if (butter) Pantry.sizeSticks(size) ?: 4.0 else Pantry.sizeLb(size) ?: 5.0
+            val bag = when {
+                egg -> Pantry.sizeEggs(size) ?: 12.0
+                butter -> Pantry.sizeSticks(size) ?: 4.0
+                else -> Pantry.sizeLb(size) ?: 5.0
+            }
             val bags = kotlin.math.ceil(buy / bag - 1e-6).coerceAtLeast(1.0)
-            val leftover = Math.round((bags * bag - buy) * 4) / 4.0
-            // Potatoes under ½ lb aren't worth logging; butter keeps quarter sticks.
-            if (leftover < (if (butter) 0.25 else 0.5)) continue
+            // Eggs are whole; everything else rounds to quarters.
+            val leftover = if (egg) Math.floor(bags * bag - buy + 1e-6) else Math.round((bags * bag - buy) * 4) / 4.0
+            // Potatoes under ½ lb aren't worth logging; butter keeps quarter sticks; eggs need at least 1.
+            if (leftover < (if (egg) 1.0 else if (butter) 0.25 else 0.5)) continue
             val i = out.indexOfFirst { it.term == g.term }
             if (i >= 0) {
                 val cur = out[i]
