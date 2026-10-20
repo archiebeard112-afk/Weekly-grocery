@@ -22,6 +22,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.HorizontalDivider
@@ -80,6 +81,26 @@ internal fun ScopeMenu(scope: String, onPick: (String) -> Unit) {
     }
 }
 
+/** A small product photo from King Soopers (a soft square while it loads, or if there's none). */
+@Composable
+fun ProductPhoto(url: String, size: androidx.compose.ui.unit.Dp = 48.dp, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        modifier.size(size).clip(shape).background(androidx.compose.ui.graphics.Color.White),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (url.isNotBlank()) {
+            coil.compose.AsyncImage(
+                model = url, contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().padding(2.dp),
+            )
+        } else {
+            Text("🛒", style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
 /** "$6.99" or, on sale, "$5.99 (was $6.99)". */
 private fun priceText(p: Product): String = when {
     p.promo != null && p.price != null && p.promo < p.price -> Sales.money(p.promo) + " (was " + Sales.money(p.price) + ")"
@@ -125,8 +146,8 @@ internal fun StoreSearch(vm: MealsViewModel, st: UserState, query: String, onSet
             }
             items(st.recentStoreMeals, key = { "recent_" + it.upc }) { m ->
                 StoreRow(
-                    "🛒 " + m.title, listOfNotNull(m.size.ifBlank { null }, m.price?.let { Sales.money(it) }).joinToString(" · "),
-                    onAdd = { pickRecent = m }, onHold = { removing = m },
+                    m.title, listOfNotNull(m.size.ifBlank { null }, m.price?.let { Sales.money(it) }).joinToString(" · "),
+                    image = m.image, onAdd = { pickRecent = m }, onHold = { removing = m },
                 )
             }
             if (st.recentStoreMeals.isNotEmpty()) {
@@ -162,7 +183,7 @@ internal fun StoreSearch(vm: MealsViewModel, st: UserState, query: String, onSet
                 )
             }
             items(results, key = { "p_" + it.upc }) { p ->
-                StoreRow(p.title, listOfNotNull(p.size.ifBlank { null }, priceText(p).ifBlank { null }).joinToString(" · "), onAdd = { pickProduct = p })
+                StoreRow(p.title, listOfNotNull(p.size.ifBlank { null }, priceText(p).ifBlank { null }).joinToString(" · "), image = p.image, onAdd = { pickProduct = p })
             }
         }
     }
@@ -186,7 +207,7 @@ internal fun StoreSearch(vm: MealsViewModel, st: UserState, query: String, onSet
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun StoreRow(title: String, detail: String, onAdd: () -> Unit, onHold: (() -> Unit)? = null) {
+private fun StoreRow(title: String, detail: String, image: String = "", onAdd: () -> Unit, onHold: (() -> Unit)? = null) {
     Column {
         Row(
             Modifier.fillMaxWidth()
@@ -194,6 +215,8 @@ private fun StoreRow(title: String, detail: String, onAdd: () -> Unit, onHold: (
                 .padding(horizontal = 4.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            ProductPhoto(image, 52.dp)
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (detail.isNotBlank()) {

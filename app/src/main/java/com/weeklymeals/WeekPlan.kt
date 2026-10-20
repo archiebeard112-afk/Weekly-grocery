@@ -60,7 +60,7 @@ private fun StoreLine(m: StoreMeal, onClick: () -> Unit, onRemove: () -> Unit) {
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("🛒", style = MaterialTheme.typography.titleMedium)
+        if (m.image.isNotBlank()) ProductPhoto(m.image, 28.dp) else Text("🛒", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.width(8.dp))
         Text(m.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         m.price?.let {

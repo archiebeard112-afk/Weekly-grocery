@@ -201,6 +201,8 @@ data class StoreMeal(
     /** The price when it was added (sale price if there was one). */
     val price: Double? = null,
     val day: Int = -1,
+    /** Product photo from King Soopers ("" if none). */
+    val image: String = "",
 )
 
 @Serializable

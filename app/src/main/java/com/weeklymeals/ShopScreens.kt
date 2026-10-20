@@ -551,6 +551,11 @@ private fun ShopRow(
         if (hasStore) {
             Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 val p = line?.product
+                // The chosen product's photo, so you can tell what it is at a glance.
+                if (p != null) {
+                    ProductPhoto(p.image, 44.dp, Modifier.clickable { vm.picking.value = g.term })
+                    Spacer(Modifier.width(10.dp))
+                }
                 Text(
                     when {
                         line == null -> "Looking up…"
@@ -648,6 +653,8 @@ fun ProductPicker(vm: MealsViewModel, term: String, onClose: () -> Unit) {
                         ) {
                             RadioButton(selected = n == line.selected, onClick = null)
                             Spacer(Modifier.width(8.dp))
+                            ProductPhoto(p.image, 56.dp)
+                            Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(p.title, style = MaterialTheme.typography.bodyLarge)
                                 val sub = listOfNotNull(
@@ -659,7 +666,7 @@ fun ProductPicker(vm: MealsViewModel, term: String, onClose: () -> Unit) {
                                 if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall)
                             }
                         }
-                        HorizontalDivider(Modifier.padding(start = 56.dp))
+                        HorizontalDivider(Modifier.padding(start = 122.dp))
                     }
                 }
             }

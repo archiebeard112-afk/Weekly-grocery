@@ -706,7 +706,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val title = p.title.trim()
         if (title.isEmpty() || day !in 0..6) return
         val term = Logic.searchTerm(title)
-        val meal = StoreMeal(UUID.randomUUID().toString(), p.upc, title, p.size, p.promo ?: p.price, day)
+        val meal = StoreMeal(UUID.randomUUID().toString(), p.upc, title, p.size, p.promo ?: p.price, day, image = p.image)
         // The same product on two days is two in the cart.
         val n = state.value.storeMeals.count { it.upc == p.upc } + 1
         products.update { it + (term to CartLine(term = term, search = title, options = listOf(p), selected = 0, quantity = n)) }
@@ -731,7 +731,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 message.value = "That's not available at your store right now"
                 return@launch
             }
-            addStoreMeal(day, fresh ?: Product(m.upc, m.title, m.size, m.price))
+            addStoreMeal(day, fresh ?: Product(m.upc, m.title, m.size, m.price, image = m.image))
         }
     }
 

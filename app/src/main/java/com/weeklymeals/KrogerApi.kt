@@ -24,6 +24,8 @@ data class Product(
     val stock: String? = null,
     /** Whether it can be delivered from your store; null if Kroger didn't say. */
     val delivery: Boolean? = null,
+    /** Product photo (front of the package), or "" if King Soopers has none. */
+    val image: String = "",
 ) {
     /** In stock (or unknown), priced at your store, and deliverable (or unknown). */
     val available: Boolean
@@ -166,6 +168,18 @@ class KrogerApi {
             parseProducts(call(req))
         }
 
+    /** The front photo (or the featured one), medium size if there is one. */
+    private fun photoUrl(images: JSONArray?): String {
+        if (images == null || images.length() == 0) return ""
+        val all = (0 until images.length()).mapNotNull { images.optJSONObject(it) }
+        val pick = all.firstOrNull { it.optBoolean("featured") } ?: all.firstOrNull { it.optString("perspective") == "front" } ?: all.first()
+        val sizes = pick.optJSONArray("sizes") ?: return ""
+        val list = (0 until sizes.length()).mapNotNull { sizes.optJSONObject(it) }
+        val best = listOf("medium", "small", "large", "thumbnail", "xlarge")
+            .firstNotNullOfOrNull { want -> list.firstOrNull { it.optString("size") == want } } ?: list.firstOrNull()
+        return best?.optString("url").orEmpty()
+    }
+
     private fun parseProducts(body: String): List<Product> {
         val data = JSONObject(body).optJSONArray("data") ?: JSONArray()
         val out = mutableListOf<Product>()
@@ -185,6 +199,7 @@ class KrogerApi {
                 delivery = item?.optJSONObject("fulfillment")?.let { f ->
                     if (f.has("delivery")) f.optBoolean("delivery") else null
                 },
+                image = photoUrl(o.optJSONArray("images")),
             )
         }
         return out
