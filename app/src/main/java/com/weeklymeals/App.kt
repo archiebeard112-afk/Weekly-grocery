@@ -113,6 +113,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.layout.size
 import androidx.compose.animation.core.Animatable
@@ -1139,6 +1140,14 @@ private fun RecipeScreen(
                 title = { },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
                 actions = {
+                    // Your rating: tap again to clear. 👎 keeps it out of Browse's ideas.
+                    val mine = st.ratings[r.id]
+                    TextButton(onClick = { vm.rate(r.id, 1) }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.width(40.dp)) {
+                        Text("👍", fontSize = 20.sp, modifier = Modifier.alpha(if (mine == 1) 1f else 0.35f))
+                    }
+                    TextButton(onClick = { vm.rate(r.id, -1) }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.width(40.dp)) {
+                        Text("👎", fontSize = 20.sp, modifier = Modifier.alpha(if (mine == -1) 1f else 0.35f))
+                    }
                     val ctx = LocalContext.current
                     IconButton(onClick = { shareRecipe(ctx, r, st.servings, if (inWeek) side else null) }) {
                         Icon(Icons.Filled.Share, "Share recipe")
@@ -1486,7 +1495,8 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
                                 val side = w.sides[id]?.let { vm.sideMap[it] }
                                 TextButton(onClick = { open = if (open == id) null else id }) {
                                     Text(
-                                        "${r.emoji}  ${r.name}" + (side?.let { " + ${it.label}" } ?: ""),
+                                        "${r.emoji}  ${r.name}" + (side?.let { " + ${it.label}" } ?: "") +
+                                            (if (st.ratings[id] == 1) "  👍" else ""),
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }

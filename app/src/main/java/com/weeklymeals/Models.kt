@@ -146,6 +146,8 @@ data class UserState(
     val browseScope: String = "app",
     /** Cook screen: you folded the "Shared this week" list (it starts open). */
     val sharedClosed: Boolean = false,
+    /** Your rating for a meal: 1 = 👍, -1 = 👎 (left out of Browse's ideas), 0 = asked, skipped. */
+    val ratings: Map<Int, Int> = emptyMap(),
     /** A meal counts as "on sale" when it saves at least this much. */
     val saleMin: Double = 2.0,
     /** A meal is "budget" when what you'd buy for it costs this much or less. */

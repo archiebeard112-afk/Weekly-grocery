@@ -372,21 +372,24 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val st = state.value
         val cache = salesCache(st)
         if (saleOnly.value) {
-            val pool = recipes(st).values.filter { it.id !in st.removed && Sales.savings(it, st.servings, cache) >= st.saleMin }.map { it.id }
+            val pool = recipes(st).values.filter { it.id !in st.removed && st.ratings[it.id] != -1 && Sales.savings(it, st.servings, cache) >= st.saleMin }.map { it.id }
             if (pool.isEmpty()) message.value = "No meals save ${Sales.money(st.saleMin)} or more at your store today"
             return pool.shuffled().take(10)
         }
         val cutoff = System.currentTimeMillis() - 21L * 86_400_000L
         val recent = st.history.filter { it.date >= cutoff }.flatMap { it.recipes }.toSet()
         val lastShown = browseSets.lastOrNull().orEmpty().toSet()
-        val all = bundle.recipes.filter { !it.imported && it.id !in st.removed }
+        // 👎 meals never come up as ideas (you can still search for them).
+        val all = bundle.recipes.filter { !it.imported && it.id !in st.removed && st.ratings[it.id] != -1 }
         var pool = all.filter { it.id !in st.week && it.id !in recent && it.id !in lastShown }
         if (pool.size < 10) pool = all.filter { it.id !in st.week }
         // Within each protein, sale meals tend to come first; then take one from each protein in turn.
         val groups = pool.groupBy { protein(it) }.mapValues { (_, list) ->
             // Decide each meal's coin flip once, then sort (a sort can't ask a random question twice).
             list.shuffled().map { r ->
-                r to if (Sales.savings(r, st.servings, cache) >= st.saleMin && Math.random() < 0.6) 1 else 0
+                // Sale meals and 👍 meals tend to come first.
+                r to (if (Sales.savings(r, st.servings, cache) >= st.saleMin && Math.random() < 0.6) 1 else 0) +
+                    (if (st.ratings[r.id] == 1 && Math.random() < 0.6) 1 else 0)
             }.sortedByDescending { it.second }.map { it.first }.toMutableList()
         }
         val order = groups.keys.shuffled()
@@ -673,6 +676,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun setBrowseScope(scope: String) = edit { it.copy(browseScope = scope) }
 
     fun setSharedOpen(open: Boolean) = edit { it.copy(sharedClosed = !open) }
+
+    /** 👍 (1), 👎 (-1) or skipped (0). Tapping the same thumb again clears it. */
+    fun rate(id: Int, v: Int) = edit { s ->
+        s.copy(ratings = if (v != 0 && s.ratings[id] == v) s.ratings + (id to 0) else s.ratings + (id to v))
+    }
 
     fun searchStore(query: String) {
         val q = query.trim()

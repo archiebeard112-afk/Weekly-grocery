@@ -27,6 +27,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -380,9 +381,28 @@ fun CookScreen(
                     Text("That's it. Time to eat! 🎉", style = MaterialTheme.typography.titleLarge)
                 }
                 Spacer(Modifier.height(16.dp))
-                // Ends cooking mode (and the bubble).
-                OutlinedButton(onClick = { vm.stopCooking(); onDone() }, modifier = Modifier.fillMaxWidth()) {
+                // Ends cooking mode (and the bubble). The first time you make a meal, asks how it was.
+                var askRating by remember { mutableStateOf(false) }
+                OutlinedButton(
+                    onClick = { if (id !in st.ratings) askRating = true else { vm.stopCooking(); onDone() } },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Text("✓  Done cooking")
+                }
+                if (askRating) {
+                    fun finish(v: Int) { askRating = false; vm.rate(id, v); vm.stopCooking(); onDone() }
+                    AlertDialog(
+                        onDismissRequest = { askRating = false },
+                        title = { Text("How was ${r.name}?") },
+                        text = {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                TextButton(onClick = { finish(1) }) { Text("👍", fontSize = 40.sp) }
+                                TextButton(onClick = { finish(-1) }) { Text("👎", fontSize = 40.sp) }
+                            }
+                        },
+                        confirmButton = {},
+                        dismissButton = { TextButton(onClick = { finish(0) }) { Text("Skip") } },
+                    )
                 }
                 Spacer(Modifier.height(40.dp))
             }
