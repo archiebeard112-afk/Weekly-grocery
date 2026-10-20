@@ -394,7 +394,13 @@ object Logic {
     }
 
     /** Meals keep their chosen day; meals without one fill the first empty days in order. */
-    fun dayPlan(week: List<Int>, days: Map<Int, Int>): DayPlan {
+    /** The 7 days (0 = Mon .. 6 = Sun) in your week's order, starting on [start]. */
+    fun dayOrder(start: Int): List<Int> = (0..6).map { (start + it) % 7 }
+
+    /** Where a day falls in your week (0 = first day). */
+    fun dayRank(day: Int, start: Int): Int = (day - start + 7) % 7
+
+    fun dayPlan(week: List<Int>, days: Map<Int, Int>, start: Int = 0): DayPlan {
         val slots = arrayOfNulls<Int>(7)
         val rest = mutableListOf<Int>()
         for (id in week) {
@@ -402,9 +408,11 @@ object Logic {
             if (d != null && d in 0..6 && slots[d] == null) slots[d] = id else rest += id
         }
         val extras = mutableListOf<Int>()
+        // New meals fill the first empty day, starting from the day your week starts.
+        val order = dayOrder(start)
         for (id in rest) {
-            val free = slots.indexOfFirst { it == null }
-            if (free >= 0) slots[free] = id else extras += id
+            val free = order.firstOrNull { slots[it] == null }
+            if (free != null) slots[free] = id else extras += id
         }
         return DayPlan(slots.toList(), extras)
     }

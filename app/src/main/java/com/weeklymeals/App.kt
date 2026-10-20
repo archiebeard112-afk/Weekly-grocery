@@ -1113,7 +1113,7 @@ internal fun Badge(text: String, small: Boolean) {
 /** On a planned recipe: which day, the side dish, and Remove from week. */
 @Composable
 private fun WeekControls(vm: MealsViewModel, st: UserState, r: Recipe, side: Side?) {
-    val day = Logic.dayPlan(st.week, st.days).dayOf(r.id)
+    val day = Logic.dayPlan(st.week, st.days, st.weekStart).dayOf(r.id)
     Heading(if (day != null) "📅 Planned for ${Logic.DAY_LONG[day]}" else "📅 In your week (extra meal)")
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Side: ", style = MaterialTheme.typography.bodyMedium)

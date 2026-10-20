@@ -31,7 +31,7 @@ object Shares {
 
     /** "Mon · Chili" (or "Extra · Chili" for a meal without a day). */
     fun mealLabel(st: UserState, id: Int, name: String): String {
-        val day = Logic.dayPlan(st.week, st.days).dayOf(id)
+        val day = Logic.dayPlan(st.week, st.days, st.weekStart).dayOf(id)
         return (if (day != null) Logic.DAY_SHORT[day] else "Extra") + " · " + name
     }
 
@@ -98,10 +98,10 @@ fun MealsViewModel.mealItems(st: UserState, id: Int): Map<String, List<ShopItem>
  * Not shared: what your Kitchen already has enough of (jarred garlic), and whole pieces bought one at a time.
  */
 fun MealsViewModel.weekShares(st: UserState): Map<String, Share> {
-    val key = listOf(st.week, st.days, st.sides, st.servings, st.custom, st.usedAll, products.value.size, st.packWeights, st.pantry, st.haveTerms, st.pantryBuy, st.freezer)
+    val key = listOf(st.week, st.days, st.sides, st.servings, st.custom, st.usedAll, products.value.size, st.packWeights, st.pantry, st.haveTerms, st.pantryBuy, st.freezer, st.weekStart)
     shareMemo?.let { (k, v) -> if (k == key) return v }
-    val plan = Logic.dayPlan(st.week, st.days)
-    val order = st.week.sortedBy { plan.dayOf(it) ?: 99 }
+    val plan = Logic.dayPlan(st.week, st.days, st.weekStart)
+    val order = st.week.sortedBy { plan.dayOf(it)?.let { d -> Logic.dayRank(d, st.weekStart) } ?: 99 }
     val perMeal = order.associateWith { mealItems(st, it) }
     val terms = perMeal.values.flatMap { it.keys }.groupingBy { it }.eachCount().filter { it.value >= 2 }.keys
     val groups by lazy { shopGroups(st).associateBy { it.term } }

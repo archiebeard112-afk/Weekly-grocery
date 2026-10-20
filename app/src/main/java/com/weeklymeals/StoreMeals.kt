@@ -218,7 +218,8 @@ internal fun DayPickerDialog(st: UserState, title: String, onPick: (Int) -> Unit
                 Text(title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Box(Modifier.padding(top = 6.dp)) {
                     Column {
-                        Logic.DAY_LONG.forEachIndexed { d, name ->
+                        Logic.dayOrder(st.weekStart).forEach { d ->
+                            val name = Logic.DAY_LONG[d]
                             val n = st.storeMeals.count { it.day == d }
                             TextButton(onClick = { onPick(d) }, modifier = Modifier.fillMaxWidth()) {
                                 Text(

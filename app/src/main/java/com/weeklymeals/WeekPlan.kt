@@ -80,7 +80,8 @@ fun WeekScreen(
     flashId: Int? = null, onLeftovers: () -> Unit = {}, onAddStore: () -> Unit = {}, onFlashed: () -> Unit = {},
 ) {
     val all = vm.recipes(st)
-    val plan = Logic.dayPlan(st.week, st.days)
+    val plan = Logic.dayPlan(st.week, st.days, st.weekStart)
+    val dayAt = Logic.dayOrder(st.weekStart)
     val today = Logic.todayIndex()
     val density = LocalDensity.current
     val gapPx = with(density) { ROW_GAP.toPx() }
@@ -109,7 +110,7 @@ fun WeekScreen(
     LaunchedEffect(flashId, st.week) {
         val id = flashId ?: return@LaunchedEffect
         if (id !in st.week) return@LaunchedEffect
-        if (id in Logic.dayPlan(st.week, st.days).extras) scroll.animateScrollTo(scroll.maxValue)
+        if (id in Logic.dayPlan(st.week, st.days, st.weekStart).extras) scroll.animateScrollTo(scroll.maxValue)
         flash.snapTo(1f)
         flash.animateTo(0f, androidx.compose.animation.core.tween(1400))
         onFlashed()
@@ -117,12 +118,13 @@ fun WeekScreen(
     val target = if (dragId != null) targetFor(dragFrom, dragY) else -1
 
     // Rows: the 7 days, then any extra meals.
+    // Days in your week's order (Settings → Week starts on): row i is weekday dayAt[i].
     val rows: List<Pair<String, Int?>> =
-        plan.slots.mapIndexed { d, id -> Logic.DAY_SHORT[d] to id } + plan.extras.map { "Extra" to it }
+        dayAt.map { d -> Logic.DAY_SHORT[d] to plan.slots[d] } + plan.extras.map { "Extra" to it }
 
     // Roughly how tall each day's tile needs to be (dp): a day with store items is taller.
     fun estDp(index: Int, hasRecipe: Boolean): Float {
-        val n = if (index < 7) st.storeMeals.count { it.day == index } else 0
+        val n = if (index < 7) st.storeMeals.count { it.day == dayAt[index] } else 0
         return if (n == 0) 46f else 16f + (if (hasRecipe) 46f else 0f) + 32f * n + 4f
     }
 
@@ -187,7 +189,7 @@ fun WeekScreen(
             val r = id?.let { all[it] }
             val dragged = id != null && id == dragId
             val isTarget = dragId != null && index == target && !dragged
-            val isToday = index == today
+            val isToday = index < 7 && dayAt[index] == today
             val flashing = id != null && id == flashId && flash.value > 0f
             val bg = when {
                 flashing -> androidx.compose.ui.graphics.lerp(
@@ -218,7 +220,7 @@ fun WeekScreen(
                             onDragStart = { dragId = id; dragFrom = index; dragY = 0f },
                             onDragEnd = {
                                 val to = targetFor(dragFrom, dragY)
-                                vm.moveToDay(id, to)
+                                vm.moveToDay(id, dayAt[to])
                                 dragId = null; dragY = 0f
                             },
                             onDragCancel = { dragId = null; dragY = 0f },
@@ -232,7 +234,7 @@ fun WeekScreen(
                 rowMod = rowMod.clickable { onBrowse() }
             }
             // Store-bought meals on this day (frozen pizza): the tile grows by a line for each.
-            val meals = if (index < 7) st.storeMeals.filter { it.day == index } else emptyList()
+            val meals = if (index < 7) st.storeMeals.filter { it.day == dayAt[index] } else emptyList()
             Row(
                 rowMod.padding(horizontal = 12.dp, vertical = if (meals.isEmpty()) 0.dp else 8.dp),
                 verticalAlignment = if (meals.isEmpty()) Alignment.CenterVertically else Alignment.Top,

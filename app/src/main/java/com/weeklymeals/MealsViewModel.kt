@@ -638,8 +638,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         if (id in s.week) s else {
             val r = recipes(s)[id]
             val chosen = if (useDefaultSide) s.sides[id] ?: r?.sides?.firstOrNull() else side
-            val plan = Logic.dayPlan(s.week, s.days)
-            val free = plan.slots.indexOfFirst { it == null }
+            val plan = Logic.dayPlan(s.week, s.days, s.weekStart)
+            val free = Logic.dayOrder(s.weekStart).firstOrNull { plan.slots[it] == null } ?: -1
             s.copy(
                 week = s.week + id,
                 days = if (free >= 0) plan.asMap() + (id to free) else plan.asMap(),
@@ -760,12 +760,12 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun changeSide(id: Int) { sidePicker.value = id }
 
     fun removeFromWeek(id: Int) = edit { s ->
-        s.copy(week = s.week - id, sides = s.sides - id, days = Logic.dayPlan(s.week, s.days).asMap() - id)
+        s.copy(week = s.week - id, sides = s.sides - id, days = Logic.dayPlan(s.week, s.days, s.weekStart).asMap() - id)
     }
 
     /** Moves a meal to a day; if that day already has a meal, the two swap. */
     fun moveToDay(id: Int, day: Int) = edit { s ->
-        val plan = Logic.dayPlan(s.week, s.days)
+        val plan = Logic.dayPlan(s.week, s.days, s.weekStart)
         val occupant = plan.slots.getOrNull(day)
         if (occupant == id || day !in 0..6) s else {
             val m = plan.asMap().toMutableMap()
@@ -790,9 +790,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 listOf(
                     PastWeek(
                         System.currentTimeMillis(),
-                        Logic.dayPlan(s.week, s.days).let { p -> p.slots.filterNotNull() + p.extras },
+                        Logic.dayPlan(s.week, s.days, s.weekStart).let { p -> Logic.dayOrder(s.weekStart).mapNotNull { p.slots[it] } + p.extras },
                         s.sides.filterKeys { it in s.week }, s.servings,
-                        storeMeals = s.storeMeals.sortedBy { it.day }.map { Logic.DAY_SHORT.getOrElse(it.day) { "" } + " · " + it.title },
+                        storeMeals = s.storeMeals.sortedBy { Logic.dayRank(it.day, s.weekStart) }.map { Logic.DAY_SHORT.getOrElse(it.day) { "" } + " · " + it.title },
                     ),
                 ) +
                     s.history.take(99),
@@ -868,6 +868,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setServings(n: Int) = edit { it.copy(servings = n.coerceIn(1, 12)) }
+
+    fun setWeekStart(day: Int) = edit { it.copy(weekStart = day.coerceIn(0, 6)) }
 
     // ---- Favorites -----------------------------------------------------------
 

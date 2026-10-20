@@ -111,6 +111,21 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     ) { Text("+") }
                 }
             }
+            // Which day the Week tab starts on (your shopping day works well).
+            SettingsCard("📅", "Week starts on", Logic.DAY_LONG[st.weekStart]) {
+                Text(
+                    "The Week tab lists days from here, and new meals fill the first empty day from here.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Logic.DAY_SHORT.forEachIndexed { d, name ->
+                        FilterChip(selected = st.weekStart == d, onClick = { vm.setWeekStart(d) }, label = { Text(name) })
+                    }
+                }
+            }
             SettingsCard("🛒", "King Soopers", storeLine) {
                 Text(
                     "Create a free app at developer.kroger.com. Set its redirect URI to ${KrogerApi.REDIRECT} " +
