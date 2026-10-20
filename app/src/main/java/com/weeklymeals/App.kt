@@ -1140,14 +1140,6 @@ private fun RecipeScreen(
                 title = { },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
                 actions = {
-                    // Your rating: tap again to clear. 👎 keeps it out of Browse's ideas.
-                    val mine = st.ratings[r.id]
-                    TextButton(onClick = { vm.rate(r.id, 1) }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.width(40.dp)) {
-                        Text("👍", fontSize = 20.sp, modifier = Modifier.alpha(if (mine == 1) 1f else 0.35f))
-                    }
-                    TextButton(onClick = { vm.rate(r.id, -1) }, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.width(40.dp)) {
-                        Text("👎", fontSize = 20.sp, modifier = Modifier.alpha(if (mine == -1) 1f else 0.35f))
-                    }
                     val ctx = LocalContext.current
                     IconButton(onClick = { shareRecipe(ctx, r, st.servings, if (inWeek) side else null) }) {
                         Icon(Icons.Filled.Share, "Share recipe")
@@ -1166,11 +1158,47 @@ private fun RecipeScreen(
                 Text(r.name, style = MaterialTheme.typography.headlineSmall)
             }
             val badges = Logic.badges(r, vm.isBudget(st, r))
-            if (badges.isNotEmpty()) {
-                Row(
-                    Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) { badges.forEach { Badge(it, small = false) } }
+            // Badges, then your rating (👍 Liked / 👎 Not for us), or "Rate" if you haven't yet. Tap it to change.
+            var rating by remember { mutableStateOf(false) }
+            val mine = st.ratings[r.id]
+            Row(
+                Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                badges.forEach { Badge(it, small = false) }
+                val rated = mine == 1 || mine == -1
+                Text(
+                    when (mine) { 1 -> "👍 Liked"; -1 -> "👎 Not for us"; else -> "👍👎 Rate" },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (rated) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clip(RoundedCornerShape(50))
+                        .then(
+                            if (rated) Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+                            else Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50)),
+                        )
+                        .clickable { rating = true }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+            if (rating) {
+                fun pick(v: Int) { rating = false; vm.rate(r.id, v) }
+                AlertDialog(
+                    onDismissRequest = { rating = false },
+                    title = { Text("How was ${r.name}?") },
+                    text = {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            TextButton(onClick = { pick(1) }) { Text("👍", fontSize = 40.sp, modifier = Modifier.alpha(if (mine == -1) 0.4f else 1f)) }
+                            TextButton(onClick = { pick(-1) }) { Text("👎", fontSize = 40.sp, modifier = Modifier.alpha(if (mine == 1) 0.4f else 1f)) }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = {
+                        Row {
+                            if (mine == 1 || mine == -1) TextButton(onClick = { rating = false; vm.rate(r.id, 0) }) { Text("Clear") }
+                            TextButton(onClick = { rating = false }) { Text("Cancel") }
+                        }
+                    },
+                )
             }
             Text(
                 "⏱ About ${Logic.fmtMinutes(Logic.cookMinutes(r))} total",
