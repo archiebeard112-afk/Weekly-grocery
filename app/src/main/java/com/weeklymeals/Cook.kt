@@ -7,6 +7,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -395,13 +396,20 @@ fun CookScreen(
                         onDismissRequest = { askRating = false },
                         title = { Text("How was ${r.name}?") },
                         text = {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                TextButton(onClick = { finish(1) }) { Text("👍", fontSize = 40.sp) }
-                                TextButton(onClick = { finish(-1) }) { Text("👎", fontSize = 40.sp) }
+                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Row(Modifier.fillMaxWidth()) {
+                                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                        TextButton(onClick = { finish(1) }) { Text("👍", fontSize = 40.sp) }
+                                    }
+                                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                        TextButton(onClick = { finish(-1) }) { Text("👎", fontSize = 40.sp) }
+                                    }
+                                }
+                                // Centered under the thumbs.
+                                TextButton(onClick = { finish(0) }, modifier = Modifier.padding(top = 12.dp)) { Text("Skip") }
                             }
                         },
                         confirmButton = {},
-                        dismissButton = { TextButton(onClick = { finish(0) }) { Text("Skip") } },
                     )
                 }
                 Spacer(Modifier.height(40.dp))

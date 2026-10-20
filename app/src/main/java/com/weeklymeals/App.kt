@@ -1186,18 +1186,29 @@ private fun RecipeScreen(
                     onDismissRequest = { rating = false },
                     title = { Text("How was ${r.name}?") },
                     text = {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            TextButton(onClick = { pick(1) }) { Text("👍", fontSize = 40.sp, modifier = Modifier.alpha(if (mine == -1) 0.4f else 1f)) }
-                            TextButton(onClick = { pick(-1) }) { Text("👎", fontSize = 40.sp, modifier = Modifier.alpha(if (mine == 1) 0.4f else 1f)) }
+                        // Thumbs, then Clear / Cancel lined up under them (same two columns).
+                        Column(Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth()) {
+                                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                    TextButton(onClick = { pick(1) }) { Text("👍", fontSize = 40.sp, modifier = Modifier.alpha(if (mine == -1) 0.4f else 1f)) }
+                                }
+                                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                    TextButton(onClick = { pick(-1) }) { Text("👎", fontSize = 40.sp, modifier = Modifier.alpha(if (mine == 1) 0.4f else 1f)) }
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                                if (mine == 1 || mine == -1) {
+                                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                        TextButton(onClick = { rating = false; vm.rate(r.id, 0) }) { Text("Clear") }
+                                    }
+                                }
+                                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                    TextButton(onClick = { rating = false }) { Text("Cancel") }
+                                }
+                            }
                         }
                     },
                     confirmButton = {},
-                    dismissButton = {
-                        Row {
-                            if (mine == 1 || mine == -1) TextButton(onClick = { rating = false; vm.rate(r.id, 0) }) { Text("Clear") }
-                            TextButton(onClick = { rating = false }) { Text("Cancel") }
-                        }
-                    },
                 )
             }
             Text(
