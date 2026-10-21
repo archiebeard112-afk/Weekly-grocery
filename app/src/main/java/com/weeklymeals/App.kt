@@ -669,7 +669,7 @@ private fun RecipeDetails(
                             textAlign = TextAlign.End,
                         )
                     }
-                    // Meat: the pack it comes from (this meal's share of it).
+                    // The pack it comes from, or this meal's share of one used by other meals this week.
                     if (first && price != null && price.note.isNotEmpty() && !price.note.startsWith("♻️")) {
                         Text(
                             price.note, style = MaterialTheme.typography.labelSmall,
@@ -706,7 +706,7 @@ private fun RecipeDetails(
             }
         }
         Text(
-            "Prices are for whole packages, as you'd buy them.",
+            "Prices are for whole packages, as you'd buy them. Shared ones are split between this week's meals.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),

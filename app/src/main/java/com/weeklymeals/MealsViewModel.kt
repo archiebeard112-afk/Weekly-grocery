@@ -1899,9 +1899,15 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 var reuseNote = ""
                 if (meat == null) {
                     val sh = shares[term]
-                    if (sh != null && sh.meals.firstOrNull() != r.id) {
-                        c = 0.0
-                        reuseNote = "♻️ bought for " + Shares.mealLabel(st, sh.meals.first(), recipes(st)[sh.meals.first()]?.name ?: "").substringBefore(" ·")
+                    val weekList = weekItems[term]
+                    if (sh != null && weekList != null && sh.meals.size > 1) {
+                        // Shared this week: the package(s) bought for the week, split by how much each meal uses.
+                        val name = term + " " + list.first().name
+                        val mealBase = Prices.cost(name, list, prods[term]?.product)
+                        val weekBase = Prices.cost(name, weekList, prods[term]?.product)
+                        val weekCost = if (mealBase != null && weekBase != null && mealBase > 0) c * weekBase / mealBase else c
+                        c = weekCost * shareOf(list, weekList, sh.meals.size)
+                        reuseNote = "share of " + (sh.pack?.let { "$it pkg" } ?: "package")
                     } else if (term in leftover) {
                         c = 0.0
                         reuseNote = "♻️ left over this week"
@@ -1915,6 +1921,18 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (known == 0) null else MealCost(total, saved, lines)
         }
+    }
+
+    /** This meal's part of the week's amount (by weight when it can tell, else an even split). */
+    private fun shareOf(meal: List<ShopItem>, week: List<ShopItem>, meals: Int): Double {
+        fun grams(l: List<ShopItem>) = l.mapNotNull { Nutrition.grams(Ingredient(it.qty, it.unit, it.name)) }.sum()
+        val m = grams(meal)
+        val w = grams(week)
+        if (m > 0 && w > 0) return (m / w).coerceIn(0.0, 1.0)
+        val mq = meal.sumOf { it.qty }
+        val wq = week.sumOf { it.qty }
+        if (mq > 0 && wq > 0 && meal.all { it.unit == meal.first().unit } && week.all { it.unit == meal.first().unit }) return (mq / wq).coerceIn(0.0, 1.0)
+        return 1.0 / meals
     }
 
     /** Pack details for a meat item on the Shop list: what's still to buy after the freezer. */
