@@ -379,8 +379,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val cutoff = System.currentTimeMillis() - 21L * 86_400_000L
         val recent = st.history.filter { it.date >= cutoff }.flatMap { it.recipes }.toSet()
         val lastShown = browseSets.lastOrNull().orEmpty().toSet()
-        // 👎 meals never come up as ideas (you can still search for them).
-        val all = bundle.recipes.filter { !it.imported && it.id !in st.removed && st.ratings[it.id] != -1 }
+        // 👎 meals never come up as ideas (you can still search for them); 😐 meals about half as often.
+        val all = bundle.recipes.filter {
+            !it.imported && it.id !in st.removed && st.ratings[it.id] != -1 && (st.ratings[it.id] != 2 || Math.random() < 0.5)
+        }
         var pool = all.filter { it.id !in st.week && it.id !in recent && it.id !in lastShown }
         if (pool.size < 10) pool = all.filter { it.id !in st.week }
         // Within each protein, sale meals tend to come first; then take one from each protein in turn.
@@ -677,7 +679,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSharedOpen(open: Boolean) = edit { it.copy(sharedClosed = !open) }
 
-    /** 👍 (1), 👎 (-1) or skipped (0). Tapping the same thumb again clears it. */
+    /** 👍 (1), 😐 (2), 👎 (-1) or skipped (0). Tapping the same thumb again clears it. */
     fun rate(id: Int, v: Int) = edit { s ->
         s.copy(ratings = if (v != 0 && s.ratings[id] == v) s.ratings + (id to 0) else s.ratings + (id to v))
     }

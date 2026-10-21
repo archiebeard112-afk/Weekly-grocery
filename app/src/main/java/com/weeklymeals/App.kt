@@ -1158,7 +1158,7 @@ private fun RecipeScreen(
                 Text(r.name, style = MaterialTheme.typography.headlineSmall)
             }
             val badges = Logic.badges(r, vm.isBudget(st, r))
-            // Badges, then your rating (👍 Liked / 👎 Not for us), or "Rate" if you haven't yet. Tap it to change.
+            // Badges, then your rating (👍 Loved it / 😐 It was fine / 👎 Not for us), or "Rate" if you haven't yet. Tap it to change.
             var rating by remember { mutableStateOf(false) }
             val mine = st.ratings[r.id]
             Row(
@@ -1166,9 +1166,9 @@ private fun RecipeScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
                 badges.forEach { Badge(it, small = false) }
-                val rated = mine == 1 || mine == -1
+                val rated = mine == 1 || mine == 2 || mine == -1
                 Text(
-                    when (mine) { 1 -> "👍 Liked"; -1 -> "👎 Not for us"; else -> "👍👎 Rate" },
+                    when (mine) { 1 -> "👍 Loved it"; 2 -> "😐 It was fine"; -1 -> "👎 Not for us"; else -> "👍😐👎 Rate" },
                     style = MaterialTheme.typography.labelLarge,
                     color = if (rated) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.clip(RoundedCornerShape(50))
@@ -1186,18 +1186,11 @@ private fun RecipeScreen(
                     onDismissRequest = { rating = false },
                     title = { Text("How was ${r.name}?") },
                     text = {
-                        // Thumbs, then Clear / Cancel lined up under them (same two columns).
+                        // Three choices, then Clear / Cancel under them.
                         Column(Modifier.fillMaxWidth()) {
-                            Row(Modifier.fillMaxWidth()) {
-                                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                    TextButton(onClick = { pick(1) }) { Text("👍", fontSize = 40.sp, modifier = Modifier.alpha(if (mine == -1) 0.4f else 1f)) }
-                                }
-                                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                    TextButton(onClick = { pick(-1) }) { Text("👎", fontSize = 40.sp, modifier = Modifier.alpha(if (mine == 1) 0.4f else 1f)) }
-                                }
-                            }
+                            RatingChoices(mine, ::pick)
                             Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                                if (mine == 1 || mine == -1) {
+                                if (mine == 1 || mine == 2 || mine == -1) {
                                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                                         TextButton(onClick = { rating = false; vm.rate(r.id, 0) }) { Text("Clear") }
                                     }
@@ -1535,7 +1528,7 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
                                 TextButton(onClick = { open = if (open == id) null else id }) {
                                     Text(
                                         "${r.emoji}  ${r.name}" + (side?.let { " + ${it.label}" } ?: "") +
-                                            (if (st.ratings[id] == 1) "  👍" else ""),
+                                            (when (st.ratings[id]) { 1 -> "  👍"; 2 -> "  😐"; else -> "" }),
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
@@ -1721,4 +1714,22 @@ private val TuneIcon: androidx.compose.ui.graphics.vector.ImageVector by lazy {
         r(3f, 11f, 18f, 2f); r(7f, 9f, 2.5f, 6f)
         r(3f, 17f, 18f, 2f); r(12f, 15f, 2.5f, 6f)
     }.build()
+}
+
+/** The rating choices in a row: 👍 Loved it, 😐 It was fine, 👎 Not for us. The ones you didn't pick are dimmed. */
+@Composable
+fun RatingChoices(mine: Int?, onPick: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth()) {
+        listOf(Triple(1, "👍", "Loved it"), Triple(2, "😐", "It was fine"), Triple(-1, "👎", "Not for us")).forEach { (v, emoji, label) ->
+            val dim = (mine == 1 || mine == 2 || mine == -1) && mine != v
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                TextButton(onClick = { onPick(v) }, modifier = Modifier.alpha(if (dim) 0.4f else 1f)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(emoji, fontSize = 40.sp)
+                        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                    }
+                }
+            }
+        }
+    }
 }

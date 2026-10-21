@@ -397,15 +397,8 @@ fun CookScreen(
                         title = { Text("How was ${r.name}?") },
                         text = {
                             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Row(Modifier.fillMaxWidth()) {
-                                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                        TextButton(onClick = { finish(1) }) { Text("👍", fontSize = 40.sp) }
-                                    }
-                                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                        TextButton(onClick = { finish(-1) }) { Text("👎", fontSize = 40.sp) }
-                                    }
-                                }
-                                // Centered under the thumbs.
+                                RatingChoices(null, ::finish)
+                                // Centered under the choices.
                                 TextButton(onClick = { finish(0) }, modifier = Modifier.padding(top = 12.dp)) { Text("Skip") }
                             }
                         },

@@ -146,7 +146,7 @@ data class UserState(
     val browseScope: String = "app",
     /** Cook screen: you folded the "Shared this week" list (it starts open). */
     val sharedClosed: Boolean = false,
-    /** Your rating for a meal: 1 = 👍, -1 = 👎 (left out of Browse's ideas), 0 = asked, skipped. */
+    /** Your rating for a meal: 1 = 👍, 2 = 😐 meh (suggested half as often), -1 = 👎 (left out of Browse's ideas), 0 = asked, skipped. */
     val ratings: Map<Int, Int> = emptyMap(),
     /** The day your week starts on: 0 = Monday .. 6 = Sunday. */
     val weekStart: Int = 0,
