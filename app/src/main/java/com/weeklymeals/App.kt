@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -1486,8 +1487,15 @@ private fun FavoritesScreen(
 @Composable
 private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
     val all = vm.recipes(st)
-    val fmt = remember { java.text.SimpleDateFormat("EEE, MMM d, yyyy", java.util.Locale.getDefault()) }
+    val thisYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
+    val weekFmt: (Long) -> String = { ms ->
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = ms }
+        val pattern = if (cal.get(java.util.Calendar.YEAR) == thisYear) "MMM d" else "MMM d, yyyy"
+        java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault()).format(java.util.Date(ms))
+    }
     var confirmDelete by remember { mutableStateOf<PastWeek?>(null) }
+    // The newest week starts open; the rest are one line each until tapped.
+    var openWeek by remember { mutableStateOf(st.history.firstOrNull()?.date) }
     Scaffold(
         // Shown under the app's top bar, so the status bar is already accounted for.
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -1512,26 +1520,48 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
             }
             items(st.history, key = { it.date }) { w ->
                 var open by remember { mutableStateOf<Int?>(null) }
-                Card(colors = cardColors, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text("Week of ${fmt.format(java.util.Date(w.date))}", style = MaterialTheme.typography.titleMedium)
-                        Text("${w.recipes.size + w.storeMeals.size} meals · cooking for ${w.servings}", style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.padding(4.dp))
+                val expanded = openWeek == w.date
+                Card(
+                    colors = if (expanded) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)) else cardColors,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    // One short line per week; tap it to show that week's meals (one week open at a time).
+                    Row(
+                        Modifier.fillMaxWidth().clickable { openWeek = if (expanded) null else w.date }
+                            .heightIn(min = 52.dp).padding(start = 14.dp, end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Week of ${weekFmt(w.date)}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Text("${w.recipes.size + w.storeMeals.size} meals", style = MaterialTheme.typography.bodySmall)
+                        Icon(
+                            if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                            if (expanded) "Close" else "Open",
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
+                    if (expanded) Column(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp)) {
+                        HorizontalDivider(Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                         w.recipes.forEach { id ->
                             val r = all[id]
                             if (r == null) {
                                 Text(
-                                    "• " + (st.deletedNames[id]?.let { "$it (deleted)" } ?: "(recipe no longer available)"),
+                                    st.deletedNames[id]?.let { "$it (deleted)" } ?: "(recipe no longer available)",
                                     style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
                                 )
                             } else {
                                 val side = w.sides[id]?.let { vm.sideMap[it] }
-                                TextButton(onClick = { open = if (open == id) null else id }) {
-                                    Text(
-                                        "${r.emoji}  ${r.name}" + (side?.let { " + ${it.label}" } ?: "") +
-                                            (when (st.ratings[id]) { 1 -> "  👍"; 2 -> "  😐"; else -> "" }),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
+                                Row(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                        .clickable { open = if (open == id) null else id }
+                                        .heightIn(min = 44.dp).padding(horizontal = 6.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(r.name, style = MaterialTheme.typography.bodyLarge)
+                                        side?.let { Text("+ ${it.label}", style = MaterialTheme.typography.bodySmall) }
+                                    }
+                                    when (st.ratings[id]) { 1 -> Text("👍"); 2 -> Text("😐") }
                                 }
                                 if (open == id) {
                                     Column(Modifier.padding(start = 12.dp, bottom = 6.dp)) {
@@ -1543,13 +1573,18 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
                                 }
                             }
                         }
-                        w.storeMeals.forEach { Text("• 🛒 $it", style = MaterialTheme.typography.bodyMedium) }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        w.storeMeals.forEach {
+                            Column(Modifier.heightIn(min = 44.dp).padding(horizontal = 6.dp, vertical = 4.dp), verticalArrangement = Arrangement.Center) {
+                                Text(it, style = MaterialTheme.typography.bodyLarge)
+                                Text("Store meal", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        Row(Modifier.padding(start = 6.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Cooking for ${w.servings}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                             Button(onClick = {
                                 vm.repeatWeek(w)
                                 vm.message.value = "Added to My Week"
                             }) { Text("Repeat this week") }
-                            Spacer(Modifier.weight(1f))
                             IconButton(onClick = { confirmDelete = w }) { Icon(Icons.Filled.Delete, "Delete") }
                         }
                     }
