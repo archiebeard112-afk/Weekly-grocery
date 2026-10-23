@@ -110,6 +110,11 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                         modifier = Modifier.height(34.dp).width(40.dp),
                     ) { Text("+") }
                 }
+                Text(
+                    "Recipes you added keep their own servings and amounts.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             // Which day the Week tab starts on (your shopping day works well).
             SettingsCard("📅", "Week starts on", Logic.DAY_LONG[st.weekStart]) {

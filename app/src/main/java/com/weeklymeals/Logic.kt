@@ -32,7 +32,11 @@ object Logic {
     fun isFav(r: Recipe, st: UserState): Boolean =
         r.id !in st.hidden && r.id !in st.removed && (r.imported || r.id in st.favs)
 
+    /** Servings to show a recipe at: ones you added keep their own servings, the rest follow Cooking for. */
+    fun servFor(r: Recipe, serv: Int): Int = if (r.imported) r.base else serv
+
     fun scale(i: Ingredient, serv: Int, base: Int): Ingredient {
+        if (serv == base && i.q > 0) return i // not resized: keep the amount exactly as written
         var q = i.q * serv / base
         q = if (i.u in COUNT_UNITS) {
             max(1.0, ceil(q - 0.01))
@@ -44,6 +48,10 @@ object Logic {
 
     fun fmt(n: Double): String {
         val w = floor(n + 1e-9).toInt()
+        // Thirds and eighths as written in a recipe ("⅓ cup", "⅛ tsp"); anything else to the nearest ¼.
+        val exact = listOf(1 / 8.0 to "⅛", 1 / 3.0 to "⅓", 3 / 8.0 to "⅜", 5 / 8.0 to "⅝", 2 / 3.0 to "⅔", 7 / 8.0 to "⅞")
+            .firstOrNull { Math.abs(n - w - it.first) < 0.01 }
+        if (exact != null) return (if (w > 0) w.toString() else "") + exact.second
         val f = Math.round((n - w) * 4) / 4.0
         val frac = when (f) {
             0.25 -> "¼"
@@ -106,7 +114,7 @@ object Logic {
         for (id in week) {
             val r = recipes[id] ?: continue
             val sideIngredients = sides[id]?.let { sideMap[it] }?.ingredients ?: emptyList()
-            val all = r.ingredients.map { scale(it, serv, r.base) } +
+            val all = r.ingredients.map { scale(it, servFor(r, serv), r.base) } +
                 sideIngredients.map { scale(it, serv, 4) }
             for (i in all) {
                 val key = "${i.name}|${i.u}".lowercase()

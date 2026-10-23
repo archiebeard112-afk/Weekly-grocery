@@ -627,7 +627,7 @@ private fun RecipeDetails(
     // Each shopping item's price shows once, on its first ingredient line.
     val priced = mutableSetOf<String>()
     @Composable
-    fun line(i: Ingredient, base: Int) {
+    fun line(i: Ingredient, serv: Int, base: Int) {
         val term = Logic.searchTerm(i.name)
         val price = cost?.lines?.get(term)
         val first = price != null && priced.add(term)
@@ -680,11 +680,12 @@ private fun RecipeDetails(
             }
         }
     }
-    Heading("Ingredients (for $serv)")
-    r.ingredients.forEach { line(it, r.base) }
+    val mainServ = Logic.servFor(r, serv)
+    Heading("Ingredients (for $mainServ)")
+    r.ingredients.forEach { line(it, mainServ, r.base) }
     if (side != null && side.ingredients.isNotEmpty()) {
         Text("Side: ${side.label}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
-        side.ingredients.forEach { line(it, 4) }
+        side.ingredients.forEach { line(it, serv, 4) }
     }
     if (cost != null) {
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
@@ -1263,14 +1264,14 @@ private fun RecipeScreen(
 fun recipeShareText(r: Recipe, serv: Int, side: Side?): String = buildString {
     appendLine("${r.emoji} ${r.name}")
     val info = listOfNotNull(
-        "Serves $serv",
+        "Serves ${Logic.servFor(r, serv)}",
         Logic.fmtShort(Logic.cookMinutes(r)),
         Nutrition.perServing(r)?.let { "%,d cal".format(it) },
     )
     appendLine(info.joinToString(" · "))
     appendLine()
     appendLine("Ingredients")
-    r.ingredients.forEach { appendLine("• " + Logic.ingText(it, serv, r.base)) }
+    r.ingredients.forEach { appendLine("• " + Logic.ingText(it, Logic.servFor(r, serv), r.base)) }
     if (side != null && side.ingredients.isNotEmpty()) {
         appendLine()
         appendLine("Side: ${side.label}")

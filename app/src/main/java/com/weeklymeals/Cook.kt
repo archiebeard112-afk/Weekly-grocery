@@ -276,9 +276,10 @@ fun CookScreen(
     val side = if (id in st.week) st.sides[id]?.let { vm.sideMap[it] } else null
     val sideName = side?.label?.substringAfter(" ")
     val serv = st.servings
+    val mainServ = Logic.servFor(r, serv)
     val steps = remember(r, side) { Cook.order(r, side) }
-    // Amounts scaled to "Cooking for", added after each ingredient's first mention.
-    val mainPieces = remember(r, serv) { Cook.withAmounts(r.steps, r.ingredients.map { Logic.scale(it, serv, r.base) }, serv.toDouble() / r.base) }
+    // Amounts scaled to "Cooking for" (recipes you added keep their own), added after each ingredient's first mention.
+    val mainPieces = remember(r, mainServ) { Cook.withAmounts(r.steps, r.ingredients.map { Logic.scale(it, mainServ, r.base) }, mainServ.toDouble() / r.base) }
     val sidePieces = remember(side, serv) {
         side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, serv, 4) }, serv / 4.0) } ?: emptyList()
     }
@@ -445,7 +446,8 @@ private fun IngredientsPage(r: Recipe, side: Side?, sideName: String?, serv: Int
             color = MaterialTheme.colorScheme.primary,
         )
     }
-    IngredientColumns("${r.emoji} ${r.name} (for $serv)", r.ingredients.map { Logic.scale(it, serv, r.base) })
+    val mainServ = Logic.servFor(r, serv)
+    IngredientColumns("${r.emoji} ${r.name} (for $mainServ)", r.ingredients.map { Logic.scale(it, mainServ, r.base) })
     if (side != null && !isStoreSide(side)) IngredientColumns("${side.label} (side)", side.ingredients.map { Logic.scale(it, serv, 4) })
 }
 
@@ -517,8 +519,9 @@ internal fun MiniCook(vm: MealsViewModel, st: UserState, id: Int, onOpenApp: () 
     val side = if (id in st.week) st.sides[id]?.let { vm.sideMap[it] } else null
     val sideName = side?.label?.substringAfter(" ")
     val serv = st.servings
+    val mainServ = Logic.servFor(r, serv)
     val steps = remember(r, side) { Cook.order(r, side) }
-    val mainPieces = remember(r, serv) { Cook.withAmounts(r.steps, r.ingredients.map { Logic.scale(it, serv, r.base) }, serv.toDouble() / r.base) }
+    val mainPieces = remember(r, mainServ) { Cook.withAmounts(r.steps, r.ingredients.map { Logic.scale(it, mainServ, r.base) }, mainServ.toDouble() / r.base) }
     val sidePieces = remember(side, serv) {
         side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, serv, 4) }, serv / 4.0) } ?: emptyList()
     }
