@@ -158,6 +158,27 @@ object Prices {
     }
 
     /**
+     * What the amount a meal uses is worth, for things you already have: the used part of a
+     * package ([whole] is what buying it would cost). Spice jars count about 20 tsp.
+     */
+    fun usedValue(name: String, items: List<ShopItem>, product: Product?, whole: Double): Double {
+        val n = name.lowercase()
+        if (product == null && jarred.containsMatchIn(n)) {
+            val tsp = items.sumOf {
+                when (it.unit) { "tsp" -> it.qty; "tbsp" -> it.qty * 3; "pinch", "dash" -> it.qty / 16; else -> return whole }
+            }
+            return minOf(whole, tsp * 3.49 / 20)
+        }
+        val grams = items.mapNotNull { Nutrition.grams(Ingredient(it.qty, it.unit, it.name)) }.sum()
+        if (grams <= 0) return whole
+        val p = find(n)
+        if (product == null && p?.byWeight == true) return whole // Already priced for the exact amount.
+        val pack = product?.let { packGramsOf(it.size) } ?: p?.grams ?: return whole
+        val price = product?.let { it.promo ?: it.price } ?: p?.price ?: return whole
+        return minOf(whole, grams / pack * price)
+    }
+
+    /**
      * What it costs to buy enough of one shopping item ([items] are its amounts in the meal).
      * Uses the King Soopers product when known, otherwise typical prices. Null = unknown.
      */

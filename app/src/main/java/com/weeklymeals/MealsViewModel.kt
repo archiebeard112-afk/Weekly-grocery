@@ -1890,8 +1890,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                                 (m.cut?.let { " · ${m.perPack} ${Packs.pieceWord(it, m.perPack)}" } ?: "") +
                                 (if (frozen > 0) " · rest from freezer" else "")
                         }
-                        // This meal's share of the pack(s) bought for the week.
-                        Triple(m.cost * need / weekNeed, note, m)
+                        // This meal's share of the pack(s) bought for the week; from the freezer, just what it uses.
+                        val held = m.packs * (if (m.cut != null) m.perPack.toDouble() else m.pack.lb)
+                        Triple(if (fromFreezer && held > 0) m.cost * (need / held).coerceAtMost(1.0) else m.cost * need / weekNeed, note, m)
                     }
                 } else null
                 var c = meat?.first
@@ -1921,7 +1922,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 // (2 lb of potatoes left doesn't cover this meal if another meal needs them too).
                 val g = ShopGroup(term, weekItems[term] ?: list, list.first().aisle, emptyList())
                 val have = isHave(st, g) || fromFreezer
-                if (have) saved += c else total += c
+                // What you have saves only what this meal uses of it (½ tsp of thyme, not the jar).
+                if (have) saved += if (fromFreezer) c else Prices.usedValue(term + " " + list.first().name, list, prods[term]?.product, c)
+                else total += c
                 lines[term] = PriceLine(c, have, meat?.second ?: reuseNote, if (fromFreezer) "freezer" else haveZone(st, term))
             }
             if (known == 0) null else MealCost(total, saved, lines)
