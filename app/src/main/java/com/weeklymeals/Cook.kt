@@ -316,7 +316,6 @@ fun CookScreen(
                     .padding(horizontal = 18.dp, vertical = 12.dp),
             ) {
                 IngredientsPage(r, side, sideName, serv, steps)
-                SharedNotes(vm, st, id)
                 Spacer(Modifier.height(22.dp))
                 Text("Steps", style = MaterialTheme.typography.headlineSmall)
                 Text(
@@ -600,7 +599,6 @@ internal fun MiniCook(vm: MealsViewModel, st: UserState, id: Int, onOpenApp: () 
 }
 
 
-private fun termTitle(t: String) = t.replaceFirstChar { it.uppercase() }
 
 /** "🔁 Use ½ lb · save the rest for Thu" (or "the ½ lb saved from Mon") if this step uses a shared ingredient. */
 private fun shareForStep(vm: MealsViewModel, st: UserState, id: Int, text: String): String? {
@@ -620,76 +618,3 @@ private fun shareForStep(vm: MealsViewModel, st: UserState, id: Int, text: Strin
     }
 }
 
-/**
- * Ingredients this meal shares with others this week: how much to use now and what to save.
- * "Used it all" puts the other meals' share back on the Shop list.
- */
-@Composable
-private fun SharedNotes(vm: MealsViewModel, st: UserState, id: Int) {
-    if (id !in st.week) return
-    val all = vm.recipes(st)
-    val shares = vm.weekShares(st).values.filter { id in it.meals }
-    val usedHere = st.usedAll.filterValues { it == id }.keys
-    if (shares.isEmpty() && usedHere.isEmpty()) return
-    Spacer(Modifier.height(14.dp))
-    val open = !st.sharedClosed
-    // Tap the heading to fold or open the list (remembered).
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { vm.setSharedOpen(!open) }.padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            "Shared this week" + if (shares.isNotEmpty()) " (${shares.size})" else "",
-            style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.tertiary,
-            modifier = Modifier.weight(1f),
-        )
-        Text(if (open) "▾" else "▸", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.tertiary)
-    }
-    if (open) {
-        // Each ingredient, with its meals stacked and indented under it (this meal last).
-        shares.forEach { sh ->
-            val first = sh.meals.first() == id
-            val order = sh.meals.filter { it != id } + id
-            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    termTitle(sh.term), style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, modifier = Modifier.weight(1f),
-                )
-                // The first meal can use it all (the others then get their own on the Shop list).
-                if (first) {
-                    TextButton(
-                        onClick = { vm.useAll(sh.term, id) }, contentPadding = PaddingValues(horizontal = 6.dp),
-                        modifier = Modifier.height(30.dp),
-                    ) { Text("Used it all", style = MaterialTheme.typography.labelMedium) }
-                }
-            }
-            order.forEach { m ->
-                val here = m == id
-                Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 1.dp)) {
-                    Text(
-                        Shares.mealLabel(st, m, all[m]?.name ?: "").replace(" · ", "  ") + if (here) "  (this meal)" else "",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (here) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(sh.amounts[m].orEmpty(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
-                }
-            }
-        }
-    usedHere.forEach { term ->
-        Row(
-            Modifier.fillMaxWidth().padding(top = 6.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
-                .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "✓ Used all the $term here. The other meals get their own (it's back on your Shop list).",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = { vm.undoUseAll(term) }) { Text("Undo") }
-        }
-    }
-    }
-}
