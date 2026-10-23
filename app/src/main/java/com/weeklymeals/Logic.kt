@@ -274,6 +274,8 @@ object Logic {
     data class Need(val lb: Double = 0.0, val count: Double = 0.0, val grams: Double = 0.0, val pieceLb: Double = 0.0,
         /** Measured by volume (cups, tbsp…): an "oz" package size then means fluid ounces. */
         val volume: Boolean = false,
+        /** Number of cans when every line is counted in cans ("6 cans broth"). */
+        val cans: Double = 0.0,
     )
 
     /** Rough weight of one piece, for recipes that count meat or fish by the piece. */
@@ -289,6 +291,7 @@ object Logic {
         var grams = 0.0
         var piece = 0.0
         var volume = false
+        val allCans = items.isNotEmpty() && items.all { it.unit == "can" }
         for (i in items) {
             if (i.unit in setOf("cup", "cups", "tbsp", "tsp", "fl oz", "ml", "l", "qt", "pt", "gal", "quart", "pint")) volume = true
             when (i.unit) {
@@ -305,7 +308,7 @@ object Logic {
             }
         }
         // Weights in lb/oz also count toward grams (for packages sized in oz or fl oz).
-        return Need(lb, count, grams + lb * 453.6, piece, volume)
+        return Need(lb, count, grams + lb * 453.6, piece, volume, if (allCans) items.sumOf { it.qty } else 0.0)
     }
 
     private val sizeRx = Regex("(\\d+(?:\\.\\d+)?)\\s*(lbs?|oz|ct|count|pk|pack|each|ea)\\b")
@@ -342,6 +345,8 @@ object Logic {
             // A bag by weight (3 lb onions): how many bags hold that many pieces.
             need.count > 0 && v != null && unit.startsWith("lb") && need.pieceLb > 0 -> need.count * need.pieceLb / v
             need.lb > 0 && v != null && unit.startsWith("lb") -> need.lb / v
+            // Cans in the recipe, cans at the store: one for one (6 cans broth -> 6, not by weight).
+            need.cans > 0 && packG != null && packG <= 850 -> need.cans
             // Volume or weight against the package size: 36 fl oz of broth in 12 oz cans -> 3.
             need.grams > 0 && packG != null && packG > 0 -> need.grams / packG
             need.count > 0 && v == null -> need.count

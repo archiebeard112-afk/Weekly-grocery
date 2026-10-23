@@ -178,7 +178,8 @@ object Nutrition {
             "clove" -> 3.0
             // A slice of a loaf, not the whole loaf.
             "slices", "slice" -> f.each.takeIf { it in 1.0..60.0 } ?: 35.0
-            "can" -> f.pack.takeIf { it > 0 } ?: 425.0
+            // A can, not a carton: broth's pack is a 32 oz carton, but a can of it is 14.5 oz.
+            "can" -> f.pack.takeIf { it in 1.0..850.0 } ?: 425.0
             "pkg", "box" -> f.pack.takeIf { it > 0 } ?: 340.0
             "bag" -> f.pack.takeIf { it > 0 } ?: 340.0
             "jar" -> f.pack.takeIf { it > 0 } ?: 680.0
