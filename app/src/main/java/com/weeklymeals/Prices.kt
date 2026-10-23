@@ -26,7 +26,7 @@ object Prices {
         "bone-in skin-on chicken thigh" to lb(1.99), "chicken thigh" to lb(4.25), "chicken breast" to lb(2.59),
         "chicken tenderloin" to lb(4.99), "chicken wing" to lb(3.99), "cooked chicken" to P(6.99, 567.0), "chicken" to lb(3.49),
         "pork chop" to lb(4.48), "pork loin" to lb(2.99), "pork tenderloin" to lb(4.49), "pork shoulder" to lb(2.49),
-        "bacon" to P(6.99, 340.0), "breakfast sausage" to P(4.49, 454.0), "italian sausage" to P(7.99, 397.0),
+        "bacon" to P(6.99, 340.0), "breakfast sausage" to P(4.49, 454.0), "italian sausage" to P(5.99, 454.0),
         "kielbasa" to P(4.99, 397.0), "smoked sausage" to P(4.49, 397.0), "chorizo" to P(3.99, 340.0),
         "ham steak" to lb(4.99), "deli ham" to P(5.99, 255.0), "ham" to P(5.99, 454.0), "pepperoni" to P(3.99, 170.0),
         "deli turkey" to P(5.99, 255.0), "meatball" to P(7.99, 794.0), "shrimp" to lb(9.99), "salmon" to lb(10.99),
@@ -167,13 +167,13 @@ object Prices {
         val grams = items.mapNotNull { Nutrition.grams(Ingredient(it.qty, it.unit, it.name)) }.sum()
         product?.let { p ->
             val price = p.promo ?: p.price ?: return@let
-            val pack = packGramsOf(p.size)
-            val packs = if (pack != null && grams > 0) ceil(grams / pack - 1e-6).coerceAtLeast(1.0) else 1.0
-            return price * packs
+            // The same number of packages the cart would order (cans one for one, bags of pieces, fl oz…).
+            return price * Logic.suggestQty(Logic.needOf(items), p)
         }
         if (jarred.containsMatchIn(n)) return 3.49 // One jar of spice.
         val p = find(n) ?: return null
         if (grams <= 0) return p.price
-        return if (p.byWeight) grams / 453.6 * p.price else ceil(grams / p.grams - 1e-6).coerceAtLeast(1.0) * p.price
+        // Like the cart: a sliver over a package (under 5%) doesn't add another one.
+        return if (p.byWeight) grams / 453.6 * p.price else ceil(grams / p.grams - 0.05).coerceAtLeast(1.0) * p.price
     }
 }

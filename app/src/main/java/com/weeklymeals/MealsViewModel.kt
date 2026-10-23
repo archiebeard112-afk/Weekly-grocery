@@ -1854,7 +1854,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val key = listOf(
             r.id, r.ingredients.hashCode(), side, st.servings, st.pantry, st.haveTerms, prods.size,
             sales.day, sales.options.size, st.packWeights, if (r.id in st.week) st.week else null, st.sides,
-            st.freezer, st.wholeCuts, st.packCounts, st.usedAll, st.days,
+            st.freezer, st.wholeCuts, st.packCounts, st.usedAll, st.days, st.pantryBuy,
         )
         if (costCache.size > 2000) costCache.clear()
         return costCache.getOrPut(key) {
@@ -1909,15 +1909,18 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                         val weekBase = Prices.cost(name, weekList, prods[term]?.product)
                         val weekCost = if (mealBase != null && weekBase != null && mealBase > 0) c * weekBase / mealBase else c
                         c = weekCost * shareOf(list, weekList, sh.meals.size)
-                        reuseNote = "share of " + (sh.pack?.let { "$it pkg" } ?: "package")
+                        val size = sh.pack ?: Prices.packGrams(name)?.let { "${Logic.fmt(Math.round(it / 28.35).toDouble())} oz" }
+                        reuseNote = "share of " + (size?.let { "$it pkg" } ?: "package")
                     } else if (term in leftover) {
                         c = 0.0
                         reuseNote = "♻️ left over this week"
                     }
                 }
                 known++
-                val g = ShopGroup(term, list, list.first().aisle, emptyList())
-                val have = term in st.haveTerms || pantryStatus(st, g) == PantryStatus.COVERED || fromFreezer
+                // Planned meals: the Kitchen has to cover the whole week's amount, same as the Shop list
+                // (2 lb of potatoes left doesn't cover this meal if another meal needs them too).
+                val g = ShopGroup(term, weekItems[term] ?: list, list.first().aisle, emptyList())
+                val have = isHave(st, g) || fromFreezer
                 if (have) saved += c else total += c
                 lines[term] = PriceLine(c, have, meat?.second ?: reuseNote, if (fromFreezer) "freezer" else haveZone(st, term))
             }

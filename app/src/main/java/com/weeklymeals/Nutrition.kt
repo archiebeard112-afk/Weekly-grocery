@@ -184,10 +184,27 @@ object Nutrition {
             "bag" -> f.pack.takeIf { it > 0 } ?: 340.0
             "jar" -> f.pack.takeIf { it > 0 } ?: 680.0
             "bunch" -> f.pack.takeIf { it > 0 } ?: 100.0
-            "" -> f.each.takeIf { it > 0 } ?: f.pack.takeIf { it > 0 } ?: return null
+            "", "each", "whole", "medium" -> f.each.takeIf { it > 0 } ?: f.pack.takeIf { it > 0 } ?: return null
+            "large", "small" -> f.each.takeIf { it > 0 } ?: return null
             else -> return null
         }
-        return one * i.q
+        return one * i.q * sizeFactor(i)
+    }
+
+    private val eggName = Regex("\\beggs?\\b")
+
+    /** One piece is a medium one: a large onion or potato weighs about half again as much, a small one about ⅔. Eggs stay as they are. */
+    private fun sizeFactor(i: Ingredient): Double {
+        if (i.u !in setOf("", "each", "whole", "large", "small")) return 1.0
+        val n = i.name.lowercase()
+        if (eggName.containsMatchIn(n)) return 1.0
+        val words = i.u + " " + n
+        return when {
+            Regex("\\b(extra[- ]large|jumbo)\\b").containsMatchIn(words) -> 1.8
+            Regex("\\blarge\\b").containsMatchIn(words) -> 1.5
+            Regex("\\bsmall\\b").containsMatchIn(words) -> 0.65
+            else -> 1.0
+        }
     }
 
     private val cache = HashMap<Pair<String, Int>, Int?>()
