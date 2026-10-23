@@ -1494,8 +1494,8 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
         java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault()).format(java.util.Date(ms))
     }
     var confirmDelete by remember { mutableStateOf<PastWeek?>(null) }
-    // The newest week starts open; the rest are one line each until tapped.
-    var openWeek by remember { mutableStateOf(st.history.firstOrNull()?.date) }
+    // Every week starts closed, one line each until tapped.
+    var openWeek by remember { mutableStateOf<Long?>(null) }
     Scaffold(
         // Shown under the app's top bar, so the status bar is already accounted for.
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
