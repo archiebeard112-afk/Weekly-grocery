@@ -440,24 +440,24 @@ object Logic {
     // ---- Badges --------------------------------------------------------------
 
     private val BADGES = linkedMapOf(
-        "crockpot" to "🍲 Crock-Pot",
-        "instantpot" to "⚡ Instapot",
-        "airfryer" to "🌬️ Air Fryer",
-        "sheetpan" to "♨️ Sheet-Pan",
-        "grill" to "🔥 Grill",
-        "onepan" to "🍳 One-Pan",
-        "budget" to "💲 Budget",
+        "crockpot" to "Crock-Pot",
+        "instantpot" to "Instapot",
+        "airfryer" to "Air Fryer",
+        "sheetpan" to "Sheet-Pan",
+        "grill" to "Grill",
+        "onepan" to "One-Pan",
+        "budget" to "Budget",
     )
 
     /** Badge labels for a recipe, cooking method first, then Budget. */
     /** Cooking-method badges, then 💲 Budget when [budget] (it depends on prices and what you have). */
     /** Tile badges as (filter key, icon), most useful first: cooking methods, then Budget. */
     fun badgeKeys(r: Recipe, budget: Boolean = false): List<Pair<String, String>> =
-        BADGES.filterKeys { it != "budget" && it in r.tags }.map { (k, v) -> k to v.substringBefore(" ") } +
-            if (budget) listOf("budget" to "💲") else emptyList()
+        BADGES.filterKeys { it != "budget" && it in r.tags }.map { (k, v) -> k to v } +
+            if (budget) listOf("budget" to "Budget") else emptyList()
 
     fun badges(r: Recipe, budget: Boolean = false): List<String> =
-        BADGES.filterKeys { it != "budget" && it in r.tags }.values.toList() + if (budget) listOf("💲 Budget") else emptyList()
+        BADGES.filterKeys { it != "budget" && it in r.tags }.values.toList() + if (budget) listOf("Budget") else emptyList()
 
     fun productLabel(p: Product): String = buildString {
         append(p.title)
