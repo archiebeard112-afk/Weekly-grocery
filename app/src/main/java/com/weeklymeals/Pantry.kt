@@ -357,6 +357,8 @@ object Pantry {
      */
     fun termFor(title: String, known: Collection<String>): String {
         val t = title.lowercase()
+        // "Chosen Foods Avocado Oil" is the cooking oil, not avocados.
+        if (Regex("(?<!in )\\b(olive|vegetable|avocado) oil\\b").containsMatchIn(t)) return "olive oil"
         return known.filter { it.length >= 3 && Regex("\\b" + Regex.escape(it) + "(s|es)?\\b").containsMatchIn(t) }
             .maxByOrNull { it.length }
             ?: Logic.searchTerm(title)

@@ -222,6 +222,10 @@ object Logic {
         "garlic clove" to "garlic bulb", "garlic cloves" to "garlic bulb",
         "clove garlic" to "garlic bulb", "cloves garlic" to "garlic bulb",
         "clove of garlic" to "garlic bulb", "cloves of garlic" to "garlic bulb",
+        // Cooking oils are one item: any of them covers the others (bought and kept as olive oil).
+        "vegetable oil" to "olive oil", "avocado oil" to "olive oil",
+        "extra-virgin olive oil" to "olive oil", "extra virgin olive oil" to "olive oil",
+        "light olive oil" to "olive oil", "evoo" to "olive oil",
         "fresh ginger" to "ginger root",
         "tomato" to "tomatoes", "large tomato" to "tomatoes",
         "bell pepper" to "bell peppers",
