@@ -203,6 +203,7 @@ fun App(vm: MealsViewModel) {
         }
     }
     val ctx = LocalContext.current
+    remember { TileSize.load(ctx) }
     val openCart by vm.openCart.collectAsState()
     LaunchedEffect(openCart) {
         if (openCart) {
@@ -921,6 +922,7 @@ private fun BrowseScreen(
 
         // The set of 10: swipe left for more, right to go back. It follows your finger.
         val density = androidx.compose.ui.platform.LocalDensity.current
+        val tileCtx = LocalContext.current
         Column(
             Modifier.fillMaxWidth().weight(1f)
                 .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
@@ -956,7 +958,7 @@ private fun BrowseScreen(
                         RecipeTile(
                             r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
                             Modifier.weight(1f).fillMaxHeight()
-                                .onSizeChanged { TileSize.height = with(density) { it.height.toDp() } },
+                                .onSizeChanged { TileSize.save(tileCtx, with(density) { it.height.toDp() }) },
                             saleSave = Sales.savings(r, st.servings, cache),
                             onHold = { onHold(r) },
                             calories = vm.mealCalories(st, r),
@@ -1064,9 +1066,23 @@ private fun RecipeTile(
     }
 }
 
-/** Recipe tile height, taken from Browse's sets of 10 so Favorites and search results match. */
+/**
+ * Recipe tile height, taken from Browse's sets of 10 so Favorites and search results match.
+ * Remembered on the phone, so Favorites matches from the start, even before Browse is opened.
+ * Only grows: a keyboard opening over Browse squeezes its tiles, and that shouldn't shrink the rest.
+ */
 private object TileSize {
     var height by mutableStateOf(104.dp)
+    private fun prefs(ctx: android.content.Context) = ctx.getSharedPreferences("tile_size", android.content.Context.MODE_PRIVATE)
+    fun load(ctx: android.content.Context) {
+        val saved = prefs(ctx).getFloat("height", 0f)
+        if (saved > 0f) height = saved.dp
+    }
+    fun save(ctx: android.content.Context, h: androidx.compose.ui.unit.Dp) {
+        if (h.value <= height.value + 0.5f && prefs(ctx).contains("height")) return
+        height = h
+        prefs(ctx).edit().putFloat("height", h.value).apply()
+    }
 }
 
 /** "On sale this week" for one recipe's main ingredients. */
