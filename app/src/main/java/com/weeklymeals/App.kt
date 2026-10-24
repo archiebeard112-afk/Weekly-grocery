@@ -992,7 +992,8 @@ private fun RecipeTile(
         modifier = modifier.combinedClickable(onClick = onOpen, onLongClick = onHold),
     ) {
       Box(Modifier.fillMaxSize()) {
-        ColorBlob(r.id, 64.dp, 22.dp, 22.dp, Modifier.align(Alignment.BottomEnd))
+        // Round shape in the top corner, clear of the heart and + buttons at the bottom.
+        ColorBlob(r.id, 56.dp, 22.dp, (-22).dp, Modifier.align(Alignment.TopEnd))
       OnColor {
         Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 3.dp, end = 2.dp, bottom = 1.dp)) {
             // Icon-only badges so they always fit (full labels are on the recipe page).
@@ -1004,7 +1005,7 @@ private fun RecipeTile(
             val keep = (all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = all.filter { it in keep }.map { it.second }
             // Name with calories, badges and price right under it, so nothing overlaps.
-            Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f).fillMaxWidth().padding(end = 28.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                     val infoLine = badges.isNotEmpty() || calories != null
                     Text(
