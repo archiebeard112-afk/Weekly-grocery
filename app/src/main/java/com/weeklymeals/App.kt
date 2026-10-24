@@ -1023,6 +1023,8 @@ private fun RecipeTile(
                         badges.forEach { Badge(it, small = true) }
                     }
                     // Calories, then what you'd pay for this meal (bold at or under your budget line).
+                    // Shrinks a little when it doesn't fit (1,000+ cal), so "pantry" is never cut off.
+                    var infoSize by remember(calories, cost?.total, cost?.saved) { mutableStateOf(11.sp) }
                     Box(Modifier.padding(top = 2.dp).height(15.dp)) {
                         Text(
                             buildAnnotatedString {
@@ -1038,8 +1040,9 @@ private fun RecipeTile(
                                     if (c.saved >= 0.5) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(" · pantry") }
                                 }
                             },
-                            style = MaterialTheme.typography.labelSmall.copy(lineHeight = 14.sp), maxLines = 1,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = infoSize, lineHeight = 14.sp), maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { if (it.hasVisualOverflow && infoSize.value > 8f) infoSize = (infoSize.value - 0.5f).sp },
                         )
                     }
             }
