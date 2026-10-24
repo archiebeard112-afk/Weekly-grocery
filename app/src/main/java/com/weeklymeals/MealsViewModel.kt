@@ -1536,7 +1536,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Goes in "Already have": you said so, or the pantry has enough (unless you chose to buy it anyway). */
     fun isHave(st: UserState, g: ShopGroup): Boolean =
-        g.term in st.haveTerms ||
+        g.term in st.haveTerms || (Pantry.alwaysHave(g.term) && g.term !in st.pantryBuy) ||
             (g.term !in st.pantryBuy && (pantryStatus(st, g) == PantryStatus.COVERED || freezerCovers(st, g)))
 
     fun togglePantryBuy(term: String) = edit { s ->
@@ -1915,13 +1915,18 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                     } else if (term in leftover) {
                         c = 0.0
                         reuseNote = "♻️ left over this week"
+                    } else if (Pantry.keepsMonths(term + " " + list.first().name)) {
+                        // Keeps for months (spices, rice, oil): this meal costs only the part it uses.
+                        c = Prices.usedValue(term + " " + list.first().name, list, prods[term]?.product, c)
                     }
                 }
                 known++
                 // Planned meals: the Kitchen has to cover the whole week's amount, same as the Shop list
                 // (2 lb of potatoes left doesn't cover this meal if another meal needs them too).
                 val g = ShopGroup(term, weekItems[term] ?: list, list.first().aisle, emptyList())
-                val have = isHave(st, g) || fromFreezer
+                // A spice past its date is still yours (just "may be weak").
+                val weakSpice = pantryItem(st, term)?.let { Pantry.isSpice(it) && isExpired(it) && term !in st.pantryBuy } == true
+                val have = isHave(st, g) || fromFreezer || weakSpice
                 // What you have saves only what this meal uses of it (½ tsp of thyme, not the jar).
                 if (have) saved += if (fromFreezer) c else Prices.usedValue(term + " " + list.first().name, list, prods[term]?.product, c)
                 else total += c

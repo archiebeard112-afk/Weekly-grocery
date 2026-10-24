@@ -217,6 +217,21 @@ object Pantry {
         }
     }
 
+    /** Keeps for months once opened (spices, rice, pasta, flour, oil): a meal only uses up part of it. */
+    fun keepsMonths(name: String): Boolean {
+        val (shelf, kind) = classify(name) ?: return false
+        return when (shelf) {
+            "spices", "baking" -> true
+            "oils" -> !has(name.lowercase(), listOf("salsa", "pesto", "jam", "jelly"))
+            "dry" -> kind == "bag" || (kind == "box" && !has(name.lowercase(), listOf("broth", "stock")))
+            else -> false
+        }
+    }
+
+    /** Salt and pepper: everyone has them, so they're never priced or bought. */
+    fun alwaysHave(term: String): Boolean =
+        Regex("^(salt|black pepper|ground black pepper|pepper|peppercorns?|salt and pepper|salt & pepper)$").matches(term.lowercase().trim())
+
     private fun density(name: String): Double? {
         val n = name.lowercase()
         return tspPerOz.firstOrNull { (k, _) -> Regex("\\b" + Regex.escape(k)).containsMatchIn(n) }?.second
