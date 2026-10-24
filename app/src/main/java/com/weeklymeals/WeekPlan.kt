@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -245,12 +244,6 @@ fun WeekScreen(
     val rows: List<Pair<String, Int?>> =
         dayAt.map { d -> Logic.DAY_SHORT[d] to plan.slots[d] } + plan.extras.map { "Extra" to it }
 
-    // Roughly how tall each day's tile needs to be (dp): a day with store items is taller.
-    fun estDp(index: Int, hasRecipe: Boolean): Float {
-        val n = if (index < 7) st.storeMeals.count { it.day == dayAt[index] } else 0
-        return if (n == 0) 44f else 16f + (if (hasRecipe) 44f else 0f) + 28f * n
-    }
-
     // Fresh things you'll have extra of: tap the leftovers tile for the list and meals that use them up.
     val left = vm.weekLeftovers(st)
     var showLeft by remember { mutableStateOf(false) }
@@ -260,17 +253,11 @@ fun WeekScreen(
     val shares = vm.weekShares(st)
     fun usesLeftovers(id: Int) = shares.values.any { it.meals.indexOf(id) > 0 }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-    // The week stays on one screen (days with store items take more room, the rest squeeze a little).
-    // It only scrolls if there are extra meals or it truly can't fit.
+    // Scrolls whenever the days don't fit, so every day is always reachable.
     val tonightR = plan.slots[today]?.let { all[it] }
-    // Header, Tonight card, the three tiles, the panel's heading, then the days.
-    val needDp = 12f + 54f + (if (tonightR != null) 124f else 76f) + 64f + 36f +
-        rows.withIndex().sumOf { (i, row) -> estDp(i, row.second != null).toDouble() }.toFloat() + 6f * 5
-    val fits = plan.extras.isEmpty() && maxHeight.value >= needDp
     Column(
         Modifier.fillMaxSize()
-            .then(if (fits) Modifier else Modifier.verticalScroll(scroll))
+            .verticalScroll(scroll)
             // Same margins as Browse and Favorites.
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(ROW_GAP),
@@ -328,7 +315,6 @@ fun WeekScreen(
         // All the days in one rounded panel, a thin line between them.
         Column(
             Modifier.fillMaxWidth()
-                .then(if (fits) Modifier.weight(1f) else Modifier)
                 .clip(RoundedCornerShape(22.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainer),
         ) {
@@ -350,7 +336,7 @@ fun WeekScreen(
             if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             var rowMod = Modifier
                 .fillMaxWidth()
-                .then(if (fits) Modifier.weight(estDp(index, id != null)) else Modifier.heightIn(min = ROW_HEIGHT))
+                .heightIn(min = ROW_HEIGHT)
                 .onSizeChanged {
                     heights[index] = it.height.toFloat()
                     if (index == 0) rowPx = it.height.toFloat()
@@ -443,8 +429,7 @@ fun WeekScreen(
             }
         }
         }
-        if (!fits) Spacer(Modifier.height(12.dp))
-    }
+        Spacer(Modifier.height(12.dp))
     }
 
     if (showLeft) {
