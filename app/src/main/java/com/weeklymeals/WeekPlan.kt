@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -59,12 +61,86 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
 
-private val ROW_HEIGHT = 64.dp
+private val ROW_HEIGHT = 56.dp
 private val ROW_GAP = 6.dp
+private val STORE_PURPLE = androidx.compose.ui.graphics.Color(0xFFC79BFF)
+private val LEFT_BG = androidx.compose.ui.graphics.Color(0xFF26301A)
 
-/** One store-bought meal under a day: 🛒 name, price, and ✕ to take it off. Tap for details. */
+/** Meals planned this week: each recipe, plus one for each day that has store items. */
+fun mealCount(st: UserState): Int = st.week.size + st.storeMeals.map { it.day }.distinct().size
+
+/** A side's name without its emoji ("🥚 Egg rolls" → "Egg rolls"). */
+internal fun plainLabel(s: String): String = if (s.firstOrNull()?.isLetterOrDigit() != false) s else s.substringAfter(" ")
+
+/** A small capital-letters tag like STORE or LEFTOVERS. */
 @Composable
-private fun StoreLine(m: StoreMeal, onClick: () -> Unit, onRemove: () -> Unit) {
+private fun Tag(text: String, bg: androidx.compose.ui.graphics.Color, fg: androidx.compose.ui.graphics.Color) {
+    Text(
+        text, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, color = fg,
+        maxLines = 1,
+        modifier = Modifier.padding(start = 6.dp).clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 8.dp, vertical = 3.dp),
+    )
+}
+
+/** One of the three small tiles under Tonight: a big number and what it counts. */
+@Composable
+private fun StatTile(
+    modifier: Modifier, value: String, suffix: String?, label: String,
+    lime: Boolean = false, onClick: (() -> Unit)? = null,
+) {
+    val bg = if (lime) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer
+    val fg = if (lime) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    Column(
+        modifier.fillMaxHeight().clip(RoundedCornerShape(18.dp)).background(bg)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                append(value)
+                if (suffix != null) {
+                    pushStyle(androidx.compose.ui.text.SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp))
+                    append(suffix)
+                    pop()
+                }
+            },
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold), color = fg, maxLines = 1,
+        )
+        Text(
+            label, style = MaterialTheme.typography.bodySmall, maxLines = 1,
+            color = if (lime) fg else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (lime) FontWeight.SemiBold else FontWeight.Normal,
+        )
+    }
+}
+
+/** No dinner planned tonight: a dark card with a button to pick one. */
+@Composable
+private fun NothingTonight(day: Int, onAdd: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp)).background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                "TONIGHT · " + Logic.DAY_LONG[day].uppercase(), style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                "Nothing planned tonight", style = MaterialTheme.typography.titleLarge.copy(fontSize = 19.sp),
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Button(onClick = onAdd, contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.padding(start = 8.dp).height(42.dp)) {
+            Text("Add a meal", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/** One store-bought meal under a day: photo, name, price and a STORE tag. Tap for details and Remove. */
+@Composable
+private fun StoreLine(m: StoreMeal, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -76,10 +152,7 @@ private fun StoreLine(m: StoreMeal, onClick: () -> Unit, onRemove: () -> Unit) {
         m.price?.let {
             Text(Sales.money(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp))
         }
-        Text(
-            "✕", color = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.clickable(onClick = onRemove).padding(horizontal = 10.dp, vertical = 4.dp),
-        )
+        Tag("STORE", androidx.compose.ui.graphics.Color(0xFF2A2540), androidx.compose.ui.graphics.Color(0xFFD9C2FF))
     }
 }
 
@@ -133,7 +206,8 @@ fun WeekScreen(
     val dayAt = Logic.dayOrder(st.weekStart)
     val today = Logic.todayIndex()
     val density = LocalDensity.current
-    val gapPx = with(density) { ROW_GAP.toPx() }
+    // Rows sit right under each other in one panel (only a thin line between them).
+    val gapPx = 0f
     var rowPx by remember { mutableFloatStateOf(with(density) { ROW_HEIGHT.toPx() }) }
     // Each tile's real height (tiles with store items are taller), so dragging lands on the right day.
     val heights = remember { mutableStateMapOf<Int, Float>() }
@@ -177,12 +251,23 @@ fun WeekScreen(
         return if (n == 0) 46f else 16f + (if (hasRecipe) 46f else 0f) + 32f * n + 4f
     }
 
+    // Fresh things you'll have extra of: tap the leftovers tile for the list and meals that use them up.
+    val left = vm.weekLeftovers(st)
+    var showLeft by remember { mutableStateOf(false) }
+    // Store items on one day are one meal (pizza and garlic bread on Wednesday = 1).
+    val mealCount = mealCount(st)
+    // Later meals that use what an earlier meal opened (the rest of the ground beef).
+    val shares = vm.weekShares(st)
+    fun usesLeftovers(id: Int) = shares.values.any { it.meals.indexOf(id) > 0 }
+
     BoxWithConstraints(Modifier.fillMaxSize()) {
     // The week stays on one screen (days with store items take more room, the rest squeeze a little).
     // It only scrolls if there are extra meals or it truly can't fit.
     val tonightR = plan.slots[today]?.let { all[it] }
-    val needDp = 12f + 44f + 40f + (if (tonightR != null) 132f else 0f) + rows.withIndex().sumOf { (i, row) -> estDp(i, row.second != null).toDouble() }.toFloat() + 6f * (rows.size + 2)
-    val fits = plan.extras.isEmpty() && ((st.storeMeals.isEmpty() && tonightR == null) || maxHeight.value >= needDp)
+    // Header, Tonight card, the three tiles, the panel's heading, then the days.
+    val needDp = 12f + 54f + (if (tonightR != null) 124f else 76f) + 68f + 36f +
+        rows.withIndex().sumOf { (i, row) -> estDp(i, row.second != null).toDouble() }.toFloat() + 6f * 5
+    val fits = plan.extras.isEmpty() && maxHeight.value >= needDp
     Column(
         Modifier.fillMaxSize()
             .then(if (fits) Modifier else Modifier.verticalScroll(scroll))
@@ -190,63 +275,64 @@ fun WeekScreen(
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("This week", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-            // Fresh things you'll have extra of: tap for the list and meals that use them up.
-            val left = vm.weekLeftovers(st)
-            var showLeft by remember { mutableStateOf(false) }
-            if (left.isNotEmpty()) {
-                Text(
-                    "${left.size} leftover" + if (left.size == 1) "" else "s",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(end = 4.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(MaterialTheme.colorScheme.primary)
-                        .clickable { showLeft = true }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                )
-            }
-            if (showLeft) {
-                AlertDialog(
-                    onDismissRequest = { showLeft = false },
-                    title = { Text("Left over this week") },
-                    text = {
-                        Column {
-                            Text(
-                                "Fresh things you'll only use part of. Most valuable first.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            left.forEach { l ->
-                                HorizontalDivider(Modifier.padding(vertical = 6.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("${l.label} ${l.term}", style = MaterialTheme.typography.bodyMedium)
-                                        Text("keeps ${l.keeps}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                    if (l.value >= 0.05) Text(Sales.money(l.value), style = MaterialTheme.typography.bodyMedium)
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = { TextButton(onClick = { showLeft = false; onLeftovers() }) { Text("See meals that use them") } },
-                    dismissButton = { TextButton(onClick = { showLeft = false }) { Text("Close") } },
-                )
-            }
+        // WEEK 43 over the dates of your week (Settings → Week starts on).
+        val first = java.time.LocalDate.now().minusDays(((today - st.weekStart + 7) % 7).toLong())
+        val last = first.plusDays(6)
+        val mon = java.time.format.DateTimeFormatter.ofPattern("MMM d")
+        val range = mon.format(first) + "–" + (if (last.month == first.month) last.dayOfMonth.toString() else mon.format(last))
+        Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
+            Text(
+                "WEEK " + first.get(java.time.temporal.WeekFields.ISO.weekOfWeekBasedYear()),
+                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(range, style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 38.sp))
         }
 
-        tonightR?.let { t ->
-            val side = st.sides[t.id]?.let { vm.sideMap[it] }
+        if (tonightR != null) {
+            val side = st.sides[tonightR.id]?.let { vm.sideMap[it] }
             val meta = listOfNotNull(
-                Logic.fmtShort(Logic.cookMinutes(t)),
-                vm.mealCost(st, t)?.let { Sales.money(it.total) },
-                side?.label,
+                Logic.fmtShort(Logic.cookMinutes(tonightR)),
+                vm.mealCost(st, tonightR)?.let { Sales.money(it.total) },
+                side?.label?.let(::plainLabel),
             ).joinToString(" · ")
-            TonightCard(t, today, meta, onOpen = { onOpen(t.id) }, onCook = { onCook(t.id) })
+            TonightCard(tonightR, today, meta, onOpen = { onOpen(tonightR.id) }, onCook = { onCook(tonightR.id) })
+        } else {
+            NothingTonight(today, onBrowse)
         }
 
+        // Meals planned, what the week costs, and leftovers.
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val groceries = st.week.mapNotNull { id -> all[id]?.let { vm.mealCost(st, it)?.total } }.sum() +
+                st.storeMeals.sumOf { it.price ?: 0.0 }
+            StatTile(Modifier.weight(1f), "$mealCount", "/7", "meals planned")
+            StatTile(Modifier.weight(1f), "\$" + groceries.roundToInt(), null, "groceries")
+            StatTile(
+                Modifier.weight(1f), "${left.size}", null, if (left.size == 1) "leftover" else "leftovers",
+                lime = left.isNotEmpty(), onClick = if (left.isNotEmpty()) ({ showLeft = true }) else null,
+            )
+        }
+
+        Row(Modifier.fillMaxWidth().padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "The rest of the week", style = MaterialTheme.typography.titleMedium.copy(fontFamily = Look.Display),
+                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
+            )
+            if (st.week.isNotEmpty() || st.storeMeals.isNotEmpty()) {
+                TextButton(
+                    onClick = { confirmFinish = true },
+                    contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(36.dp),
+                ) { Text("Finish week", fontWeight = FontWeight.Bold) }
+            }
+        }
+
+        // All the days in one rounded panel, a thin line between them.
+        Column(
+            Modifier.fillMaxWidth()
+                .then(if (fits) Modifier.weight(1f) else Modifier)
+                .clip(RoundedCornerShape(22.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainer),
+        ) {
         rows.forEachIndexed { index, (label, id) ->
             val r = id?.let { all[it] }
             val dragged = id != null && id == dragId
@@ -259,9 +345,10 @@ fun WeekScreen(
                     MaterialTheme.colorScheme.primary.copy(alpha = 0.55f), flash.value,
                 )
                 isTarget -> MaterialTheme.colorScheme.primaryContainer
-                dragged -> MaterialTheme.colorScheme.secondaryContainer
+                dragged -> MaterialTheme.colorScheme.surfaceContainerHighest
                 else -> MaterialTheme.colorScheme.surfaceContainer
             }
+            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             var rowMod = Modifier
                 .fillMaxWidth()
                 .then(if (fits) Modifier.weight(estDp(index, id != null)) else Modifier.heightIn(min = ROW_HEIGHT))
@@ -271,8 +358,7 @@ fun WeekScreen(
                 }
                 .zIndex(if (dragged) 1f else 0f)
                 .graphicsLayer { translationY = if (dragged) dragY else 0f }
-                .then(if (dragged) Modifier.shadow(8.dp, RoundedCornerShape(18.dp)) else Modifier)
-                .clip(RoundedCornerShape(18.dp))
+                .then(if (dragged) Modifier.shadow(8.dp, RoundedCornerShape(14.dp)) else Modifier)
                 .background(bg)
             if (id != null && r != null) {
                 rowMod = rowMod
@@ -294,23 +380,24 @@ fun WeekScreen(
             } else {
                 rowMod = rowMod.clickable { onBrowse() }
             }
-            // Store-bought meals on this day (frozen pizza): the tile grows by a line for each.
+            // Store-bought meals on this day (frozen pizza): the row grows by a line for each.
             val meals = if (index < 7) st.storeMeals.filter { it.day == dayAt[index] } else emptyList()
             Row(
-                rowMod.padding(horizontal = 12.dp, vertical = if (meals.isEmpty()) 0.dp else 8.dp),
+                rowMod.padding(horizontal = 14.dp, vertical = if (meals.isEmpty()) 0.dp else 8.dp),
                 verticalAlignment = if (meals.isEmpty()) Alignment.CenterVertically else Alignment.Top,
             ) {
                 // The day in a round dot: the meal's color, an outline when empty; today's has a lime ring.
                 val dot = when {
                     r != null -> Look.color(r.id)
+                    meals.isNotEmpty() -> STORE_PURPLE
                     else -> androidx.compose.ui.graphics.Color.Transparent
                 }
                 Box(
-                    Modifier.padding(top = if (meals.isEmpty()) 0.dp else 2.dp).size(40.dp).clip(CircleShape).background(dot)
+                    Modifier.padding(top = if (meals.isEmpty()) 0.dp else 2.dp).size(38.dp).clip(CircleShape).background(dot)
                         .then(
                             when {
                                 isToday -> Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                                r == null -> Modifier.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                r == null && meals.isEmpty() -> Modifier.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
                                 else -> Modifier
                             },
                         ),
@@ -321,7 +408,7 @@ fun WeekScreen(
                         style = MaterialTheme.typography.labelMedium.copy(fontFamily = Look.Display),
                         fontWeight = FontWeight.ExtraBold,
                         color = when {
-                            r != null -> Look.Ink
+                            r != null || meals.isNotEmpty() -> Look.Ink
                             isToday -> MaterialTheme.colorScheme.primary
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                         },
@@ -343,33 +430,50 @@ fun WeekScreen(
                                 )
                                 val side = st.sides[r.id]?.let { vm.sideMap[it] }
                                 Text(
-                                    listOfNotNull(side?.label, Logic.fmtShort(Logic.cookMinutes(r))).joinToString(" · "),
+                                    listOfNotNull(side?.label?.let(::plainLabel), Logic.fmtShort(Logic.cookMinutes(r))).joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            Text("⋮⋮", color = MaterialTheme.colorScheme.outline)
+                            if (usesLeftovers(r.id)) Tag("LEFTOVERS", LEFT_BG, MaterialTheme.colorScheme.primary)
                         }
                     }
-                    meals.forEach { m ->
-                        StoreLine(m, onClick = { openMeal = m }, onRemove = { vm.removeStoreMeal(m.id) })
-                    }
+                    meals.forEach { m -> StoreLine(m) { openMeal = m } }
                 }
             }
         }
-
-        if (st.week.isNotEmpty() || st.storeMeals.isNotEmpty()) {
-            Box(Modifier.fillMaxWidth().padding(top = 2.dp), contentAlignment = Alignment.Center) {
-                OutlinedButton(
-                    onClick = { confirmFinish = true },
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                    modifier = Modifier.height(34.dp),
-                ) { Text("Finish week") }
-            }
         }
         if (!fits) Spacer(Modifier.height(12.dp))
     }
+    }
+
+    if (showLeft) {
+        AlertDialog(
+            onDismissRequest = { showLeft = false },
+            title = { Text("Left over this week") },
+            text = {
+                Column {
+                    Text(
+                        "Fresh things you'll only use part of. Most valuable first.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    left.forEach { l ->
+                        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${l.label} ${l.term}", style = MaterialTheme.typography.bodyMedium)
+                                Text("keeps ${l.keeps}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (l.value >= 0.05) Text(Sales.money(l.value), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showLeft = false; onLeftovers() }) { Text("See meals that use them") } },
+            dismissButton = { TextButton(onClick = { showLeft = false }) { Text("Close") } },
+        )
     }
 
     openMeal?.let { m ->
@@ -398,7 +502,7 @@ fun WeekScreen(
             title = { Text("Finish this week?") },
             text = {
                 Text(
-                    "Your ${st.week.size + st.storeMeals.size} meals will be saved to History, and the week and shopping list will be cleared." +
+                    "Your ${mealCount(st)} meals will be saved to History, and the week and shopping list will be cleared." +
                         if (st.pantry.isNotEmpty()) " Your pantry will be updated for what these meals used." else "",
                 )
             },

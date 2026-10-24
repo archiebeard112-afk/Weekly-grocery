@@ -328,7 +328,7 @@ fun App(vm: MealsViewModel) {
                     )
                     NavigationBarItem(
                         selected = tab == 0 && overlay == Overlay.None, onClick = { tab = 0; overlay = Overlay.None },
-                        icon = { CountIcon(st.week.size + st.storeMeals.size) { Icon(Icons.Filled.DateRange, null) } },
+                        icon = { CountIcon(mealCount(st)) { Icon(Icons.Filled.DateRange, null) } },
                         label = { TabLabel("Week") }, colors = navColors,
                     )
                     NavigationBarItem(
