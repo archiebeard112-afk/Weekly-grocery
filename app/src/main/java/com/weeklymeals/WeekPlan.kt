@@ -293,7 +293,6 @@ fun WeekScreen(
             val side = st.sides[tonightR.id]?.let { vm.sideMap[it] }
             val meta = listOfNotNull(
                 Logic.fmtShort(Logic.cookMinutes(tonightR)),
-                vm.mealCost(st, tonightR)?.let { Sales.money(it.total) },
                 side?.label?.let(::plainLabel),
             ).joinToString(" · ")
             TonightCard(tonightR, today, meta, onOpen = { onOpen(tonightR.id) }, onCook = { onCook(tonightR.id) })
