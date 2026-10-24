@@ -1042,7 +1042,7 @@ private fun RecipeTile(
                             },
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = infoSize, lineHeight = 14.sp), maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            onTextLayout = { if (it.hasVisualOverflow && infoSize.value > 8f) infoSize = (infoSize.value - 0.5f).sp },
+                            onTextLayout = { if (it.isLineEllipsized(0) && infoSize.value > 8f) infoSize = (infoSize.value - 0.5f).sp },
                         )
                     }
             }
