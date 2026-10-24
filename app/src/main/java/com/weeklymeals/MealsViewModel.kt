@@ -1915,9 +1915,6 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                     } else if (term in leftover) {
                         c = 0.0
                         reuseNote = "♻️ left over this week"
-                    } else if (Pantry.keepsMonths(term + " " + list.first().name)) {
-                        // Keeps for months (spices, rice, oil): this meal costs only the part it uses.
-                        c = Prices.usedValue(term + " " + list.first().name, list, prods[term]?.product, c)
                     }
                 }
                 known++

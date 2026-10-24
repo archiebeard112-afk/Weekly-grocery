@@ -62,7 +62,7 @@ object Nutrition {
         "pancake mix" to N(370.0, 120.0), "panko" to N(360.0, 55.0), "breadcrumb" to N(395.0, 108.0), "crouton" to N(465.0, 30.0),
         "tortilla chips" to N(490.0, 30.0), "tortilla strips" to N(490.0, 30.0), "potato chips" to N(536.0, 28.0), "bread" to N(265.0, 45.0, 30.0),
         // Vegetables and fruit (raw)
-        "green onion" to N(32.0, 100.0, 15.0, 100.0), "scallion" to N(32.0, 100.0, 15.0), "onion" to N(40.0, 160.0, 110.0),
+        "green onion" to N(32.0, 100.0, 15.0, 100.0), "scallion" to N(32.0, 100.0, 15.0), "onion" to N(40.0, 160.0, 225.0),
         "minced garlic" to N(149.0, 136.0, 3.0), "garlic" to N(149.0, 136.0, 3.0), "bell pepper" to N(26.0, 150.0, 120.0),
         "jalapeño" to N(29.0, 90.0, 14.0), "jalapeno" to N(29.0, 90.0, 14.0), "fresno" to N(40.0, 90.0, 15.0),
         "shredded carrot" to N(41.0, 110.0), "carrot" to N(41.0, 128.0, 61.0), "celery" to N(14.0, 101.0, 40.0),

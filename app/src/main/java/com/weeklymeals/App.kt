@@ -715,8 +715,7 @@ private fun RecipeDetails(
             }
         }
         Text(
-            "Prices are for whole packages, as you'd buy them. Shared ones are split between this week's meals. " +
-                "Spices and pantry staples count only what you use.",
+            "Prices are for whole packages, as you'd buy them. Shared ones are split between this week's meals.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
