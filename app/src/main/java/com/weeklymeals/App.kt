@@ -359,6 +359,7 @@ fun App(vm: MealsViewModel) {
                         vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 }, flashId = flashId,
                         onLeftovers = { pendingFilter = "leftovers"; tab = 1 },
                         onAddStore = { vm.setBrowseScope(BrowseScope.STORE); tab = 1 },
+                        onCook = { id -> vm.startCooking(id); cooking = id },
                     ) { flashId = null }
                     1 -> BrowseScreen(
                         vm, st, toggleFav,
