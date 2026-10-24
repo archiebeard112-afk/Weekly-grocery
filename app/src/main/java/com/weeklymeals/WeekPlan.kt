@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -47,6 +49,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
 
@@ -60,7 +65,8 @@ private fun StoreLine(m: StoreMeal, onClick: () -> Unit, onRemove: () -> Unit) {
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (m.image.isNotBlank()) ProductPhoto(m.image, 28.dp) else Text("🛒", style = MaterialTheme.typography.titleMedium)
+        if (m.image.isNotBlank()) ProductPhoto(m.image, 28.dp)
+        else androidx.compose.material3.Icon(Icons.Filled.ShoppingCart, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.tertiary)
         Spacer(Modifier.width(8.dp))
         Text(m.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         m.price?.let {
@@ -141,19 +147,21 @@ fun WeekScreen(
         verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("This week", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            // ♻️ Fresh things you'll have extra of: tap for the list and meals that use them up.
+            Text("This week", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+            // Fresh things you'll have extra of: tap for the list and meals that use them up.
             val left = vm.weekLeftovers(st)
             var showLeft by remember { mutableStateOf(false) }
             if (left.isNotEmpty()) {
                 Text(
-                    "♻️ ${left.size}",
+                    "${left.size} leftover" + if (left.size == 1) "" else "s",
                     style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.padding(end = 4.dp)
                         .clip(RoundedCornerShape(50))
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
+                        .background(MaterialTheme.colorScheme.primary)
                         .clickable { showLeft = true }
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                 )
             }
             if (showLeft) {
@@ -193,13 +201,14 @@ fun WeekScreen(
             val flashing = id != null && id == flashId && flash.value > 0f
             val bg = when {
                 flashing -> androidx.compose.ui.graphics.lerp(
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    MaterialTheme.colorScheme.surfaceContainer,
                     MaterialTheme.colorScheme.primary.copy(alpha = 0.55f), flash.value,
                 )
                 isTarget -> MaterialTheme.colorScheme.primaryContainer
                 dragged -> MaterialTheme.colorScheme.secondaryContainer
-                isToday -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                // Tonight's meal is a block of its own color.
+                isToday && r != null -> Look.color(r.id)
+                else -> MaterialTheme.colorScheme.surfaceContainer
             }
             var rowMod = Modifier
                 .fillMaxWidth()
@@ -210,8 +219,8 @@ fun WeekScreen(
                 }
                 .zIndex(if (dragged) 1f else 0f)
                 .graphicsLayer { translationY = if (dragged) dragY else 0f }
-                .then(if (dragged) Modifier.shadow(8.dp, RoundedCornerShape(14.dp)) else Modifier)
-                .clip(RoundedCornerShape(14.dp))
+                .then(if (dragged) Modifier.shadow(8.dp, RoundedCornerShape(18.dp)) else Modifier)
+                .clip(RoundedCornerShape(18.dp))
                 .background(bg)
             if (id != null && r != null) {
                 rowMod = rowMod
@@ -235,30 +244,56 @@ fun WeekScreen(
             }
             // Store-bought meals on this day (frozen pizza): the tile grows by a line for each.
             val meals = if (index < 7) st.storeMeals.filter { it.day == dayAt[index] } else emptyList()
+            val tonight = isToday && r != null && !flashing && !isTarget && !dragged
+            val tile: @Composable (@Composable () -> Unit) -> Unit = { c -> if (tonight) OnColor(c) else c() }
+            tile {
             Row(
                 rowMod.padding(horizontal = 12.dp, vertical = if (meals.isEmpty()) 0.dp else 8.dp),
                 verticalAlignment = if (meals.isEmpty()) Alignment.CenterVertically else Alignment.Top,
             ) {
-                Text(
-                    label,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(46.dp).padding(top = if (meals.isEmpty()) 0.dp else 6.dp),
-                )
+                // The day in a round dot: the meal's color, dark for tonight, an outline when empty.
+                val dot = when {
+                    tonight -> Look.Ink
+                    r != null -> Look.color(r.id)
+                    else -> androidx.compose.ui.graphics.Color.Transparent
+                }
+                Box(
+                    Modifier.padding(top = if (meals.isEmpty()) 0.dp else 2.dp).size(40.dp).clip(CircleShape).background(dot)
+                        .then(if (r == null) Modifier.border(1.5.dp, if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape) else Modifier),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        if (label == "Extra") "+" else label.uppercase(),
+                        style = MaterialTheme.typography.labelMedium.copy(fontFamily = Look.Display),
+                        fontWeight = FontWeight.ExtraBold,
+                        color = when {
+                            tonight -> Look.Paper
+                            r != null -> Look.Ink
+                            isToday -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     if (r == null && meals.isEmpty()) {
-                        Text("+ Add a meal", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
+                        Text("+ Add a meal", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
                     }
                     if (r != null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
-                            Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(r.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (tonight) {
+                                    Text("TONIGHT", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                                }
+                                Text(
+                                    r.name,
+                                    style = if (tonight) MaterialTheme.typography.titleLarge.copy(fontSize = 19.sp, lineHeight = 22.sp) else MaterialTheme.typography.bodyLarge,
+                                    fontWeight = if (tonight) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
                                 val side = st.sides[r.id]?.let { vm.sideMap[it] }
                                 Text(
-                                    listOfNotNull(side?.label, "⏱ " + Logic.fmtShort(Logic.cookMinutes(r))).joinToString(" · "),
+                                    listOfNotNull(side?.label, Logic.fmtShort(Logic.cookMinutes(r))).joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -271,6 +306,7 @@ fun WeekScreen(
                         StoreLine(m, onClick = { openMeal = m }, onRemove = { vm.removeStoreMeal(m.id) })
                     }
                 }
+            }
             }
         }
 
@@ -290,7 +326,7 @@ fun WeekScreen(
     openMeal?.let { m ->
         AlertDialog(
             onDismissRequest = { openMeal = null },
-            title = { Text("🛒 " + m.title) },
+            title = { Text(m.title) },
             text = {
                 Column {
                     val detail = listOfNotNull(m.size.ifBlank { null }, m.price?.let { Sales.money(it) }).joinToString(" · ")

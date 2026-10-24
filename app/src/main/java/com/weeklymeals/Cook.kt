@@ -413,7 +413,7 @@ fun CookScreen(
 
 @Composable
 private fun StepTag(step: CookStep, r: Recipe, side: Side?) {
-    val text = if (step.isSide) "${side?.label ?: "Side"} · Side" else "${r.emoji} Main"
+    val text = if (step.isSide) "${side?.label ?: "Side"} · Side" else "Main"
     Text(
         text,
         style = MaterialTheme.typography.labelLarge,
@@ -446,7 +446,7 @@ private fun IngredientsPage(r: Recipe, side: Side?, sideName: String?, serv: Int
         )
     }
     val mainServ = Logic.servFor(r, serv)
-    IngredientColumns("${r.emoji} ${r.name} (for $mainServ)", r.ingredients.map { Logic.scale(it, mainServ, r.base) })
+    IngredientColumns("${r.name} (for $mainServ)", r.ingredients.map { Logic.scale(it, mainServ, r.base) })
     if (side != null && !isStoreSide(side)) IngredientColumns("${side.label} (side)", side.ingredients.map { Logic.scale(it, serv, 4) })
 }
 
@@ -543,7 +543,7 @@ internal fun MiniCook(vm: MealsViewModel, st: UserState, id: Int, onOpenApp: () 
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "${r.emoji} ${r.name}", style = MaterialTheme.typography.titleMedium,
+                    r.name, style = MaterialTheme.typography.titleMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                 )
                 TextButton(onClick = onOpenApp) { Text("Open app") }

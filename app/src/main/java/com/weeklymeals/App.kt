@@ -319,23 +319,29 @@ fun App(vm: MealsViewModel) {
                 )
             },
             bottomBar = {
-                NavigationBar {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
+                    // The open tab sits in a lime pill.
+                    val navColors = androidx.compose.material3.NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                        indicatorColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                    )
                     NavigationBarItem(
                         selected = tab == 0 && overlay == Overlay.None, onClick = { tab = 0; overlay = Overlay.None },
                         icon = { CountIcon(st.week.size + st.storeMeals.size) { Icon(Icons.Filled.DateRange, null) } },
-                        label = { TabLabel("Week") },
+                        label = { TabLabel("Week") }, colors = navColors,
                     )
                     NavigationBarItem(
                         selected = tab == 1 && overlay == Overlay.None, onClick = { tab = 1; overlay = Overlay.None },
-                        icon = { Icon(Icons.Filled.Search, null) }, label = { TabLabel("Browse") },
+                        icon = { Icon(Icons.Filled.Search, null) }, label = { TabLabel("Browse") }, colors = navColors,
                     )
                     NavigationBarItem(
                         selected = tab == 2 && overlay == Overlay.None, onClick = { tab = 2; overlay = Overlay.None },
-                        icon = { Icon(Icons.Filled.Favorite, null) }, label = { TabLabel("Favorites") },
+                        icon = { Icon(Icons.Filled.Favorite, null) }, label = { TabLabel("Favorites") }, colors = navColors,
                     )
                     NavigationBarItem(
                         selected = tab == 3 && overlay == Overlay.None, onClick = { tab = 3; overlay = Overlay.None },
-                        icon = { Icon(Icons.Filled.ShoppingCart, null) }, label = { TabLabel("Shop") },
+                        icon = { Icon(Icons.Filled.ShoppingCart, null) }, label = { TabLabel("Shop") }, colors = navColors,
                     )
                 }
             },
@@ -749,7 +755,7 @@ private fun FavButton(r: Recipe, st: UserState, onToggle: (Recipe) -> Unit, modi
 }
 
 private val cardColors @Composable get() = CardDefaults.cardColors(
-    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+    containerColor = MaterialTheme.colorScheme.surfaceContainer,
 )
 
 // ---- Browse ------------------------------------------------------------------------
@@ -979,27 +985,31 @@ private fun RecipeTile(
     leftoverSave: Double = 0.0,
 ) {
     val inWeek = r.id in st.week
+    // Each recipe is a block of its own color; a lime ring means it's in your week.
     Card(
-        colors = if (inWeek) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else cardColors,
+        colors = CardDefaults.cardColors(containerColor = Look.color(r.id), contentColor = Look.Ink),
+        border = if (inWeek) androidx.compose.foundation.BorderStroke(3.dp, Look.Lime) else null,
         modifier = modifier.combinedClickable(onClick = onOpen, onLongClick = onHold),
     ) {
-        Column(Modifier.fillMaxSize().padding(start = 10.dp, top = 3.dp, end = 2.dp, bottom = 1.dp)) {
+      Box(Modifier.fillMaxSize()) {
+        ColorBlob(r.id, 64.dp, 22.dp, 22.dp, Modifier.align(Alignment.BottomEnd))
+      OnColor {
+        Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 3.dp, end = 2.dp, bottom = 1.dp)) {
             // Icon-only badges so they always fit (full labels are on the recipe page).
             // At most 2 badges: on sale, then cooking method, then Budget. A badge you're
             // filtering by always gets a spot, so you can see why the meal matched.
-            val all = (if (saleSave >= st.saleMin) listOf("sale" to "🏷️" + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
-                (if (leftover) listOf("leftovers" to "♻️" + (leftoverSave.takeIf { it >= 0.5 }?.let { Sales.money(it).substringBefore(".") } ?: "")) else emptyList()) +
+            val all = (if (saleSave >= st.saleMin) listOf("sale" to "Sale " + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
+                (if (leftover) listOf("leftovers" to "Leftovers") else emptyList()) +
                 Logic.badgeKeys(r, cost?.let { it.total <= st.budgetMax } ?: false)
             val keep = (all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = all.filter { it in keep }.map { it.second }
-            // Emoji on the left; name with badges right under it, so nothing overlaps.
+            // Name with calories, badges and price right under it, so nothing overlaps.
             Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(r.emoji, style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                     val infoLine = badges.isNotEmpty() || calories != null
                     Text(
-                        r.name, style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 18.sp),
+                        r.name,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 18.sp),
                         maxLines = if (infoLine || cost != null) 1 else 2, overflow = TextOverflow.Ellipsis,
                     )
                     if (infoLine) {
@@ -1019,15 +1029,15 @@ private fun RecipeTile(
                             badges.forEach { Badge(it, small = true) }
                         }
                     }
-                    // What you'd pay for this meal; green at or under your budget line.
+                    // What you'd pay for this meal; bold at or under your budget line.
                     cost?.let { c ->
                         val cheap = c.total <= st.budgetMax
                         Text(
                             buildAnnotatedString {
-                                withStyle(SpanStyle(color = if (cheap) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (cheap) FontWeight.Medium else FontWeight.Normal)) {
+                                withStyle(SpanStyle(color = if (cheap) Look.Ink else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (cheap) FontWeight.Bold else FontWeight.Normal)) {
                                     append(Sales.money(c.total))
                                 }
-                                if (c.saved >= 0.5) withStyle(SpanStyle(color = BUDGET_GREEN)) { append(" · pantry") }
+                                if (c.saved >= 0.5) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(" · pantry") }
                             },
                             style = MaterialTheme.typography.labelSmall.copy(lineHeight = 14.sp), maxLines = 1,
                             modifier = Modifier.padding(top = 0.dp),
@@ -1037,9 +1047,9 @@ private fun RecipeTile(
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "⏱ " + Logic.fmtShort(Logic.cookMinutes(r)),
+                    Logic.fmtShort(Logic.cookMinutes(r)),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
                 // Compact buttons leave room above for name, calories/badges and price.
@@ -1053,6 +1063,8 @@ private fun RecipeTile(
                 }
             }
         }
+      }
+      }
     }
 }
 
@@ -1062,7 +1074,7 @@ private fun SaleSection(vm: MealsViewModel, st: UserState, r: Recipe) {
     if (st.kroger.store.id.isEmpty()) return
     val progress by vm.salesProgress.collectAsState()
     val cache = vm.salesCache(st)
-    Heading("🏷️ On sale this week")
+    Heading("On sale this week")
     when {
         !Sales.isChecked(r, st.servings, cache) -> {
             if (progress != null) {
@@ -1116,7 +1128,7 @@ internal fun Badge(text: String, small: Boolean) {
 @Composable
 private fun WeekControls(vm: MealsViewModel, st: UserState, r: Recipe, side: Side?) {
     val day = Logic.dayPlan(st.week, st.days, st.weekStart).dayOf(r.id)
-    Heading(if (day != null) "📅 Planned for ${Logic.DAY_LONG[day]}" else "📅 In your week (extra meal)")
+    Heading(if (day != null) "Planned for ${Logic.DAY_LONG[day]}" else "In your week (extra meal)")
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Side: ", style = MaterialTheme.typography.bodyMedium)
         // Opens the full Pick a side window: search, Recommended, More sides, online and store sides.
@@ -1154,10 +1166,17 @@ private fun RecipeScreen(
         Column(
             Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(r.emoji, style = MaterialTheme.typography.displaySmall)
-                Spacer(Modifier.width(12.dp))
-                Text(r.name, style = MaterialTheme.typography.headlineSmall)
+            // The recipe's color block with its name in big type.
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Look.color(r.id)),
+            ) {
+                ColorBlob(r.id, 150.dp, 40.dp, (-30).dp, Modifier.align(Alignment.TopEnd))
+                OnColor {
+                    Text(
+                        r.name, style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 36.sp),
+                        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 40.dp, bottom = 18.dp),
+                    )
+                }
             }
             val badges = Logic.badges(r, vm.isBudget(st, r))
             // Badges, then your rating (👍 Loved it / 😐 It was fine / 👎 Not for us), or "Rate" if you haven't yet. Tap it to change.
@@ -1207,7 +1226,7 @@ private fun RecipeScreen(
                 )
             }
             Text(
-                "⏱ About ${Logic.fmtMinutes(Logic.cookMinutes(r))} total",
+                "About ${Logic.fmtMinutes(Logic.cookMinutes(r))} total",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 6.dp),
@@ -1231,7 +1250,7 @@ private fun RecipeScreen(
             ) {
                 val pad = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
                 Button(onClick = onCook, contentPadding = pad, modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    Text("▶  Start cooking", textAlign = TextAlign.Center, maxLines = 2)
+                    Text("Start cooking", textAlign = TextAlign.Center, maxLines = 2, fontWeight = FontWeight.Bold)
                 }
                 // Adds the meal; once it's planned, you hold for 3 seconds to remove it.
                 if (inWeek) {
@@ -1628,13 +1647,13 @@ private fun TopIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label
     Box(
         Modifier.padding(horizontal = 2.dp).size(48.dp, 32.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
+            .background(if (selected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             icon, contentDescription = label,
-            tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+            tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
         )
     }
 }

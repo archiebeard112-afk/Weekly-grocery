@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 
 class MainActivity : ComponentActivity() {
@@ -14,8 +15,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         CrashLog.install(this)
         Timers.ensureChannel(this)
-        // Normal layout: status bar and navigation bar showing, drawn in the app's dark colors.
-        enableEdgeToEdge()
+        // Normal layout: status bar and navigation bar showing, with light icons on the app's dark background.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         if (savedInstanceState == null) handle(intent)
         setContent { WeeklyTheme { App(vm) } }
     }
