@@ -226,6 +226,9 @@ object Logic {
         "vegetable oil" to "olive oil", "avocado oil" to "olive oil",
         "extra-virgin olive oil" to "olive oil", "extra virgin olive oil" to "olive oil",
         "light olive oil" to "olive oil", "evoo" to "olive oil",
+        // Salt is one item: kosher or sea salt in a recipe is covered by the salt you have.
+        "kosher salt" to "salt", "sea salt" to "salt", "table salt" to "salt", "coarse salt" to "salt",
+        "fine sea salt" to "salt", "coarse kosher salt" to "salt", "flaky sea salt" to "salt",
         "fresh ginger" to "ginger root",
         "tomato" to "tomatoes", "large tomato" to "tomatoes",
         "bell pepper" to "bell peppers",

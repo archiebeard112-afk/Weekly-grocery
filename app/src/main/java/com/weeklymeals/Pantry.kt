@@ -359,6 +359,8 @@ object Pantry {
         val t = title.lowercase()
         // "Chosen Foods Avocado Oil" is the cooking oil, not avocados.
         if (Regex("(?<!in )\\b(olive|vegetable|avocado) oil\\b").containsMatchIn(t)) return "olive oil"
+        // "Morton Kosher Salt" is just salt (not garlic salt, seasoned salt or salted butter).
+        if (Regex("\\b(kosher|sea|table|iodized|coarse) salt\\b").containsMatchIn(t) || Regex("^\\W*salt\\b").containsMatchIn(t)) return "salt"
         return known.filter { it.length >= 3 && Regex("\\b" + Regex.escape(it) + "(s|es)?\\b").containsMatchIn(t) }
             .maxByOrNull { it.length }
             ?: Logic.searchTerm(title)
