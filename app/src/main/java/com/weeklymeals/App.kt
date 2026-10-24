@@ -993,8 +993,6 @@ private fun RecipeTile(
         modifier = modifier.combinedClickable(onClick = onOpen, onLongClick = onHold),
     ) {
       Box(Modifier.fillMaxSize()) {
-        // Round shape in the top corner, clear of the heart and + buttons at the bottom.
-        ColorBlob(r.id, 56.dp, 22.dp, (-22).dp, Modifier.align(Alignment.TopEnd))
       OnColor {
         Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 3.dp, end = 2.dp, bottom = 1.dp)) {
             // Icon-only badges so they always fit (full labels are on the recipe page).
@@ -1005,8 +1003,8 @@ private fun RecipeTile(
                 Logic.badgeKeys(r, cost?.let { it.total <= st.budgetMax } ?: false)
             val keep = (all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = all.filter { it in keep }.map { it.second }
-            // Name with calories, badges and price right under it, so nothing overlaps.
-            Row(Modifier.weight(1f).fillMaxWidth().padding(end = 28.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Name, then the badges on their own line so two always fit, then calories and price.
+            Row(Modifier.weight(1f).fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                     val infoLine = badges.isNotEmpty() || calories != null
                     Text(
@@ -1014,35 +1012,33 @@ private fun RecipeTile(
                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 18.sp),
                         maxLines = if (infoLine || cost != null) 1 else 2, overflow = TextOverflow.Ellipsis,
                     )
-                    if (infoLine) {
-                        // Calories first, then the badges.
+                    if (badges.isNotEmpty()) {
                         Row(
-                            Modifier.padding(top = 1.dp),
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            Modifier.padding(top = 2.dp, bottom = 1.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            calories?.let {
-                                Text(
-                                    "%,d cal".format(it), style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                                    modifier = Modifier.padding(end = 3.dp),
-                                )
-                            }
                             badges.forEach { Badge(it, small = true) }
                         }
                     }
-                    // What you'd pay for this meal; bold at or under your budget line.
-                    cost?.let { c ->
-                        val cheap = c.total <= st.budgetMax
+                    // Calories, then what you'd pay for this meal (bold at or under your budget line).
+                    if (calories != null || cost != null) {
                         Text(
                             buildAnnotatedString {
-                                withStyle(SpanStyle(color = if (cheap) Look.Ink else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (cheap) FontWeight.Bold else FontWeight.Normal)) {
-                                    append(Sales.money(c.total))
+                                calories?.let {
+                                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("%,d cal".format(it)) }
+                                    if (cost != null) append("  ·  ")
                                 }
-                                if (c.saved >= 0.5) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(" · pantry") }
+                                cost?.let { c ->
+                                    val cheap = c.total <= st.budgetMax
+                                    withStyle(SpanStyle(color = if (cheap) Look.Ink else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (cheap) FontWeight.Bold else FontWeight.Normal)) {
+                                        append(Sales.money(c.total))
+                                    }
+                                    if (c.saved >= 0.5) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(" · pantry") }
+                                }
                             },
                             style = MaterialTheme.typography.labelSmall.copy(lineHeight = 14.sp), maxLines = 1,
-                            modifier = Modifier.padding(top = 0.dp),
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
