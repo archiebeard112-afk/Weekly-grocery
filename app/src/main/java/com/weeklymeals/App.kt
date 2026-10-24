@@ -897,7 +897,7 @@ private fun BrowseScreen(
                 items(matches, key = { it.id }) { r ->
                     RecipeTile(
                         r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
-                        Modifier.fillMaxWidth().height(104.dp),
+                        Modifier.fillMaxWidth().height(TileSize.height),
                         saleSave = Sales.savings(r, st.servings, cache),
                         onHold = { onHold(r) },
                         calories = vm.mealCalories(st, r),
@@ -920,6 +920,7 @@ private fun BrowseScreen(
         }
 
         // The set of 10: swipe left for more, right to go back. It follows your finger.
+        val density = androidx.compose.ui.platform.LocalDensity.current
         Column(
             Modifier.fillMaxWidth().weight(1f)
                 .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
@@ -954,7 +955,8 @@ private fun BrowseScreen(
                     pair.forEach { r ->
                         RecipeTile(
                             r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
-                            Modifier.weight(1f).fillMaxHeight(),
+                            Modifier.weight(1f).fillMaxHeight()
+                                .onSizeChanged { TileSize.height = with(density) { it.height.toDp() } },
                             saleSave = Sales.savings(r, st.servings, cache),
                             onHold = { onHold(r) },
                             calories = vm.mealCalories(st, r),
@@ -1003,26 +1005,23 @@ private fun RecipeTile(
                 Logic.badgeKeys(r, cost?.let { it.total <= st.budgetMax } ?: false)
             val keep = (all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = all.filter { it in keep }.map { it.second }
-            // Name, then the badges on their own line so two always fit, then calories and price.
-            Row(Modifier.weight(1f).fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                    val infoLine = badges.isNotEmpty() || calories != null
+            // Every card has the same lines in the same spots: name, badges (empty if none),
+            // calories and price, then time and buttons at the bottom.
+            Column(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp, end = 8.dp)) {
                     Text(
                         r.name,
                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 18.sp),
-                        maxLines = if (infoLine || cost != null) 1 else 2, overflow = TextOverflow.Ellipsis,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
-                    if (badges.isNotEmpty()) {
-                        Row(
-                            Modifier.padding(top = 2.dp, bottom = 1.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            badges.forEach { Badge(it, small = true) }
-                        }
+                    Row(
+                        Modifier.padding(top = 2.dp).height(17.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        badges.forEach { Badge(it, small = true) }
                     }
                     // Calories, then what you'd pay for this meal (bold at or under your budget line).
-                    if (calories != null || cost != null) {
+                    Box(Modifier.padding(top = 2.dp).height(15.dp)) {
                         Text(
                             buildAnnotatedString {
                                 calories?.let {
@@ -1041,7 +1040,6 @@ private fun RecipeTile(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -1064,6 +1062,11 @@ private fun RecipeTile(
       }
       }
     }
+}
+
+/** Recipe tile height, taken from Browse's sets of 10 so Favorites and search results match. */
+private object TileSize {
+    var height by mutableStateOf(104.dp)
 }
 
 /** "On sale this week" for one recipe's main ingredients. */
@@ -1484,7 +1487,7 @@ private fun FavoritesScreen(
         items(shown, key = { it.id }) { r ->
             RecipeTile(
                 r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
-                Modifier.fillMaxWidth().height(104.dp),
+                Modifier.fillMaxWidth().height(TileSize.height),
                 saleSave = Sales.savings(r, st.servings, cache),
                 onHold = { onHold(r) },
                 calories = vm.mealCalories(st, r),

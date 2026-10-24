@@ -61,7 +61,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
 
-private val ROW_HEIGHT = 56.dp
+private val ROW_HEIGHT = 52.dp
 private val ROW_GAP = 6.dp
 private val STORE_PURPLE = androidx.compose.ui.graphics.Color(0xFFC79BFF)
 private val LEFT_BG = androidx.compose.ui.graphics.Color(0xFF26301A)
@@ -93,7 +93,7 @@ private fun StatTile(
     Column(
         modifier.fillMaxHeight().clip(RoundedCornerShape(18.dp)).background(bg)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
     ) {
         Text(
             androidx.compose.ui.text.buildAnnotatedString {
@@ -142,10 +142,10 @@ private fun NothingTonight(day: Int, onAdd: () -> Unit) {
 @Composable
 private fun StoreLine(m: StoreMeal, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(top = 4.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(top = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (m.image.isNotBlank()) ProductPhoto(m.image, 28.dp)
+        if (m.image.isNotBlank()) ProductPhoto(m.image, 26.dp)
         else androidx.compose.material3.Icon(Icons.Filled.ShoppingCart, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.tertiary)
         Spacer(Modifier.width(8.dp))
         Text(m.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -164,7 +164,7 @@ private fun TonightCard(r: Recipe, day: Int, meta: String, onOpen: () -> Unit, o
     ) {
         ColorBlob(r.id, 140.dp, 36.dp, (-36).dp, Modifier.align(Alignment.TopEnd))
         OnColor {
-            Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
+            Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
                 Text(
                     "TONIGHT · " + Logic.DAY_LONG[day].uppercase(),
                     style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp,
@@ -248,7 +248,7 @@ fun WeekScreen(
     // Roughly how tall each day's tile needs to be (dp): a day with store items is taller.
     fun estDp(index: Int, hasRecipe: Boolean): Float {
         val n = if (index < 7) st.storeMeals.count { it.day == dayAt[index] } else 0
-        return if (n == 0) 46f else 16f + (if (hasRecipe) 46f else 0f) + 32f * n + 4f
+        return if (n == 0) 44f else 16f + (if (hasRecipe) 44f else 0f) + 28f * n
     }
 
     // Fresh things you'll have extra of: tap the leftovers tile for the list and meals that use them up.
@@ -265,7 +265,7 @@ fun WeekScreen(
     // It only scrolls if there are extra meals or it truly can't fit.
     val tonightR = plan.slots[today]?.let { all[it] }
     // Header, Tonight card, the three tiles, the panel's heading, then the days.
-    val needDp = 12f + 54f + (if (tonightR != null) 124f else 76f) + 68f + 36f +
+    val needDp = 12f + 54f + (if (tonightR != null) 124f else 76f) + 64f + 36f +
         rows.withIndex().sumOf { (i, row) -> estDp(i, row.second != null).toDouble() }.toFloat() + 6f * 5
     val fits = plan.extras.isEmpty() && maxHeight.value >= needDp
     Column(
@@ -392,7 +392,7 @@ fun WeekScreen(
                     else -> androidx.compose.ui.graphics.Color.Transparent
                 }
                 Box(
-                    Modifier.padding(top = if (meals.isEmpty()) 0.dp else 2.dp).size(38.dp).clip(CircleShape).background(dot)
+                    Modifier.padding(top = if (meals.isEmpty()) 0.dp else 2.dp).size(36.dp).clip(CircleShape).background(dot)
                         .then(
                             when {
                                 isToday -> Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
