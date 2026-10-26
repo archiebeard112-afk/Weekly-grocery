@@ -489,7 +489,25 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun salesCache(st: UserState = state.value): SalesCache =
         st.sales.takeIf {
             it.day == Sales.today() && it.storeId == st.kroger.store.id && it.version == Sales.CACHE_VERSION
+        }?.let { c ->
+            // A "sale" on meat that still costs more per pound than what you usually buy isn't a deal: skip it.
+            c.copy(options = c.options.mapValues { (term, list) -> list.filter { cheaperThanUsual(term, it) } }.filterValues { it.isNotEmpty() })
         } ?: SalesCache()
+
+    /** Per-pound price from a price and a store size: packs over 1 lb are priced per pack, the rest per pound. */
+    private fun perLbOf(price: Double, size: String?): Double {
+        val lb = size?.let { Pantry.parseSize(it) }?.let { (n, u) ->
+            when (u) { "lb", "lbs" -> n; "oz" -> n / 16; "kg" -> n * 2.2046; "g" -> n / 453.6; else -> null }
+        }
+        return if (lb != null && lb > 1.05) price / lb else price
+    }
+
+    private fun cheaperThanUsual(term: String, sale: SaleItem): Boolean {
+        if (!Packs.weighed(term)) return true
+        val usual = products.value[term]?.product
+        val usualLb = usual?.let { p -> (p.promo ?: p.price)?.let { perLbOf(it, p.size) } } ?: Prices.perLb(term) ?: return true
+        return perLbOf(sale.promo, sale.size) < usualLb - 0.005
+    }
 
     /** One sale check at a time (the daily one in the background, or one you asked for). */
     private val salesLock = Mutex()
