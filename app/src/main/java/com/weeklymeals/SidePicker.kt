@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -83,7 +86,7 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
     preview?.let { sd ->
         val fav = vm.isFavSide(st, sd.key)
         SidePreview(
-            st, sd, onUse = { pick(sd.key) }, onBack = { preview = null },
+            st, sd, onUse = { size -> vm.chooseSide(id, sd.key, size); close() }, onBack = { preview = null },
             // Sides you added are always in Favorites; built-in ones get a ♥.
             fav = if (vm.isBuiltInSide(sd.key)) fav else null,
             onFav = { if (fav) vm.removeFavSide(sd.key) else vm.addFavSide(sd.key) },
@@ -252,15 +255,30 @@ private fun SideRow(
     HorizontalDivider()
 }
 
+/** Half / Normal / Double: how much of a side to make (Logic.SIDE_HALF / NORMAL / DOUBLE). */
+@Composable
+internal fun SideSizeChoice(size: Int, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(Logic.SIDE_HALF to "Half", Logic.SIDE_NORMAL to "Normal", Logic.SIDE_DOUBLE to "Double").forEach { (key, label) ->
+            FilterChip(selected = size == key, onClick = { onPick(key) }, label = { Text(label) })
+        }
+    }
+}
+
+/** How many a side at [size] serves, e.g. "1.5" for half with 3 servings. */
+internal fun sideServesText(serv: Int, size: Int?): String = Logic.fmt(Logic.sideServ(serv, size) / 2.0)
+
 /**
  * A side's ingredients (for your servings), steps, calories and reviews before you add it.
- * [onUse] null = just looking (from Favorites). [fav] non-null shows a ♥ to keep it in Favorites.
+ * [onUse] null = just looking (from Favorites); otherwise it gets the Half / Normal / Double you picked.
+ * [fav] non-null shows a ♥ to keep it in Favorites.
  */
 @Composable
 internal fun SidePreview(
-    st: UserState, sd: Side, onUse: (() -> Unit)?, onBack: () -> Unit,
+    st: UserState, sd: Side, onUse: ((Int) -> Unit)?, onBack: () -> Unit,
     fav: Boolean? = null, onFav: () -> Unit = {},
 ) {
+    var size by remember(sd.key) { mutableIntStateOf(Logic.SIDE_NORMAL) }
     AlertDialog(
         onDismissRequest = onBack,
         title = {
@@ -290,9 +308,10 @@ internal fun SidePreview(
                 if (isStoreSide(sd)) {
                     Note("Store-bought from King Soopers. Nothing to cook.")
                 } else {
-                    GroupLabel("Ingredients (for ${st.servings})")
+                    if (onUse != null) SideSizeChoice(size, { size = it }, Modifier.padding(top = 8.dp))
+                    GroupLabel("Ingredients (for ${sideServesText(st.servings, size)})")
                     sd.ingredients.forEach {
-                        Text("• " + Logic.ingText(it, st.servings, 4), style = MaterialTheme.typography.bodyMedium)
+                        Text("• " + Logic.ingText(it, Logic.sideServ(st.servings, size), Logic.SIDE_BASE), style = MaterialTheme.typography.bodyMedium)
                     }
                     if (sd.steps.isNotEmpty()) {
                         GroupLabel("Steps")
@@ -304,7 +323,7 @@ internal fun SidePreview(
                 }
             }
         },
-        confirmButton = { if (onUse != null) TextButton(onClick = onUse) { Text("Use as side") } },
+        confirmButton = { if (onUse != null) TextButton(onClick = { onUse(size) }) { Text("Use as side") } },
         dismissButton = { TextButton(onClick = onBack) { Text(if (onUse != null) "Back" else "Close") } },
     )
 }

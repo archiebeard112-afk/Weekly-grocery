@@ -80,6 +80,8 @@ data class UserState(
     /** Which day each planned recipe is on: recipe id -> 0 (Mon) .. 6 (Sun). */
     val days: Map<Int, Int> = emptyMap(),
     val sides: Map<Int, String> = emptyMap(),
+    /** How much of each meal's side to make: 1 = half, 4 = double (missing = normal). See [Logic.sideServ]. */
+    val sideSize: Map<Int, Int> = emptyMap(),
     val favs: Set<Int> = emptySet(),
     val hidden: Set<Int> = emptySet(),
     val checked: Set<String> = emptySet(),

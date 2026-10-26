@@ -439,7 +439,12 @@ fun WeekScreen(
                                 )
                                 val side = st.sides[r.id]?.let { vm.sideMap[it] }
                                 Text(
-                                    listOfNotNull(side?.label?.let(::plainLabel), Logic.fmtShort(Logic.cookMinutes(r))).joinToString(" · "),
+                                    listOfNotNull(
+                                        side?.label?.let(::plainLabel)?.plus(
+                                            when (st.sideSize[r.id]) { Logic.SIDE_HALF -> " (half)"; Logic.SIDE_DOUBLE -> " (double)"; else -> "" },
+                                        ),
+                                        Logic.fmtShort(Logic.cookMinutes(r)),
+                                    ).joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
