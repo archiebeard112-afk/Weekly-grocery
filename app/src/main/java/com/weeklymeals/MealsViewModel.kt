@@ -49,7 +49,19 @@ data class ShopGroup(
     /** Which meals (or Snacks / Usual items / Added) need it. */
     val sources: List<String>,
 ) {
-    val need: String get() = items.joinToString(", ") { Logic.needText(it).ifBlank { "1" } }
+    /** "7 slices" rather than "3 slices, 4 slices": amounts in the same unit are added up. */
+    val need: String get() = items.groupBy { it.unit.lowercase().removeSuffix("s") }.values
+        .joinToString(", ") { same ->
+            val total = same.sumOf { it.qty }
+            // "slice" + "slices" -> the plural one; "1 cup" + "1 cup" -> "2 cups".
+            var unit = same.map { it.unit }.maxBy { it.length }
+            if (total > 1 && unit in PLURALS) unit += if (unit.endsWith("ch") || unit.endsWith("x")) "es" else "s"
+            Logic.needText(same.first().copy(qty = total, unit = unit)).ifBlank { "1" }
+        }
+
+    private companion object {
+        val PLURALS = setOf("cup", "can", "clove", "slice", "bunch", "bag", "jar", "box", "head", "stalk", "sprig", "package", "pinch")
+    }
 }
 
 /** The Shop section for everything that isn't from a recipe. */
