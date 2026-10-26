@@ -595,7 +595,7 @@ private fun ShopRow(
         topStart = if (first) r else 0.dp, topEnd = if (first) r else 0.dp,
         bottomStart = if (last) r else 0.dp, bottomEnd = if (last) r else 0.dp,
     )
-    // Store meals say "store meal · wed" after the name instead of being listed as a source.
+    // Store meals say "Store meal · Wed" under the name instead of being listed as a source.
     val storeSources = g.sources.filter { it.startsWith("Store meal") }
     val sources = g.sources - storeSources.toSet()
     // Labels line up under the name when there's a photo.
@@ -621,17 +621,15 @@ private fun ShopRow(
                     Spacer(Modifier.width(12.dp))
                 }
                 Column(Modifier.weight(1f).clickable(enabled = line != null, onClick = pick)) {
-                    // "Chicken broth  ·  need 1 cup, 5 cans" (wraps rather than cutting off); store meals say which day.
-                    val accent = if (storeSources.isEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     Text(
-                        buildAnnotatedString {
-                            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(g.term.replaceFirstChar { it.uppercase() }) }
-                            withStyle(SpanStyle(color = accent)) {
-                                append("  ·  ")
-                                append(if (storeSources.isEmpty()) "need ${g.need}" else storeSources.joinToString(", ").lowercase())
-                            }
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
+                        g.term.replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
+                    )
+                    // "Need 1 cup, 5 cans" just under the name (wraps rather than cutting off); store meals say which day.
+                    Text(
+                        if (storeSources.isEmpty()) "Need ${g.need}" else storeSources.joinToString(", "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (storeSources.isEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (hasStore) {
                         Text(
