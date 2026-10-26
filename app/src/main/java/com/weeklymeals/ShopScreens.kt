@@ -237,6 +237,12 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                                 text = { Text("Bring back all \"Already have\" items") },
                                 onClick = { vm.clearHave(); menu = false },
                             )
+                            if (st.quickRemoved.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Bring back removed Quick add items") },
+                                    onClick = { vm.restoreQuickAdd(); menu = false },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Open King Soopers cart") },
                                 onClick = { openKingSoopersCart(ctx); menu = false },

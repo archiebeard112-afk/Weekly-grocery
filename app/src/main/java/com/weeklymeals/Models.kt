@@ -112,6 +112,10 @@ data class UserState(
     val bought: Map<String, Bought> = emptyMap(),
     /** True once Quick add has been seeded from your earlier snacks and usual items. */
     val boughtSeeded: Boolean = false,
+    /** Quick add chips you removed (long-press), kept so the Shop menu can bring them back. */
+    val quickRemoved: Map<String, Bought> = emptyMap(),
+    /** True once 2% milk (removed by accident, Oct 2026) has been put back in Quick add. */
+    val milkRestored: Boolean = false,
     /** Shop items marked "Already have" (by store search term); left out of the cart. */
     val haveTerms: Set<String> = emptySet(),
     /** Today's sale prices for main ingredients. */
