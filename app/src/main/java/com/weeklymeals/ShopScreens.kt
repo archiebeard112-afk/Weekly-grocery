@@ -82,6 +82,14 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import java.util.Locale
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * The Shop tab: the shopping list and the King Soopers product for each item on one page.
@@ -184,6 +192,13 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
         l.product!!.let { p -> if (p.promo != null && p.price != null) (p.price - p.promo) * l.quantity else 0.0 }
     }
 
+    // Where each aisle's items start in the list, so the "already have" tile can jump to that section.
+    val sections = Logic.AISLES.map { aisle -> aisle to toBuy.filter { it.aisle == aisle } }.filter { it.second.isNotEmpty() }
+    val haveIndex = 1 + sections.sumOf { 1 + it.second.size }
+    val scope = rememberCoroutineScope()
+    fun lineCost(term: String): Double =
+        products[term]?.product?.let { (it.promo ?: it.price ?: 0.0) * (products[term]?.quantity ?: 1) } ?: 0.0
+
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -192,27 +207,38 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
             contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 16.dp),
         ) {
             item(key = "header") {
-                Row(
-                    Modifier.fillMaxWidth().height(34.dp).padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Shopping list", style = MaterialTheme.typography.titleLarge)
-                    val meals = mealCount(st)
-                    val parts = listOfNotNull(
-                        if (meals > 0) "$meals meal${if (meals == 1) "" else "s"}" else null,
-                        if (st.snacks.isNotEmpty()) "${st.snacks.size} snack${if (st.snacks.size == 1) "" else "s"}" else null,
-                        if (st.pickedStaples.isNotEmpty()) "${st.pickedStaples.size} usual" else null,
-                        if (st.extraItems.isNotEmpty()) "${st.extraItems.size} added" else null,
-                    )
-                    Text(
-                        if (parts.isEmpty()) "Nothing yet" else parts.joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).padding(start = 8.dp),
-                    )
+                // SHOPPING LIST over "24 items", like WEEK 43 over the dates on the Week tab.
+                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.Bottom) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "SHOPPING LIST",
+                            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            "${toBuy.size} item${if (toBuy.size == 1) "" else "s"}",
+                            style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 38.sp),
+                        )
+                        val meals = mealCount(st)
+                        val parts = listOfNotNull(
+                            if (meals > 0) "$meals meal${if (meals == 1) "" else "s"}" else null,
+                            if (st.snacks.isNotEmpty()) "${st.snacks.size} snack${if (st.snacks.size == 1) "" else "s"}" else null,
+                            if (st.pickedStaples.isNotEmpty()) "${st.pickedStaples.size} usual" else null,
+                            if (st.extraItems.isNotEmpty()) "${st.extraItems.size} added" else null,
+                        )
+                        Text(
+                            if (parts.isEmpty()) "Nothing yet" else parts.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Box {
-                        IconButton(onClick = { menu = true }, modifier = Modifier.size(34.dp)) { Icon(Icons.Filled.MoreVert, "More") }
+                        IconButton(
+                            onClick = { menu = true },
+                            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainer),
+                        ) { Icon(Icons.Filled.MoreVert, "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(
                                 text = { Text("Bring back all \"Already have\" items") },
@@ -225,11 +251,31 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         }
                     }
                 }
+                // Cart total, what the sales save, and how much the Kitchen covers.
+                if (groups.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        StatTile(Modifier.weight(1f), if (cart.isEmpty()) "–" else "\$" + total.roundToInt(), null, "total")
+                        StatTile(
+                            Modifier.weight(1f), "\$" + saved.roundToInt(), null, "on sale",
+                            lime = saved >= 0.5,
+                        )
+                        StatTile(
+                            Modifier.weight(1f), "${have.size}", null, "already have",
+                            onClick = if (have.isNotEmpty()) ({
+                                showHave = true
+                                scope.launch { listState.animateScrollToItem(haveIndex) }
+                            }) else null,
+                        )
+                    }
+                }
                 val add = { vm.addExtraItem(newItem); newItem = ""; focus.clearFocus() }
                 // Slim rounded bar, same as the Search bar on Browse and Favorites.
                 CompactSearch(
                     newItem, { newItem = it },
-                    Modifier.padding(top = 6.dp),
+                    Modifier.padding(top = 12.dp),
                     placeholder = "Add an item",
                     icon = Icons.Filled.Add,
                     onDone = { add() },
@@ -297,86 +343,116 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                 }
             }
 
-            Logic.AISLES.forEach { aisle ->
-                val section = toBuy.filter { it.aisle == aisle }
-                if (section.isNotEmpty()) {
-                    item(key = "h_$aisle") {
+            sections.forEach { (aisle, section) ->
+                item(key = "h_$aisle") {
+                    // "Produce  3 ............ $9.47"
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 18.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
                         Text(
-                            aisle.uppercase(), style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 18.dp, bottom = 2.dp),
+                            aisle.substringAfter(' '),
+                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = Look.Display), fontWeight = FontWeight.Bold,
                         )
-                    }
-                    items(section, key = { "g_" + it.term }) { g ->
-                        val status = vm.pantryStatus(st, g)
-                        val zone = vm.pantryItem(st, g.term)?.let { zoneOf(it.shelf) }
-                        val place = zoneName(zone)
-                        val pantryNote = when (status) {
-                            MealsViewModel.PantryStatus.EXPIRED -> {
-                                val item = vm.pantryItem(st, g.term)
-                                if (item != null && Pantry.isSpice(item)) "$place · may be weak" else "$place · check date"
-                            }
-                            MealsViewModel.PantryStatus.LOW -> "Low in ${place.lowercase()}"
-                            MealsViewModel.PantryStatus.COVERED -> "In ${place.lowercase()} · buying anyway"
-                            null -> null
-                        }
-                        // Some in the freezer but not enough: say how much more to buy.
-                        val frozen = vm.freezerFor(st, g.term)
-                        val freezerNote = frozen?.let { f ->
-                            val need = vm.meatNeed(st, g.term, g.items)
-                            val more = need - f.amount()
-                            if (more <= 0) null
-                            else if (f.byCount) "${f.count} in freezer · need ${Logic.fmt(more)} more"
-                            else "${Logic.fmt(f.lb)} lb in freezer · need ${Logic.fmt(Math.round(more * 4) / 4.0)} lb more"
-                        }
-                        ShopRow(
-                            vm, g, products[g.term], hasStore, pantryNote, vm.shopPack(st, g), freezerNote, noteZone = zone,
-                            usePantry = if (status == MealsViewModel.PantryStatus.EXPIRED) ({ vm.setUseAnyway(g.term, true) }) else null,
-                            showHave = status == null,
+                        Text(
+                            "  ${section.size}", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
                         )
+                        val sub = section.sumOf { lineCost(it.term) }
+                        if (sub > 0) {
+                            Text(Sales.money(sub), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
+                }
+                items(section, key = { "g_" + it.term }) { g ->
+                    val status = vm.pantryStatus(st, g)
+                    val zone = vm.pantryItem(st, g.term)?.let { zoneOf(it.shelf) }
+                    val place = zoneName(zone)
+                    val pantryNote = when (status) {
+                        MealsViewModel.PantryStatus.EXPIRED -> {
+                            val item = vm.pantryItem(st, g.term)
+                            if (item != null && Pantry.isSpice(item)) "$place · may be weak" else "$place · check date"
+                        }
+                        MealsViewModel.PantryStatus.LOW -> "Low in ${place.lowercase()}"
+                        MealsViewModel.PantryStatus.COVERED -> "In ${place.lowercase()} · buying anyway"
+                        null -> null
+                    }
+                    // Some in the freezer but not enough: say how much more to buy.
+                    val frozen = vm.freezerFor(st, g.term)
+                    val freezerNote = frozen?.let { f ->
+                        val need = vm.meatNeed(st, g.term, g.items)
+                        val more = need - f.amount()
+                        if (more <= 0) null
+                        else if (f.byCount) "${f.count} in freezer · need ${Logic.fmt(more)} more"
+                        else "${Logic.fmt(f.lb)} lb in freezer · need ${Logic.fmt(Math.round(more * 4) / 4.0)} lb more"
+                    }
+                    ShopRow(
+                        vm, g, products[g.term], hasStore, pantryNote, vm.shopPack(st, g), freezerNote,
+                        usePantry = if (status == MealsViewModel.PantryStatus.EXPIRED) ({ vm.setUseAnyway(g.term, true) }) else null,
+                        showHave = status == null,
+                        first = g == section.first(), last = g == section.last(),
+                    )
                 }
             }
 
             if (have.isNotEmpty()) {
                 item(key = "have_header") {
+                    // One card: the header row, then (when open) the items.
+                    val shape = if (showHave) RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp) else RoundedCornerShape(18.dp)
                     Row(
-                        Modifier.fillMaxWidth().clickable { showHave = !showHave }.padding(top = 20.dp, bottom = 6.dp),
+                        Modifier.fillMaxWidth().padding(top = 20.dp).clip(shape)
+                            .background(MaterialTheme.colorScheme.surfaceContainer)
+                            .clickable { showHave = !showHave }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "✓ ALREADY HAVE (${have.size})", style = MaterialTheme.typography.labelLarge,
+                            "Already have",
+                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = Look.Display), fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "  ${have.size}", style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
                         )
-                        Text(if (showHave) "▴" else "▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(
+                            if (showHave) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
                 if (showHave) {
                     items(have, key = { "have_" + it.term }) { g ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            val fromPantry = g.term !in st.haveTerms
-                            val fromFreezer = fromPantry && vm.freezerCovers(st, g)
-                            val zone = if (!fromPantry) null else if (fromFreezer) "freezer" else vm.haveZone(st, g.term)
-                            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    g.term.replaceFirstChar { it.uppercase() },
-                                    textDecoration = if (fromPantry) null else TextDecoration.LineThrough,
-                                    color = MaterialTheme.colorScheme.outline,
-                                )
+                        val shape = if (g == have.last()) RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp) else RoundedCornerShape(0.dp)
+                        Column(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceContainer)) {
+                            HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                            Row(
+                                Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                val fromPantry = g.term !in st.haveTerms
+                                val fromFreezer = fromPantry && vm.freezerCovers(st, g)
+                                val zone = if (!fromPantry) null else if (fromFreezer) "freezer" else vm.haveZone(st, g.term)
                                 // Same icon as its Kitchen zone, then where it is.
                                 if (fromPantry) {
-                                    Spacer(Modifier.width(8.dp))
                                     HaveIcon(zone ?: "pantry")
-                                    Text(" ${zoneName(zone)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                    Spacer(Modifier.width(10.dp))
                                 }
-                            }
-                            if (fromPantry) {
-                                TextButton(onClick = { vm.togglePantryBuy(g.term) }) { Text("Buy anyway") }
-                            } else {
-                                TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Need it") }
+                                Text(
+                                    g.term.replaceFirstChar { it.uppercase() },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textDecoration = if (fromPantry) null else TextDecoration.LineThrough,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    if (fromPantry) zoneName(zone) else "You said",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                if (fromPantry) {
+                                    TextButton(onClick = { vm.togglePantryBuy(g.term) }) { Text("Buy anyway") }
+                                } else {
+                                    TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Need it") }
+                                }
                             }
                         }
                     }
@@ -384,45 +460,56 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
             }
         }
 
-        // Always-visible bottom bar: count, total, Add to cart.
-        Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("${toBuy.size} item${if (toBuy.size == 1) "" else "s"}", style = MaterialTheme.typography.titleSmall)
-                    if (cart.isNotEmpty()) {
-                        val highlight = MaterialTheme.colorScheme.primary
-                        Text(
-                            buildAnnotatedString {
-                                append(Sales.money(total))
-                                if (saved >= 0.01) {
-                                    append(" · ")
-                                    withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) {
-                                        append("You save " + Sales.money(saved))
-                                    }
-                                }
-                                if (cart.size < toBuy.size) append(" · ${toBuy.size - cart.size} without a product")
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+        // Always-visible bottom bar: the total, then Add to cart.
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                val count = "${toBuy.size} item${if (toBuy.size == 1) "" else "s"}"
+                if (cart.isNotEmpty()) {
+                    Text(Sales.money(total), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold))
                 }
-                Button(
-                    onClick = {
-                        if (!vm.signedIn) openSettings()
-                        else {
-                            val c = vm.kitchenCandidates()
-                            val skipped = vm.kitchenSkipped(st, c)
-                            // Nothing to ask about, or you skipped every one of these before: straight to the cart.
-                            if (c.isEmpty() || skipped.size == c.size) vm.confirmAddToCart()
-                            else { kitchenOff = skipped; kitchenMem = skipped; kitchenAsk = c }
+                val highlight = MaterialTheme.colorScheme.primary
+                val warn = MaterialTheme.colorScheme.error
+                Text(
+                    buildAnnotatedString {
+                        append(count)
+                        if (saved >= 0.01) {
+                            append(" · ")
+                            withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) { append("you save " + Sales.money(saved)) }
+                        }
+                        val missing = toBuy.count { products[it.term]?.let { l -> l.product == null } == true }
+                        if (missing > 0) {
+                            append(" · ")
+                            withStyle(SpanStyle(color = warn)) { append("$missing need${if (missing == 1) "s" else ""} a product") }
                         }
                     },
-                    enabled = !busy && loading == null && (cart.isNotEmpty() || !vm.signedIn),
-                ) { Text(if (vm.signedIn) "Add to cart" else "Sign in") }
+                    style = if (cart.isEmpty()) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Button(
+                onClick = {
+                    if (!vm.signedIn) openSettings()
+                    else {
+                        val c = vm.kitchenCandidates()
+                        val skipped = vm.kitchenSkipped(st, c)
+                        // Nothing to ask about, or you skipped every one of these before: straight to the cart.
+                        if (c.isEmpty() || skipped.size == c.size) vm.confirmAddToCart()
+                        else { kitchenOff = skipped; kitchenMem = skipped; kitchenAsk = c }
+                    }
+                },
+                enabled = !busy && loading == null && (cart.isNotEmpty() || !vm.signedIn),
+                modifier = Modifier.height(48.dp),
+                contentPadding = PaddingValues(horizontal = 22.dp),
+            ) {
+                Icon(Icons.Filled.ShoppingCart, null, Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (vm.signedIn) "Add to cart" else "Sign in", fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -434,22 +521,21 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
 private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
     val chips = vm.quickAdd(st)
     if (chips.isEmpty()) return
-    // Same size and spacing as the filter chips on Browse.
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp, bottom = 4.dp),
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         chips.forEach { (term, b) ->
             val on = vm.onList(st, b.name)
-            val emoji = SnackCatalog.find(b.name).emoji.takeIf { it != "⭐" } ?: stapleEmoji(b.name)
-            // 32dp tall like a filter chip; long names end in "…".
+            val shape = RoundedCornerShape(16.dp)
+            // Round pills, lime once it's on the list; long names end in "…".
             Box(
                 Modifier
                     .widthIn(max = 200.dp)
                     .height(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (on) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                    .clip(shape)
+                    .background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    .border(1.dp, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, shape)
                     .combinedClickable(
                         onClick = { vm.toggleQuickAdd(b.name) },
                         onLongClick = { vm.forgetQuickAdd(term, b.name) },
@@ -459,143 +545,241 @@ private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
             ) {
                 Text(
                     // Each tap adds another row; the chip shows how many are on the list.
-                    (if (on) (vm.quickCount(st, b.name).let { if (it > 1) "✓ $it× " else "✓ " }) else "") + "$emoji ${b.name}",
+                    (if (on) (vm.quickCount(st, b.name).let { if (it > 1) "✓ $it× " else "✓ " }) else "+ ") + b.name,
                     style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = if (on) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                    color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
     }
 }
 
+/** Colors for the small labels on a Shop item (NEED 2, SALE, LOW IN PANTRY...). */
+private enum class Tag { NEED, SALE, PANTRY, FREEZER, PLAIN }
+
+/** A small all-caps label, like the STORE / LEFTOVERS tags on the Week tab. */
+@Composable
+private fun ShopTag(text: String, kind: Tag) {
+    val shape = RoundedCornerShape(7.dp)
+    val (bg, fg) = when (kind) {
+        Tag.NEED -> Color.Transparent to MaterialTheme.colorScheme.onSurface
+        Tag.SALE -> MaterialTheme.colorScheme.primary to MaterialTheme.colorScheme.onPrimary
+        Tag.PANTRY -> Color(0xFF3A2C14) to Color(0xFFF0B44C)
+        Tag.FREEZER -> Color(0xFF15283A) to Color(0xFF8FC3F2)
+        Tag.PLAIN -> MaterialTheme.colorScheme.surfaceContainerHighest to Color(0xFFD9DCD4)
+    }
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp,
+        color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.clip(shape).background(bg)
+            .then(if (kind == Tag.NEED) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, shape) else Modifier)
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+    )
+}
+
+/** The − 1 + pill. */
+@Composable
+private fun Stepper(qty: Int, onLess: () -> Unit, onMore: () -> Unit) {
+    Row(
+        Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(34.dp).clickable(onClick = onLess), contentAlignment = Alignment.Center) {
+            Text("−", style = MaterialTheme.typography.titleMedium)
+        }
+        Text("$qty", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        Box(Modifier.size(34.dp).clickable(onClick = onMore), contentAlignment = Alignment.Center) {
+            Text("+", style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
+/**
+ * One item on its aisle's card: photo, name, product and price on top;
+ * labels, Have it and the − 1 + pill underneath. Tap the photo or name to change the product.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ShopRow(
     vm: MealsViewModel, g: ShopGroup, line: CartLine?, hasStore: Boolean, pantryNote: String? = null,
     meat: MealsViewModel.MeatPack? = null,
     freezerNote: String? = null,
     usePantry: (() -> Unit)? = null,
-    noteZone: String? = null,
     /** False when the Kitchen already has this item: "Have it" would only repeat what the Kitchen says. */
     showHave: Boolean = true,
+    /** First and last items of an aisle round the card's corners. */
+    first: Boolean = true, last: Boolean = true,
 ) {
     var editPack by remember { mutableStateOf(false) }
-    val highlight = MaterialTheme.colorScheme.primary
-    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                buildAnnotatedString {
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(g.term.replaceFirstChar { it.uppercase() }) }
-                    withStyle(SpanStyle(color = highlight)) { append("  ·  need ${g.need}") }
-                },
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f),
-                maxLines = 2, overflow = TextOverflow.Ellipsis,
-            )
-            if (showHave) TextButton(onClick = { vm.toggleHave(g.term) }) { Text("Have it") }
-        }
-        pantryNote?.let {
-            val amber = Color(0xFFBA7517)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                HaveIcon(noteZone ?: "pantry", Modifier.size(14.dp), amber)
-                Text(" $it", style = MaterialTheme.typography.bodySmall, color = amber, modifier = Modifier.weight(1f))
+    val p = line?.product
+    val pick = { vm.picking.value = g.term }
+    val r = 18.dp
+    val shape = RoundedCornerShape(
+        topStart = if (first) r else 0.dp, topEnd = if (first) r else 0.dp,
+        bottomStart = if (last) r else 0.dp, bottomEnd = if (last) r else 0.dp,
+    )
+    // Store meals get a STORE MEAL · WED label instead of being listed as a source.
+    val storeSources = g.sources.filter { it.startsWith("Store meal") }
+    val sources = g.sources - storeSources.toSet()
+    // Labels line up under the name when there's a photo.
+    val indent = if (hasStore) 60.dp else 0.dp
+    Column(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceContainer)) {
+        if (!first) HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        Column(
+            Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                if (hasStore) {
+                    if (line != null && p == null) {
+                        // Nothing at your store: an empty dashed-looking slot.
+                        Box(
+                            Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))
+                                .border(1.5.dp, MaterialTheme.colorScheme.error, RoundedCornerShape(10.dp))
+                                .clickable(onClick = pick),
+                        )
+                    } else {
+                        ProductPhoto(p?.image ?: "", 48.dp, Modifier.clickable(enabled = line != null, onClick = pick))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                }
+                Column(Modifier.weight(1f).clickable(enabled = line != null, onClick = pick)) {
+                    Text(
+                        g.term.replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    )
+                    if (hasStore) {
+                        Text(
+                            when {
+                                line == null -> "Looking up…"
+                                p == null -> "Not found at your store"
+                                else -> listOf(p.title, p.size).filter { it.isNotBlank() }.joinToString(" · ")
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (line != null && p == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (sources.isNotEmpty()) {
+                        Text(
+                            sources.joinToString(", "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                if (line != null && p != null) {
+                    // Price for the whole line (packages × quantity), with the regular price struck through on sale.
+                    Column(Modifier.padding(start = 8.dp), horizontalAlignment = Alignment.End) {
+                        val now = p.promo ?: p.price
+                        if (now != null) {
+                            Text(Sales.money(now * line.quantity), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                        }
+                        if (p.promo != null && p.price != null) {
+                            Text(
+                                Sales.money(p.price * line.quantity),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textDecoration = TextDecoration.LineThrough,
+                            )
+                        }
+                    }
+                } else if (line != null && hasStore) {
+                    OutlinedButton(
+                        onClick = pick,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                        contentPadding = PaddingValues(horizontal = 14.dp),
+                        modifier = Modifier.height(36.dp),
+                    ) { Text("Pick one", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) }
+                }
+            }
+            // Meat sold by the pound: which pack, what's left over. Tap to set the real pack weight.
+            meat?.let { m ->
+                val leftover = when {
+                    m.cut != null && m.leftoverPieces > 0 -> "${m.leftoverPieces} left over go to the freezer"
+                    m.cut == null && m.leftoverLb > 1.0 -> "${Logic.fmt(Math.round(m.leftoverLb * 4) / 4.0)} lb left over goes to the freezer"
+                    m.cut == null && m.leftoverLb >= 0.1 -> "${Logic.fmt(Math.round(m.leftoverLb * 4) / 4.0)} lb left over"
+                    else -> null
+                }
+                val yours = if (m.cut != null) m.perPackYours else m.pack.source == Packs.Source.YOU
+                Row(
+                    Modifier.padding(start = indent).fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .clickable { editPack = true }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            (if (m.packs > 1) "${m.packs} × " else "1 pack · ") + Packs.label(m.pack) +
+                                (m.cut?.let { " · ${if (m.perPackYours) "" else "about "}${m.perPack} ${Packs.pieceWord(it, m.perPack)}" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            listOfNotNull(leftover, if (yours) "your size" else null).joinToString(" · ").ifEmpty { "Estimated size" },
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        "Set size", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+                if (editPack) {
+                    if (m.cut != null) {
+                        PackCountDialog(g.term, m, onSet = { vm.setPackCount(m.key, it); editPack = false }) { editPack = false }
+                    } else {
+                        PackWeightDialog(g.term, m, onSet = { vm.setPackWeight(m.key, it); editPack = false }) { editPack = false }
+                    }
+                }
+            }
+            line?.note?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = indent))
+            }
+            // Labels on the left; Have it / Use mine and the − 1 + pill on the right.
+            Row(Modifier.padding(start = indent).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.foundation.layout.FlowRow(
+                    Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (storeSources.isEmpty()) ShopTag("Need ${g.need}", Tag.NEED)
+                    storeSources.forEach { ShopTag(it, Tag.PLAIN) }
+                    if (p?.promo != null) ShopTag("Sale", Tag.SALE)
+                    if (p?.lowStock == true) ShopTag("Low stock", Tag.PANTRY)
+                    pantryNote?.let { ShopTag(it, Tag.PANTRY) }
+                    freezerNote?.let { ShopTag(it, Tag.FREEZER) }
+                }
                 // Past its date: buy more, or say you're fine using what you have.
                 if (usePantry != null) {
-                    TextButton(onClick = usePantry, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Use pantry") }
+                    TextButton(onClick = usePantry, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        Text("Use mine", color = Color(0xFFF0B44C), fontWeight = FontWeight.Bold)
+                    }
                 }
-            }
-        }
-        // Meat sold by the pound: which pack, what's left over. Tap to set the real pack weight.
-        freezerNote?.let {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                HaveIcon("freezer", Modifier.size(14.dp))
-                Text(" $it", style = MaterialTheme.typography.bodySmall, color = Color(0xFF85B7EB))
-            }
-        }
-        meat?.let { m ->
-            val leftover = when {
-                m.cut != null && m.leftoverPieces > 0 -> " · ${m.leftoverPieces} left over → freezer"
-                m.cut == null && m.leftoverLb > 1.0 -> " · ${Logic.fmt(Math.round(m.leftoverLb * 4) / 4.0)} lb left over → freezer"
-                m.cut == null && m.leftoverLb >= 0.1 -> " · ${Logic.fmt(Math.round(m.leftoverLb * 4) / 4.0)} lb left over"
-                else -> ""
-            }
-            val yours = if (m.cut != null) m.perPackYours else m.pack.source == Packs.Source.YOU
-            Text(
-                "🥩 " + (if (m.packs > 1) "${m.packs} × " else "") + Packs.label(m.pack) +
-                    (m.cut?.let { " · ${if (m.perPackYours) "" else "about "}${m.perPack} ${Packs.pieceWord(it, m.perPack)}" } ?: "") +
-                    leftover + " · " + (if (yours) "your size" else "tap to set"),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable { editPack = true }.padding(vertical = 2.dp),
-            )
-            if (editPack) {
-                if (m.cut != null) {
-                    PackCountDialog(g.term, m, onSet = { vm.setPackCount(m.key, it); editPack = false }) { editPack = false }
-                } else {
-                    PackWeightDialog(g.term, m, onSet = { vm.setPackWeight(m.key, it); editPack = false }) { editPack = false }
+                if (showHave) {
+                    TextButton(onClick = { vm.toggleHave(g.term) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        Text("Have it", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-            }
-        }
-        if (g.sources.isNotEmpty()) {
-            Text(
-                g.sources.joinToString(", "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-        }
-        line?.note?.let {
-            Text("⚠️ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-        }
-        if (hasStore) {
-            Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                val p = line?.product
-                // The chosen product's photo, so you can tell what it is at a glance.
-                if (p != null) {
-                    ProductPhoto(p.image, 44.dp, Modifier.clickable { vm.picking.value = g.term })
-                    Spacer(Modifier.width(10.dp))
-                }
-                Text(
-                    when {
-                        line == null -> "Looking up…"
-                        p == null -> "Nothing available at your store. Tap to search ›"
-                        else -> productLine(p) + "  ›"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (p == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).clickable(enabled = line != null) { vm.picking.value = g.term }
-                        .padding(vertical = 6.dp),
-                )
                 if (line != null && p != null) {
-                    OutlinedButton(
-                        onClick = {
+                    Stepper(
+                        line.quantity,
+                        onLess = {
                             if (line.quantity <= 1 && g.aisle == EXTRAS) vm.removeExtra(g)
                             else vm.setQuantity(g.term, line.quantity - 1)
                         },
-                        contentPadding = PaddingValues(0.dp), modifier = Modifier.size(34.dp),
-                    ) { Text("−") }
-                    Text("${line.quantity}", modifier = Modifier.padding(horizontal = 10.dp))
-                    OutlinedButton(
-                        onClick = { vm.setQuantity(g.term, line.quantity + 1) },
-                        contentPadding = PaddingValues(0.dp), modifier = Modifier.size(34.dp),
-                    ) { Text("+") }
+                        onMore = { vm.setQuantity(g.term, line.quantity + 1) },
+                    )
                 }
             }
         }
-        HorizontalDivider(Modifier.padding(top = 6.dp))
     }
-}
-
-/** "Kroger Yellow Onions · 3 lb · $2.99 (was $3.49) · ⚠️ Low stock" */
-private fun productLine(p: Product): String = buildString {
-    append(p.title)
-    if (p.size.isNotBlank()) append(" · ").append(p.size)
-    val now = p.promo ?: p.price
-    if (now != null) append(" · ").append(Sales.money(now))
-    if (p.promo != null && p.price != null) append(" (was ").append(Sales.money(p.price)).append(")")
-    if (p.lowStock) append(" · ⚠️ Low stock")
 }
 
 /** Full list of King Soopers products for one item, with a search box. */
