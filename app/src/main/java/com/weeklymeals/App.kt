@@ -647,6 +647,7 @@ internal fun Heading(text: String) {
 private fun RecipeDetails(
     r: Recipe, serv: Int, side: Side?, ctl: TimerCtl? = null,
     cost: MealsViewModel.MealCost? = null, budgetMax: Double = 0.0,
+    sideSize: Int = Logic.SIDE_NORMAL, onSideSize: ((Int) -> Unit)? = null,
     expired: Map<String, String> = emptyMap(),
     shared: List<Pair<String, String>> = emptyList(),
 ) {
@@ -710,8 +711,12 @@ private fun RecipeDetails(
     Heading("Ingredients (for $mainServ)")
     r.ingredients.forEach { line(it, mainServ, r.base) }
     if (side != null && side.ingredients.isNotEmpty()) {
-        Text("Side: ${side.label}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
-        side.ingredients.forEach { line(it, serv, 4) }
+        Text(
+            "Side: ${side.label}" + if (sideSize != Logic.SIDE_NORMAL) " (for ${sideServesText(serv, sideSize)})" else "",
+            style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+        )
+        if (onSideSize != null) SideSizeChoice(sideSize, onSideSize, Modifier.padding(bottom = 2.dp))
+        side.ingredients.forEach { line(it, Logic.sideServ(serv, sideSize), Logic.SIDE_BASE) }
     }
     if (cost != null) {
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
@@ -1204,6 +1209,7 @@ private fun SideResults(vm: MealsViewModel, st: UserState, query: String, gridSt
     val q = query.trim().lowercase()
     val all = vm.allSides(st)
     var adding by remember { mutableStateOf<Side?>(null) }
+    var addSize by remember { mutableIntStateOf(Logic.SIDE_NORMAL) }
     var lookAt by remember { mutableStateOf<Side?>(null) }
     val tile: @Composable (Side, Modifier) -> Unit = { sd, mod ->
         val fav = vm.isFavSide(st, sd.key)
@@ -1211,7 +1217,7 @@ private fun SideResults(vm: MealsViewModel, st: UserState, query: String, gridSt
             sd, mod, calories = Nutrition.side(sd), cost = vm.sideCost(st, sd), budgetMax = st.budgetMax,
             fav = fav, canFav = vm.isBuiltInSide(sd.key),
             onFav = { if (fav) vm.removeFavSide(sd.key) else vm.addFavSide(sd.key) },
-            onOpen = { lookAt = sd }, onAdd = { adding = sd },
+            onOpen = { lookAt = sd }, onAdd = { addSize = Logic.SIDE_NORMAL; adding = sd },
         )
     }
     if (q.isEmpty()) {
@@ -1245,7 +1251,7 @@ private fun SideResults(vm: MealsViewModel, st: UserState, query: String, gridSt
     }
     lookAt?.let { sd ->
         SidePreview(
-            st, sd, onUse = { lookAt = null; adding = sd }, onBack = { lookAt = null },
+            st, sd, onUse = { size -> lookAt = null; addSize = size; adding = sd }, onBack = { lookAt = null },
             fav = if (vm.isBuiltInSide(sd.key)) vm.isFavSide(st, sd.key) else null,
             onFav = { if (vm.isFavSide(st, sd.key)) vm.removeFavSide(sd.key) else vm.addFavSide(sd.key) },
         )
@@ -1258,7 +1264,7 @@ private fun SideResults(vm: MealsViewModel, st: UserState, query: String, gridSt
             st, "${sd.label} goes with…",
             onPick = { d ->
                 plan.slots[d]?.let { id ->
-                    vm.chooseSide(id, sd.key)
+                    vm.chooseSide(id, sd.key, addSize)
                     vm.message.value = "${plainLabel(sd.label)} added to ${Logic.DAY_LONG[d]}'s dinner"
                 }
                 adding = null
@@ -1436,7 +1442,7 @@ private fun RecipeScreen(
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
                 actions = {
                     val ctx = LocalContext.current
-                    IconButton(onClick = { shareRecipe(ctx, r, st.servings, if (inWeek) side else null) }) {
+                    IconButton(onClick = { shareRecipe(ctx, r, st.servings, if (inWeek) side else null, st.sideSize[id]) }) {
                         Icon(Icons.Filled.Share, "Share recipe")
                     }
                     FavButton(r, st, toggleFav)
@@ -1555,7 +1561,11 @@ private fun RecipeScreen(
             if (inWeek) WeekControls(vm, st, r, side)
             if (r.machine.isNotEmpty()) MachineCard(r.machine)
             SaleSection(vm, st, r)
-            RecipeDetails(r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax, expired = vm.expiredTerms(st))
+            RecipeDetails(
+                r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax, expired = vm.expiredTerms(st),
+                sideSize = st.sideSize[id] ?: Logic.SIDE_NORMAL,
+                onSideSize = if (inWeek && side != null && !isStoreSide(side)) ({ size: Int -> vm.setSideSize(id, size) }) else null,
+            )
             ReviewsSection(r.id, r.rating, r.ratingCount, r.countLabel, r.reviews)
             Spacer(Modifier.height(24.dp))
         }
@@ -1594,7 +1604,7 @@ private fun MachineCard(settings: List<String>) {
 }
 
 /** The recipe as plain text (amounts for your Cooking for number), for texting or email. No prices or Kitchen info. */
-fun recipeShareText(r: Recipe, serv: Int, side: Side?): String = buildString {
+fun recipeShareText(r: Recipe, serv: Int, side: Side?, sideSize: Int? = null): String = buildString {
     appendLine("${r.emoji} ${r.name}")
     val info = listOfNotNull(
         "Serves ${Logic.servFor(r, serv)}",
@@ -1608,7 +1618,7 @@ fun recipeShareText(r: Recipe, serv: Int, side: Side?): String = buildString {
     if (side != null && side.ingredients.isNotEmpty()) {
         appendLine()
         appendLine("Side: ${side.label}")
-        side.ingredients.forEach { appendLine("• " + Logic.ingText(it, serv, 4)) }
+        side.ingredients.forEach { appendLine("• " + Logic.ingText(it, Logic.sideServ(serv, sideSize), Logic.SIDE_BASE)) }
     }
     appendLine()
     appendLine("Steps")
@@ -1623,11 +1633,11 @@ fun recipeShareText(r: Recipe, serv: Int, side: Side?): String = buildString {
 }
 
 /** Opens the phone's share menu (texts, email, notes…) with the recipe as text. */
-fun shareRecipe(ctx: android.content.Context, r: Recipe, serv: Int, side: Side?) {
+fun shareRecipe(ctx: android.content.Context, r: Recipe, serv: Int, side: Side?, sideSize: Int? = null) {
     val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(android.content.Intent.EXTRA_SUBJECT, r.name)
-        putExtra(android.content.Intent.EXTRA_TEXT, recipeShareText(r, serv, side))
+        putExtra(android.content.Intent.EXTRA_TEXT, recipeShareText(r, serv, side, sideSize))
     }
     runCatching { ctx.startActivity(android.content.Intent.createChooser(send, "Share ${r.name}")) }
 }

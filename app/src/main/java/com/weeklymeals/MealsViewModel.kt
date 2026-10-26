@@ -104,7 +104,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         if (id !in state.value.week) justAdded.value = id
     }
 
-    fun chooseSide(id: Int, key: String?) = markAdded(id).let { edit { s0 ->
+    /** Puts [key] with meal [id] (null takes the side off), made at [size] (Logic.SIDE_HALF / NORMAL / DOUBLE). */
+    fun chooseSide(id: Int, key: String?, size: Int = Logic.SIDE_NORMAL) = markAdded(id).let { edit { s00 ->
+        val s0 = s00.copy(sideSize = if (key == null || size == Logic.SIDE_NORMAL) s00.sideSize - id else s00.sideSize + (id to size))
         val r = recipes(s0)[id]
         val s1 = if (key != null && key in s0.notForDish[id].orEmpty())
             s0.copy(notForDish = s0.notForDish + (id to (s0.notForDish[id].orEmpty() - key))) else s0
@@ -117,6 +119,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     } }
 
     fun isBuiltInSide(key: String) = key in baseSides
+
+    /** Half, normal or double the side for meal [id]. */
+    fun setSideSize(id: Int, size: Int) = edit {
+        it.copy(sideSize = if (size == Logic.SIDE_NORMAL) it.sideSize - id else it.sideSize + (id to size))
+    }
 
     /** Calories per serving for a meal: the main, plus its side once it's in your week. */
     fun mealCalories(st: UserState, r: Recipe): Int? {
@@ -1134,7 +1141,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Shopping list ---------------------------------------------------------
 
     fun shopItems(st: UserState = state.value): List<ShopItem> =
-        Logic.shopList(st.week, st.sides, recipes(st), sideMap, st.servings) +
+        Logic.shopList(st.week, st.sides, recipes(st), sideMap, st.servings, st.sideSize) +
             // A shared ingredient you used all of in one meal: buy it again for the others ("… #2").
             st.usedAll.flatMap { (term, used) ->
                 st.week.filter { it != used }.flatMap { id -> mealItems(st, id)[term].orEmpty() }
@@ -1641,7 +1648,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** What the week's meals used, taken out of the pantry (on Finish week). */
     private fun usedUp(s: UserState): List<PantryItem> {
-        val used = Logic.shopList(s.week, s.sides, recipes(s), sideMap, s.servings)
+        val used = Logic.shopList(s.week, s.sides, recipes(s), sideMap, s.servings, s.sideSize)
             .groupBy { Logic.searchTerm(it.name) }
         return s.pantry.map { found ->
             val items = used[found.term] ?: used[Logic.searchTerm(found.term)] ?: return@map found
@@ -1923,13 +1930,13 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val key = listOf(
             r.id, r.ingredients.hashCode(), side, st.servings, st.pantry, st.haveTerms, prods.size,
             sales.day, sales.options.size, st.packWeights, if (r.id in st.week) st.week else null, st.sides,
-            st.freezer, st.wholeCuts, st.packCounts, st.usedAll, st.days, st.pantryBuy,
+            st.freezer, st.wholeCuts, st.packCounts, st.usedAll, st.days, st.pantryBuy, st.sideSize,
         )
         if (costCache.size > 2000) costCache.clear()
         return costCache.getOrPut(key) {
-            val items = Logic.shopList(listOf(r.id), side?.let { mapOf(r.id to it) } ?: emptyMap(), mapOf(r.id to r), sideMap, st.servings)
+            val items = Logic.shopList(listOf(r.id), side?.let { mapOf(r.id to it) } ?: emptyMap(), mapOf(r.id to r), sideMap, st.servings, st.sideSize)
             // Meat in planned meals shares packs across the week, so we need the week's totals too.
-            val weekItems = if (r.id in st.week) Logic.shopList(st.week, st.sides, recipes(st), sideMap, st.servings)
+            val weekItems = if (r.id in st.week) Logic.shopList(st.week, st.sides, recipes(st), sideMap, st.servings, st.sideSize)
                 .groupBy { Logic.searchTerm(it.name) } else emptyMap()
             var total = 0.0
             var saved = 0.0

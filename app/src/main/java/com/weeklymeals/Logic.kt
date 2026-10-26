@@ -51,6 +51,13 @@ object Logic {
         }
     }
 
+    /** Side sizes: half, normal or double. Sides are written for 4, so they scale as [sideServ] out of [SIDE_BASE]. */
+    const val SIDE_HALF = 1
+    const val SIDE_NORMAL = 2
+    const val SIDE_DOUBLE = 4
+    const val SIDE_BASE = 8
+    fun sideServ(serv: Int, size: Int?): Int = serv * (size ?: SIDE_NORMAL)
+
     fun scale(i: Ingredient, serv: Int, base: Int): Ingredient {
         if (serv == base && i.q > 0) return i // not resized: keep the amount exactly as written
         var q = i.q * serv / base
@@ -128,13 +135,14 @@ object Logic {
         recipes: Map<Int, Recipe>,
         sideMap: Map<String, Side>,
         serv: Int,
+        sideSize: Map<Int, Int> = emptyMap(),
     ): List<ShopItem> {
         val merged = LinkedHashMap<String, ShopItem>()
         for (id in week) {
             val r = recipes[id] ?: continue
             val sideIngredients = sides[id]?.let { sideMap[it] }?.ingredients ?: emptyList()
             val all = r.ingredients.map { scale(it, servFor(r, serv), r.base) } +
-                sideIngredients.map { scale(it, serv, 4) }
+                sideIngredients.map { scale(it, sideServ(serv, sideSize[id]), SIDE_BASE) }
             for (i in all) {
                 val key = "${i.name}|${i.u}".lowercase()
                 val cur = merged[key]

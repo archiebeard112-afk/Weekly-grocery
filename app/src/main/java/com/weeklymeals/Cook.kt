@@ -280,8 +280,9 @@ fun CookScreen(
     val steps = remember(r, side) { Cook.order(r, side) }
     // Amounts scaled to "Cooking for" (recipes you added keep their own), added after each ingredient's first mention.
     val mainPieces = remember(r, mainServ) { Cook.withAmounts(r.steps, r.ingredients.map { Logic.scale(it, mainServ, r.base) }, mainServ.toDouble() / r.base) }
-    val sidePieces = remember(side, serv) {
-        side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, serv, 4) }, serv / 4.0) } ?: emptyList()
+    val sideServ = Logic.sideServ(serv, st.sideSize[id])
+    val sidePieces = remember(side, sideServ) {
+        side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, sideServ, Logic.SIDE_BASE) }, sideServ.toDouble() / Logic.SIDE_BASE) } ?: emptyList()
     }
     // Picks up where you left off (you can leave and come back with the cooking bubble).
     val resume = st.cookingId == id
@@ -315,7 +316,7 @@ fun CookScreen(
                 Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
                     .padding(horizontal = 18.dp, vertical = 12.dp),
             ) {
-                IngredientsPage(r, side, sideName, serv, steps)
+                IngredientsPage(r, side, sideName, serv, sideServ, steps)
                 Spacer(Modifier.height(22.dp))
                 Text("Steps", style = MaterialTheme.typography.headlineSmall)
                 Text(
@@ -428,7 +429,7 @@ private fun StepTag(step: CookStep, r: Recipe, side: Side?) {
 }
 
 @Composable
-private fun IngredientsPage(r: Recipe, side: Side?, sideName: String?, serv: Int, steps: List<CookStep>) {
+private fun IngredientsPage(r: Recipe, side: Side?, sideName: String?, serv: Int, sideServ: Int, steps: List<CookStep>) {
     Text("Ingredients", style = MaterialTheme.typography.titleLarge)
     if (side != null && isStoreSide(side)) {
         // Store-bought: nothing to cook, just a reminder.
@@ -447,7 +448,7 @@ private fun IngredientsPage(r: Recipe, side: Side?, sideName: String?, serv: Int
     }
     val mainServ = Logic.servFor(r, serv)
     IngredientColumns("${r.name} (for $mainServ)", r.ingredients.map { Logic.scale(it, mainServ, r.base) })
-    if (side != null && !isStoreSide(side)) IngredientColumns("${side.label} (side)", side.ingredients.map { Logic.scale(it, serv, 4) })
+    if (side != null && !isStoreSide(side)) IngredientColumns("${side.label} (side)", side.ingredients.map { Logic.scale(it, sideServ, Logic.SIDE_BASE) })
 }
 
 /** Compact ingredient list in two columns: bold amount, then the name. */
@@ -521,8 +522,9 @@ internal fun MiniCook(vm: MealsViewModel, st: UserState, id: Int, onOpenApp: () 
     val mainServ = Logic.servFor(r, serv)
     val steps = remember(r, side) { Cook.order(r, side) }
     val mainPieces = remember(r, mainServ) { Cook.withAmounts(r.steps, r.ingredients.map { Logic.scale(it, mainServ, r.base) }, mainServ.toDouble() / r.base) }
-    val sidePieces = remember(side, serv) {
-        side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, serv, 4) }, serv / 4.0) } ?: emptyList()
+    val sideServ = Logic.sideServ(serv, st.sideSize[id])
+    val sidePieces = remember(side, sideServ) {
+        side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, sideServ, Logic.SIDE_BASE) }, sideServ.toDouble() / Logic.SIDE_BASE) } ?: emptyList()
     }
     val mainCtl = TimerCtl(
         prefix = "r${r.id}", title = r.name, running = st.timers,

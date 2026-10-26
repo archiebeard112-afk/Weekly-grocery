@@ -89,7 +89,7 @@ private var leftMemo: Pair<List<Any?>, List<Leftover>>? = null
 
 /** What one planned meal (with its side) needs, by shopping term. */
 fun MealsViewModel.mealItems(st: UserState, id: Int): Map<String, List<ShopItem>> =
-    Logic.shopList(listOf(id), st.sides.filterKeys { it == id }, recipes(st), sideMap, st.servings)
+    Logic.shopList(listOf(id), st.sides.filterKeys { it == id }, recipes(st), sideMap, st.servings, st.sideSize)
         .filter { it.aisle != EXTRAS && !it.key.startsWith("side:") }
         .groupBy { Logic.searchTerm(it.name) }
 
