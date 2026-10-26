@@ -147,6 +147,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val s = dropFromWeek(s0, key)
         s.copy(
             customSides = s.customSides.filterNot { it.key == key },
+            favSides = s.favSides - key,
             storeSides = s.storeSides.mapValues { (_, l) -> l.filterNot { storeSideKey(it.upc) == key } },
             recipeSides = s.recipeSides.mapValues { (_, l) -> l - key },
         )
@@ -168,6 +169,38 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         chooseSide(recipeId, key)
         message.value = "Added ${d.title} as a side"
     }
+
+    /** Saves an online recipe as one of your sides (shows in Favorites → Sides), without putting it on a meal. */
+    fun saveWebSideOnly(d: WebRecipeDetail) {
+        if (d.ingredients.isEmpty() || d.steps.isEmpty()) {
+            message.value = "This recipe is missing ingredients or steps"
+            return
+        }
+        val key = "web:${d.id}"
+        val side = Side(
+            key, "${d.emoji} ${d.title}",
+            d.ingredients.map { it.copy(q = it.q * 4.0 / d.servings.coerceAtLeast(1)) }, d.steps,
+            rating = d.rating, ratingCount = d.ratingCount, countLabel = d.countLabel, reviews = d.reviews,
+        )
+        edit { s -> if (s.customSides.any { it.key == key }) s else s.copy(customSides = s.customSides + side) }
+        message.value = "Added ${d.title} to your sides"
+    }
+
+    /** Sides in Favorites: the ones you added (always) and built-in ones you hearted. */
+    fun favoriteSides(st: UserState): List<Side> =
+        (st.customSides + baseSides.values.filter { it.key in st.favSides && it.key !in st.hiddenSides })
+            .sortedBy { it.label.substringAfter(" ").lowercase() }
+
+    fun isFavSide(st: UserState, key: String) = key in st.favSides || st.customSides.any { it.key == key }
+
+    fun addFavSide(key: String) = edit { it.copy(favSides = it.favSides + key) }
+
+    /** Built-in sides just lose the heart; sides you added are deleted (like recipes you added). */
+    fun removeFavSide(key: String) {
+        if (isBuiltInSide(key)) edit { it.copy(favSides = it.favSides - key) } else deleteSide(key)
+    }
+
+    fun setFavKind(kind: String) = edit { it.copy(favKind = kind) }
 
     // Online search inside the "Pick a side" pop-up.
     val sideWeb = MutableStateFlow(WebSearch())
@@ -372,7 +405,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val st = state.value
         val cache = salesCache(st)
         if (saleOnly.value) {
-            val pool = recipes(st).values.filter { it.id !in st.removed && st.ratings[it.id] != -1 && Sales.savings(it, st.servings, cache) >= st.saleMin }.map { it.id }
+            val pool = recipes(st).values.filter { !Logic.isDessert(it) && it.id !in st.removed && st.ratings[it.id] != -1 && Sales.savings(it, st.servings, cache) >= st.saleMin }.map { it.id }
             if (pool.isEmpty()) message.value = "No meals save ${Sales.money(st.saleMin)} or more at your store today"
             return pool.shuffled().take(10)
         }
@@ -381,7 +414,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val lastShown = browseSets.lastOrNull().orEmpty().toSet()
         // 👎 meals never come up as ideas (you can still search for them); 😐 meals about half as often.
         val all = bundle.recipes.filter {
-            !it.imported && it.id !in st.removed && st.ratings[it.id] != -1 && (st.ratings[it.id] != 2 || Math.random() < 0.5)
+            !it.imported && !Logic.isDessert(it) && it.id !in st.removed && st.ratings[it.id] != -1 && (st.ratings[it.id] != 2 || Math.random() < 0.5)
         }
         var pool = all.filter { it.id !in st.week && it.id !in recent && it.id !in lastShown }
         if (pool.size < 10) pool = all.filter { it.id !in st.week }
@@ -640,7 +673,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         if (id in s.week) s else {
             val r = recipes(s)[id]
             val chosen = if (useDefaultSide) s.sides[id] ?: r?.sides?.firstOrNull() else side
-            val plan = Logic.dayPlan(s.week, s.days, s.weekStart)
+            val plan = Logic.dayPlan(s)
             val free = Logic.dayOrder(s.weekStart).firstOrNull { plan.slots[it] == null } ?: -1
             s.copy(
                 week = s.week + id,
@@ -751,23 +784,35 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** The recipe waiting for a side to be picked before it's added (shows the "Pick a side" pop-up). */
     val sidePicker = MutableStateFlow<Int?>(null)
 
-    /** Add from a tile or recipe page: asks for a side first if the recipe has any. */
+    /** The dessert waiting for a day to be picked before it's added (shows "Which day?"). */
+    val dessertPicker = MutableStateFlow<Int?>(null)
+
+    /** Add from a tile or recipe page: asks for a side first, or for a day if it's a dessert. */
     fun requestAdd(id: Int) {
         val r = recipes()[id] ?: return
         if (id in state.value.week) return
-        sidePicker.value = id
+        if (Logic.isDessert(r)) dessertPicker.value = id else sidePicker.value = id
+    }
+
+    /** Puts a dessert on a day (or moves it there). It doesn't take that day's dinner spot. */
+    fun addDessert(id: Int, day: Int) {
+        if (day !in 0..6) return
+        markAdded(id)
+        edit { s -> s.copy(week = if (id in s.week) s.week else s.week + id, dessertDays = s.dessertDays + (id to day)) }
+        message.value = "Dessert added to ${Logic.DAY_LONG[day]}"
     }
 
     /** Change the side on a meal that's already planned (same picker as when adding). */
     fun changeSide(id: Int) { sidePicker.value = id }
 
     fun removeFromWeek(id: Int) = edit { s ->
-        s.copy(week = s.week - id, sides = s.sides - id, days = Logic.dayPlan(s.week, s.days, s.weekStart).asMap() - id)
+        s.copy(week = s.week - id, sides = s.sides - id, days = Logic.dayPlan(s).asMap() - id, dessertDays = s.dessertDays - id)
     }
 
     /** Moves a meal to a day; if that day already has a meal, the two swap. */
     fun moveToDay(id: Int, day: Int) = edit { s ->
-        val plan = Logic.dayPlan(s.week, s.days, s.weekStart)
+        if (id in s.dessertDays) return@edit if (day in 0..6) s.copy(dessertDays = s.dessertDays + (id to day)) else s
+        val plan = Logic.dayPlan(s)
         val occupant = plan.slots.getOrNull(day)
         if (occupant == id || day !in 0..6) s else {
             val m = plan.asMap().toMutableMap()
@@ -792,14 +837,16 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 listOf(
                     PastWeek(
                         System.currentTimeMillis(),
-                        Logic.dayPlan(s.week, s.days, s.weekStart).let { p -> Logic.dayOrder(s.weekStart).mapNotNull { p.slots[it] } + p.extras },
+                        Logic.dayPlan(s).let { p -> Logic.dayOrder(s.weekStart).mapNotNull { p.slots[it] } + p.extras },
                         s.sides.filterKeys { it in s.week }, s.servings,
                         storeMeals = s.storeMeals.sortedBy { Logic.dayRank(it.day, s.weekStart) }.map { Logic.DAY_SHORT.getOrElse(it.day) { "" } + " · " + it.title },
+                        desserts = s.dessertDays.filterKeys { it in s.week },
                     ),
                 ) +
                     s.history.take(99),
             storeMeals = emptyList(),
             week = emptyList(),
+            dessertDays = emptyMap(),
             usedAll = emptyMap(),
             days = emptyMap(),
             sides = emptyMap(),
@@ -819,7 +866,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun repeatWeek(w: PastWeek) = edit { s ->
         val all = recipes(s)
         val add = w.recipes.filter { it in all && it !in s.week }
-        s.copy(week = s.week + add, sides = s.sides + w.sides.filterKeys { it in add })
+        val sweets = w.desserts.filterKeys { it in all && it !in s.week && it !in add }
+        s.copy(
+            week = s.week + add + sweets.keys, sides = s.sides + w.sides.filterKeys { it in add },
+            dessertDays = s.dessertDays + sweets,
+        )
     }
 
     fun deletePastWeek(w: PastWeek) = edit { s -> s.copy(history = s.history - w) }
@@ -981,7 +1032,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun savedWebRecipe(st: UserState, ref: String): Recipe? = st.custom.firstOrNull { it.webRef == ref }
 
     /** Saves an approved online recipe to your recipes (it shows in Favorites). Returns its new id. */
-    fun saveWebRecipe(d: WebRecipeDetail): Int? {
+    fun saveWebRecipe(d: WebRecipeDetail, kind: String = "main"): Int? {
         if (d.ingredients.isEmpty() || d.steps.isEmpty()) {
             message.value = "This recipe is missing ingredients or steps"
             return null
@@ -992,8 +1043,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val r = Recipe(
             id = newId, name = d.title, emoji = d.emoji, base = d.servings,
             steps = d.steps, ingredients = d.ingredients,
-            sides = bundle.sides.take(4).map { it.key }, imported = true,
-            tags = d.tags, webRef = d.id,
+            sides = if (kind == "dessert") emptyList() else bundle.sides.take(4).map { it.key }, imported = true,
+            tags = if (kind == "dessert") (d.tags + "dessert").distinct() else d.tags, webRef = d.id,
             rating = d.rating, ratingCount = d.ratingCount, countLabel = d.countLabel, reviews = d.reviews,
             calories = d.calories,
         )
@@ -1011,6 +1062,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             val base = s.copy(
                 week = s.week - r.id,
                 days = s.days - r.id,
+                dessertDays = s.dessertDays - r.id,
                 sides = s.sides - r.id,
                 favs = s.favs - r.id,
                 storeSides = s.storeSides - r.id,
@@ -1046,16 +1098,28 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun addCustomRecipe(name: String, emoji: String, base: Int, ingText: String, stepText: String): Boolean {
+    /** Saves a recipe you typed in or imported from a link: [kind] is "main", "side" or "dessert". */
+    fun addCustomRecipe(name: String, emoji: String, base: Int, ingText: String, stepText: String, kind: String = "main"): Boolean {
         val ings = ingText.lines().mapNotNull { Logic.parseIngredient(it) }
         val steps = stepText.lines().map { it.trim().replace(Regex("^\\d+[.)]\\s*"), "") }.filter { it.isNotEmpty() }
         if (name.isBlank() || ings.isEmpty() || steps.isEmpty()) return false
+        if (kind == "side") {
+            // Sides are written for 4, like the built-in ones.
+            val serves = base.coerceAtLeast(1)
+            val side = Side(
+                "my:" + UUID.randomUUID().toString(), "${emoji.ifBlank { "🍽️" }} ${name.trim()}",
+                ings.map { it.copy(q = it.q * 4.0 / serves) }, steps,
+            )
+            edit { s -> s.copy(customSides = s.customSides + side) }
+            return true
+        }
         edit { s ->
             val nextId = (recipes(s).keys.maxOrNull() ?: 99).coerceAtLeast(99) + 1
             val r = Recipe(
                 id = nextId, name = name.trim(), emoji = emoji.ifBlank { "🍽️" },
                 base = base.coerceAtLeast(1), steps = steps, ingredients = ings,
-                sides = bundle.sides.take(4).map { it.key }, imported = true,
+                sides = if (kind == "dessert") emptyList() else bundle.sides.take(4).map { it.key }, imported = true,
+                tags = if (kind == "dessert") listOf("dessert") else emptyList(),
             )
             s.copy(custom = s.custom + r)
         }

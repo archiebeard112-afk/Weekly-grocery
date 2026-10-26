@@ -27,6 +27,8 @@ data class Recipe(
     val reviews: List<Review> = emptyList(),
     /** Calories per serving from the recipe's site (null = we estimate from ingredients). */
     val calories: Int? = null,
+    /** Bread maker settings shown on the recipe page, each "Label: value" (e.g. "Cycle: Sweet"). */
+    val machine: List<String> = emptyList(),
 )
 
 @Serializable
@@ -182,7 +184,16 @@ data class UserState(
     val receiptsSeeded: Boolean = false,
     /** Shared ingredients you used all of in one meal: term -> that meal (the others get their own). */
     val usedAll: Map<String, Int> = emptyMap(),
-)
+    /** Desserts planned this week: recipe id -> day 0 (Mon) .. 6 (Sun). They are in [week] too, but don't take a day's dinner spot. */
+    val dessertDays: Map<Int, Int> = emptyMap(),
+    /** Built-in sides you hearted (sides you added yourself are always in Favorites). */
+    val favSides: Set<String> = emptySet(),
+    /** What Favorites shows: "all", "main", "side" or "dessert". */
+    val favKind: String = "all",
+) {
+    /** This week's dinners: everything planned except desserts. */
+    val mains: List<Int> get() = if (dessertDays.isEmpty()) week else week.filter { it !in dessertDays }
+}
 
 /** A King Soopers product used as a side (e.g. a box of mac & cheese). Its side key is "buy:<upc>". */
 @Serializable
@@ -214,6 +225,8 @@ data class PastWeek(
     val servings: Int = 2,
     /** Store-bought meals that week, like "Wed · Frozen pizza". */
     val storeMeals: List<String> = emptyList(),
+    /** Desserts that week: recipe id -> day. */
+    val desserts: Map<Int, Int> = emptyMap(),
 )
 
 /**

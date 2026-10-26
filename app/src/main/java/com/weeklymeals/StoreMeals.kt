@@ -46,11 +46,13 @@ object BrowseScope {
     const val APP = "app"
     const val WEB = "web"
     const val STORE = "store"
-    val ALL = listOf(APP to "In app", WEB to "Online", STORE to "King Soopers")
+    const val DESSERT = "dessert"
+    val ALL = listOf(APP to "In app", DESSERT to "Desserts", WEB to "Online", STORE to "King Soopers")
     fun label(key: String) = ALL.firstOrNull { it.first == key }?.second ?: "In app"
     fun hint(key: String) = when (key) {
         WEB -> "Search online recipes"
         STORE -> "Search King Soopers"
+        DESSERT -> "Search desserts"
         else -> "Search"
     }
 }
@@ -231,7 +233,11 @@ private fun StoreRow(title: String, detail: String, image: String = "", onAdd: (
 
 /** "Which day?": Monday to Sunday, with how many store items each already has. */
 @Composable
-internal fun DayPickerDialog(st: UserState, title: String, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
+internal fun DayPickerDialog(
+    st: UserState, title: String, onPick: (Int) -> Unit, onDismiss: () -> Unit,
+    /** What's on each day already (e.g. that night's dinner); null shows the store item count. */
+    detail: ((Int) -> String?)? = null,
+) {
     val today = Logic.todayIndex()
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -244,9 +250,15 @@ internal fun DayPickerDialog(st: UserState, title: String, onPick: (Int) -> Unit
                         Logic.dayOrder(st.weekStart).forEach { d ->
                             val name = Logic.DAY_LONG[d]
                             val n = st.storeMeals.count { it.day == d }
+                            val extra = when {
+                                detail != null -> detail(d)?.let { "  ·  $it" } ?: ""
+                                n > 0 -> "  ·  $n store item${if (n == 1) "" else "s"}"
+                                else -> ""
+                            }
                             TextButton(onClick = { onPick(d) }, modifier = Modifier.fillMaxWidth()) {
                                 Text(
-                                    name + (if (d == today) " (today)" else "") + (if (n > 0) "  ·  $n store item${if (n == 1) "" else "s"}" else ""),
+                                    name + (if (d == today) " (today)" else "") + extra,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.fillMaxWidth(),
                                     textAlign = TextAlign.Start,
                                 )

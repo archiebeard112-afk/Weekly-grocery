@@ -114,12 +114,26 @@ object Nutrition {
         "marsala" to N(150.0, 235.0), "wine" to N(82.0, 235.0),
         "gravy mix" to N(350.0, 128.0, pack = 28.0), "soup mix" to N(300.0, 128.0, pack = 28.0),
         "seasoning" to N(300.0, 128.0, pack = 28.0),
+        // Baking and desserts
+        "chocolate chip" to N(480.0, 170.0, pack = 340.0), "cocoa" to N(228.0, 86.0, pack = 226.0),
+        "vanilla extract" to N(288.0, 208.0, pack = 59.0), "baking soda" to N(0.0, 220.0), "powdered sugar" to N(389.0, 120.0),
+        "yeast" to N(325.0, 192.0, pack = 113.0), "raisin" to N(299.0, 145.0, pack = 340.0),
+        "graham cracker crumbs" to N(430.0, 84.0), "graham cracker" to N(430.0, 84.0, 14.0, 408.0),
+        "condensed milk" to N(321.0, 306.0, pack = 397.0), "evaporated milk" to N(134.0, 252.0, pack = 354.0),
+        "pecan" to N(691.0, 109.0), "walnut" to N(654.0, 117.0), "peach" to N(54.0, 250.0, pack = 822.0),
+        "cherry pie filling" to N(120.0, 260.0, pack = 595.0), "maraschino" to N(165.0, 155.0, 5.0, 284.0),
+        "pumpkin" to N(34.0, 245.0, pack = 425.0), "whipped topping" to N(318.0, 75.0, pack = 226.0),
+        "marshmallow" to N(318.0, 50.0, 7.0, 283.0), "rice cereal" to N(380.0, 28.0, pack = 340.0),
+        "vanilla wafer" to N(470.0, 40.0, pack = 312.0), "pudding mix" to N(370.0, 120.0, pack = 96.0),
+        "molasses" to N(290.0, 337.0), "corn syrup" to N(286.0, 328.0), "pectin" to N(325.0, 100.0, pack = 49.0),
+        "mixed berr" to N(50.0, 140.0, pack = 454.0), "ice cream" to N(207.0, 132.0, pack = 1420.0),
+        "pineapple juice" to N(53.0, 250.0), "bread cubes" to N(265.0, 45.0),
     )
 
     /** Each keyword with its pattern compiled once. */
     private val compiled = table.map { (k, v) -> Triple(Regex("\\b" + Regex.escape(k)), k.length, v) }
 
-    private val zero = Regex("\\b(water|club soda|salt|pepper flakes|black pepper|ice)\\b")
+    private val zero = Regex("\\b(water|club soda|salt|pepper flakes|black pepper|ice(?! cream))\\b")
     private val spice = Regex("\\b(cumin|paprika|cinnamon|oregano|thyme|basil|chili powder|garlic powder|onion powder|cayenne|turmeric|coriander|curry powder|garam masala|dry mustard|italian seasoning|nutmeg|ginger)\\b")
 
     /**

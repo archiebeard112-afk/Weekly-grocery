@@ -96,11 +96,21 @@ object Prices {
         "balsamic glaze" to P(5.99, 250.0), "balsamic" to P(3.99, 500.0), "vinegar" to P(3.49, 1890.0),
         "marsala" to P(4.99, 473.0), "wine" to P(7.99, 750.0), "gravy mix" to P(1.29, 28.0), "soup mix" to P(1.99, 56.0),
         "taco seasoning" to P(1.00, 28.0), "seasoning" to P(1.49, 28.0),
+        // Baking and desserts
+        "chocolate chip" to P(3.49, 340.0), "cocoa" to P(4.49, 226.0), "vanilla extract" to P(5.99, 59.0),
+        "baking soda" to P(1.29, 454.0), "powdered sugar" to P(2.99, 907.0), "yeast" to P(4.99, 113.0),
+        "raisin" to P(3.49, 340.0), "graham cracker" to P(3.99, 408.0), "condensed milk" to P(2.49, 397.0),
+        "evaporated milk" to P(1.49, 354.0), "pecan" to P(6.99, 227.0), "walnut" to P(5.99, 227.0),
+        "peach" to P(2.49, 822.0), "cherry pie filling" to P(3.49, 595.0), "maraschino" to P(2.99, 284.0),
+        "pumpkin" to P(1.99, 425.0), "whipped topping" to P(2.49, 226.0), "marshmallow" to P(1.99, 283.0),
+        "rice cereal" to P(4.29, 340.0), "vanilla wafer" to P(3.99, 312.0), "pudding mix" to P(1.49, 96.0),
+        "molasses" to P(4.49, 355.0), "corn syrup" to P(3.99, 473.0), "pectin" to P(3.49, 49.0),
+        "mixed berr" to P(4.99, 454.0), "ice cream" to P(3.99, 1420.0), "pineapple juice" to P(2.49, 1360.0),
     )
 
     private val compiled = table.map { (k, v) -> Triple(Regex("\\b" + Regex.escape(k)), k.length, v) }
 
-    private val free = Regex("\\b(water|club soda|ice)\\b")
+    private val free = Regex("\\b(water|club soda|ice(?! cream))\\b")
     private val jarred = Regex(
         "\\b(salt|black pepper|pepper flakes|cumin|paprika|cinnamon|oregano|thyme|chili powder|garlic powder|onion powder|" +
             "cayenne|turmeric|coriander|curry powder|garam masala|dry mustard|italian seasoning|nutmeg|dried basil|ground ginger)\\b",

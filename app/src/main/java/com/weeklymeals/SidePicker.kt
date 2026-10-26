@@ -3,6 +3,8 @@ package com.weeklymeals
 import androidx.compose.material.icons.filled.Check
 
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 
 import androidx.compose.material3.Icon
 
@@ -79,7 +81,13 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
     ) { if (editing) held = sd else preview = sd }
 
     preview?.let { sd ->
-        SidePreview(st, sd, onUse = { pick(sd.key) }, onBack = { preview = null })
+        val fav = vm.isFavSide(st, sd.key)
+        SidePreview(
+            st, sd, onUse = { pick(sd.key) }, onBack = { preview = null },
+            // Sides you added are always in Favorites; built-in ones get a ♥.
+            fav = if (vm.isBuiltInSide(sd.key)) fav else null,
+            onFav = { if (fav) vm.removeFavSide(sd.key) else vm.addFavSide(sd.key) },
+        )
         return
     }
 
@@ -244,12 +252,31 @@ private fun SideRow(
     HorizontalDivider()
 }
 
-/** A side's ingredients (for your servings), steps, calories and reviews before you add it. */
+/**
+ * A side's ingredients (for your servings), steps, calories and reviews before you add it.
+ * [onUse] null = just looking (from Favorites). [fav] non-null shows a ♥ to keep it in Favorites.
+ */
 @Composable
-private fun SidePreview(st: UserState, sd: Side, onUse: () -> Unit, onBack: () -> Unit) {
+internal fun SidePreview(
+    st: UserState, sd: Side, onUse: (() -> Unit)?, onBack: () -> Unit,
+    fav: Boolean? = null, onFav: () -> Unit = {},
+) {
     AlertDialog(
         onDismissRequest = onBack,
-        title = { Text(sd.label) },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(sd.label, modifier = Modifier.weight(1f))
+                if (fav != null) {
+                    IconButton(onClick = onFav) {
+                        Icon(
+                            if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            if (fav) "Remove from favorites" else "Add to favorites",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+        },
         text = {
             Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
                 Nutrition.side(sd)?.let {
@@ -277,8 +304,8 @@ private fun SidePreview(st: UserState, sd: Side, onUse: () -> Unit, onBack: () -
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onUse) { Text("Use as side") } },
-        dismissButton = { TextButton(onClick = onBack) { Text("Back") } },
+        confirmButton = { if (onUse != null) TextButton(onClick = onUse) { Text("Use as side") } },
+        dismissButton = { TextButton(onClick = onBack) { Text(if (onUse != null) "Back" else "Close") } },
     )
 }
 

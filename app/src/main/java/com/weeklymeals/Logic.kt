@@ -32,8 +32,24 @@ object Logic {
     fun isFav(r: Recipe, st: UserState): Boolean =
         r.id !in st.hidden && r.id !in st.removed && (r.imported || r.id in st.favs)
 
-    /** Servings to show a recipe at: ones you added keep their own servings, the rest follow Cooking for. */
-    fun servFor(r: Recipe, serv: Int): Int = if (r.imported) r.base else serv
+    fun isDessert(r: Recipe): Boolean = "dessert" in r.tags
+
+    /** Servings to show a recipe at: ones you added and desserts (a loaf, a pan of bars) keep their own servings, the rest follow Cooking for. */
+    fun servFor(r: Recipe, serv: Int): Int = if (r.imported || isDessert(r)) r.base else serv
+
+    /** What a recipe probably is, from its name: "dessert", "side" or "main". */
+    fun guessKind(name: String): String {
+        val n = name.lowercase()
+        val mainWords = Regex("\\b(pot pie|shepherd|chicken|beef|pork|turkey|sausage|shrimp|salmon|crab|fish|meatloaf|lasagna|tacos?|casserole|pizza|burgers?)\\b")
+        val sweet = Regex("\\b(cakes?|cupcakes?|cookies?|brownies?|blondies|pies?|cobbler|crisp|crumble|pudding|cheesecake|bars|fudge|tarts?|muffins?|" +
+            "cinnamon rolls?|sweet bread|banana bread|pumpkin bread|ice cream|frosting|mousse|truffles?|jam|dessert|treats?|shortcake|custard|candy|caramel|sundae|parfait|donuts?|doughnuts?|scones?|macarons?)\\b")
+        val side = Regex("\\b(salad|slaw|coleslaw|side|mashed|roasted (vegetables|veggies|potatoes|carrots|broccoli|brussels)|green beans|corn on the cob|rice pilaf|fries|biscuits|dinner rolls|garlic bread|cornbread|baked beans|mac and cheese|potato wedges|steamed)\\b")
+        return when {
+            sweet.containsMatchIn(n) && !mainWords.containsMatchIn(n) -> "dessert"
+            side.containsMatchIn(n) && !mainWords.containsMatchIn(n) -> "side"
+            else -> "main"
+        }
+    }
 
     fun scale(i: Ingredient, serv: Int, base: Int): Ingredient {
         if (serv == base && i.q > 0) return i // not resized: keep the amount exactly as written
@@ -78,7 +94,7 @@ object Logic {
     // ---- Store sections ------------------------------------------------------
 
     private val seasonings = Regex("masala|lemon pepper|paprika|coriander|cumin|turmeric|cayenne|cinnamon|oregano|seasoning|powder|pepper flakes|black pepper|kosher salt|dried|ground ginger")
-    private val frozen = Regex("frozen|egg rolls|hash browns|pie crust|edamame")
+    private val frozen = Regex("frozen|egg rolls|hash browns|pie crust|edamame|ice cream|whipped topping")
     private val deli = Regex("\\bham\\b|kielbasa|pepperoni|deli |smoked sausage")
     private val pantryFirst = Regex("broth|stock|soup|peanut butter|coconut|noodles|chips|breadcrumbs|panko|croutons|tuna|sun-dried|crushed|diced|pineapple|pickles|cornbread|sauce|dressing|pesto")
     private val produce = Regex("\\bkale\\b|eggplant|\\bpears?\\b|rosemary|fresh thyme|onion|garlic|bell pepper|jalape|chile|tomato|cucumber|lettuce|greens|spinach|broccoli|carrot|celery|potato|squash|zucchini|mushroom|avocado|lemon|lime|orange|apple|banana|berries|grapes|cilantro|basil|dill|parsley|ginger|asparagus|green beans|corn on the cob|cauliflower|bok choy|cabbage|coleslaw|sprouts|scallion|romaine")
@@ -86,9 +102,12 @@ object Logic {
     private val dairy = Regex("egg|milk|butter|cream|cheese|mozzarella|cheddar|parmesan|feta|goat|ricotta|yogurt|cotija|swiss")
     private val bakery = Regex("bread|baguette|buns|tortillas|pita|naan|rolls|flatbread|dough|wraps|hoagie")
 
+    private val baking = Regex("\\b(flour|sugar|cocoa|chocolate chips|vanilla|baking|yeast|sprinkles|marshmallows|graham|condensed milk|evaporated milk|corn syrup|molasses|pectin|pudding mix|wafers|pie filling)\\b")
+
     fun aisle(name: String): String {
         val n = name.lowercase()
         return when {
+            baking.containsMatchIn(n) -> AISLES[5]
             seasonings.containsMatchIn(n) -> AISLES[6]
             frozen.containsMatchIn(n) -> AISLES[4]
             deli.containsMatchIn(n) -> AISLES[1]
@@ -407,8 +426,8 @@ object Logic {
     val DAY_LONG = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
     /** Seven day slots (Mon..Sun) plus any meals that don't fit. */
-    data class DayPlan(val slots: List<Int?>, val extras: List<Int>) {
-        fun dayOf(id: Int): Int? = slots.indexOf(id).takeIf { it >= 0 }
+    data class DayPlan(val slots: List<Int?>, val extras: List<Int>, val desserts: Map<Int, Int> = emptyMap()) {
+        fun dayOf(id: Int): Int? = slots.indexOf(id).takeIf { it >= 0 } ?: desserts[id]
         /** Every placed meal -> its day. */
         fun asMap(): Map<Int, Int> = slots.withIndex().mapNotNull { (d, id) -> id?.let { it to d } }.toMap()
     }
@@ -419,6 +438,9 @@ object Logic {
 
     /** Where a day falls in your week (0 = first day). */
     fun dayRank(day: Int, start: Int): Int = (day - start + 7) % 7
+
+    /** This week's dinners by day (desserts ride along on their days without taking a dinner spot). */
+    fun dayPlan(st: UserState): DayPlan = dayPlan(st.mains, st.days, st.weekStart).copy(desserts = st.dessertDays)
 
     fun dayPlan(week: List<Int>, days: Map<Int, Int>, start: Int = 0): DayPlan {
         val slots = arrayOfNulls<Int>(7)
@@ -449,6 +471,10 @@ object Logic {
         "sheetpan" to "Sheet-Pan",
         "grill" to "Grill",
         "onepan" to "One-Pan",
+        "breadmaker" to "Bread Maker",
+        "oven" to "Oven",
+        "stovetop" to "Stovetop",
+        "nobake" to "No-Bake",
         "budget" to "Budget",
     )
 
