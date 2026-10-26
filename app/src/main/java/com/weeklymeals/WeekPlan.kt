@@ -84,7 +84,7 @@ private fun Tag(text: String, bg: androidx.compose.ui.graphics.Color, fg: androi
 
 /** One of the three small tiles under Tonight: a big number and what it counts. */
 @Composable
-private fun StatTile(
+internal fun StatTile(
     modifier: Modifier, value: String, suffix: String?, label: String,
     lime: Boolean = false, onClick: (() -> Unit)? = null,
 ) {
