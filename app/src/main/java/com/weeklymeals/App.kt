@@ -1256,24 +1256,27 @@ private fun SideResults(vm: MealsViewModel, st: UserState, query: String, gridSt
             onFav = { if (vm.isFavSide(st, sd.key)) vm.removeFavSide(sd.key) else vm.addFavSide(sd.key) },
         )
     }
-    adding?.let { sd ->
-        // Which night's dinner it goes with: each day shows its dinner; days without one are greyed out.
-        val recipes = vm.recipes(st)
-        val plan = Logic.dayPlan(st)
-        DayPickerDialog(
-            st, "${sd.label} goes with…",
-            onPick = { d ->
-                plan.slots[d]?.let { id ->
-                    vm.chooseSide(id, sd.key, addSize)
-                    vm.message.value = "${plainLabel(sd.label)} added to ${Logic.DAY_LONG[d]}'s dinner"
-                }
-                adding = null
-            },
-            onDismiss = { adding = null },
-            detail = { d -> plan.slots[d]?.let { recipes[it]?.name } ?: "no dinner yet" },
-            enabled = { d -> plan.slots[d] != null },
-        )
-    }
+    adding?.let { sd -> SideToDinnerDialog(vm, st, sd, addSize) { adding = null } }
+}
+
+/** "Which day?" for a side: each day shows its dinner, days without one are greyed out; the side goes with that dinner. */
+@Composable
+private fun SideToDinnerDialog(vm: MealsViewModel, st: UserState, sd: Side, size: Int, onDone: () -> Unit) {
+    val recipes = vm.recipes(st)
+    val plan = Logic.dayPlan(st)
+    DayPickerDialog(
+        st, "${sd.label} goes with…",
+        onPick = { d ->
+            plan.slots[d]?.let { id ->
+                vm.chooseSide(id, sd.key, size)
+                vm.message.value = "${plainLabel(sd.label)} added to ${Logic.DAY_LONG[d]}'s dinner"
+            }
+            onDone()
+        },
+        onDismiss = onDone,
+        detail = { d -> plan.slots[d]?.let { recipes[it]?.name } ?: "no dinner yet" },
+        enabled = { d -> plan.slots[d] != null },
+    )
 }
 
 /** A side in Browse: color block, name, calories and price, then ♥ (built-in sides) and + to put it with a dinner. */
@@ -1779,6 +1782,8 @@ private fun FavoritesScreen(
     val count = shown.size + shownSides.size
     var lookAt by remember { mutableStateOf<Side?>(null) }
     var unfav by remember { mutableStateOf<Side?>(null) }
+    var adding by remember { mutableStateOf<Side?>(null) }
+    var addSize by remember { mutableIntStateOf(Logic.SIDE_NORMAL) }
     // Same layout and spacing as Browse so the title, search bar and tiles line up.
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1847,11 +1852,15 @@ private fun FavoritesScreen(
             )
         }
         items(shownSides, key = { "side:" + it.key }) { sd ->
-            SideTile(sd, Modifier.fillMaxWidth().height(TileSize.height), onOpen = { lookAt = sd }) { unfav = sd }
+            SideTile(
+                sd, Modifier.fillMaxWidth().height(TileSize.height), onOpen = { lookAt = sd },
+                onAdd = { addSize = Logic.SIDE_NORMAL; adding = sd },
+            ) { unfav = sd }
         }
     }
     }
-    lookAt?.let { sd -> SidePreview(st, sd, onUse = null, onBack = { lookAt = null }) }
+    lookAt?.let { sd -> SidePreview(st, sd, onUse = { size -> lookAt = null; addSize = size; adding = sd }, onBack = { lookAt = null }) }
+    adding?.let { sd -> SideToDinnerDialog(vm, st, sd, addSize) { adding = null } }
     unfav?.let { sd ->
         val mine = !vm.isBuiltInSide(sd.key)
         AlertDialog(
@@ -1900,7 +1909,7 @@ private fun KindMenu(kind: String, onPick: (String) -> Unit) {
 
 /** A side in Favorites: its own color block, name, calories and a SIDE tag. Tap to see it; ♥ to remove it. */
 @Composable
-private fun SideTile(sd: Side, modifier: Modifier, onOpen: () -> Unit, onUnfav: () -> Unit) {
+private fun SideTile(sd: Side, modifier: Modifier, onOpen: () -> Unit, onAdd: () -> Unit, onUnfav: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Look.color(sd.key.hashCode()), contentColor = Look.Ink),
         modifier = modifier.clickable(onClick = onOpen),
@@ -1927,6 +1936,9 @@ private fun SideTile(sd: Side, modifier: Modifier, onOpen: () -> Unit, onUnfav: 
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = onUnfav, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Filled.Favorite, "Remove from favorites", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    IconButton(onClick = onAdd, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Add, "Add to a dinner", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
