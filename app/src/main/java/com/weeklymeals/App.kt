@@ -334,11 +334,15 @@ fun App(vm: MealsViewModel) {
                         label = { TabLabel("Week") }, colors = navColors,
                     )
                     NavigationBarItem(
-                        selected = tab == 1 && overlay == Overlay.None, onClick = { tab = 1; overlay = Overlay.None },
+                        selected = tab == 1 && overlay == Overlay.None,
+                        // Coming from another tab, Browse opens on Meals.
+                        onClick = { if (tab != 1) vm.setBrowseScope(BrowseScope.APP); tab = 1; overlay = Overlay.None },
                         icon = { Icon(Icons.Filled.Search, null) }, label = { TabLabel("Browse") }, colors = navColors,
                     )
                     NavigationBarItem(
-                        selected = tab == 2 && overlay == Overlay.None, onClick = { tab = 2; overlay = Overlay.None },
+                        selected = tab == 2 && overlay == Overlay.None,
+                        // Coming from another tab, Favorites opens on All.
+                        onClick = { if (tab != 2) vm.setFavKind("all"); tab = 2; overlay = Overlay.None },
                         icon = { Icon(Icons.Filled.Favorite, null) }, label = { TabLabel("Favorites") }, colors = navColors,
                     )
                     NavigationBarItem(
@@ -358,8 +362,8 @@ fun App(vm: MealsViewModel) {
                     overlay == Overlay.Settings -> SettingsScreen(vm, st) { overlay = Overlay.None }
                     else -> when (tab) {
                     0 -> WeekScreen(
-                        vm, st, onOpen = { viewing = it }, onBrowse = { tab = 1 }, flashId = flashId,
-                        onLeftovers = { pendingFilter = "leftovers"; tab = 1 },
+                        vm, st, onOpen = { viewing = it }, onBrowse = { vm.setBrowseScope(BrowseScope.APP); tab = 1 }, flashId = flashId,
+                        onLeftovers = { vm.setBrowseScope(BrowseScope.APP); pendingFilter = "leftovers"; tab = 1 },
                         onAddStore = { vm.setBrowseScope(BrowseScope.STORE); tab = 1 },
                         onCook = { id -> vm.startCooking(id); cooking = id },
                     ) { flashId = null }
