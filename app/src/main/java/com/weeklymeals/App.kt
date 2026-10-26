@@ -795,35 +795,25 @@ private fun BrowseScreen(
     var filters by search.filters
     var showFilters by remember { mutableStateOf(false) }
     val searching = query.isNotBlank() || filters.isNotEmpty()
-    val scope = rememberCoroutineScope()
-    val offset = remember { Animatable(0f) }
-    var widthPx by remember { mutableStateOf(1f) }
-
-    // Slide the grid off to one side, swap the set, slide the new one in.
-    fun slide(next: Boolean) {
-        if (!next && !vm.canGoBackBrowse()) return
-        scope.launch {
-            offset.animateTo(if (next) -widthPx else widthPx, tween(180))
-            if (next) vm.refreshBrowse() else vm.previousBrowse()
-            offset.snapTo(if (next) widthPx else -widthPx)
-            offset.animateTo(0f, tween(220))
-        }
-    }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 when {
                     st.browseScope == BrowseScope.DESSERT -> "Desserts"
+                    st.browseScope == BrowseScope.SIDE -> "Sides"
                     st.browseScope != BrowseScope.APP -> "Search"
                     searching -> "Search"
                     saleOnly -> "On sale"
-                    else -> "10 ideas"
+                    else -> "Main meals"
                 },
                 style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f),
             )
             // Filters live behind this button (swipe the tiles for more ideas).
-            FiltersButton(filters.size + if (saleOnly) 1 else 0, showLabel = true) { showFilters = true }
+            // Sides have no cooking methods, prices to filter by or sales, so no Filters there.
+            if (st.browseScope != BrowseScope.SIDE) {
+                FiltersButton(filters.size + if (saleOnly) 1 else 0, showLabel = true) { showFilters = true }
+            }
         }
         // Where to search, one at a time (menu inside the search bar): this app's recipes, online recipes, or King Soopers products.
         val scopeKey = st.browseScope
@@ -891,6 +881,10 @@ private fun BrowseScreen(
             DessertResults(vm, st, toggleFav, query, filters, resultsState, onHold, onOpen, Modifier.weight(1f))
             return@Column
         }
+        if (scopeKey == BrowseScope.SIDE) {
+            SideResults(vm, st, query, resultsState, Modifier.weight(1f))
+            return@Column
+        }
 
         if (searching) {
             // All matches, scrolling.
@@ -944,58 +938,94 @@ private fun BrowseScreen(
         }
 
         // The set of 10: swipe left for more, right to go back. It follows your finger.
-        val density = androidx.compose.ui.platform.LocalDensity.current
-        val tileCtx = LocalContext.current
-        Column(
-            Modifier.fillMaxWidth().weight(1f)
-                .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            val v = offset.value
-                            when {
-                                v < -widthPx * 0.25f -> slide(true)
-                                v > widthPx * 0.25f && vm.canGoBackBrowse() -> slide(false)
-                                else -> scope.launch { offset.animateTo(0f, spring()) }
-                            }
-                        },
-                        onDragCancel = { scope.launch { offset.animateTo(0f, spring()) } },
-                    ) { change, dx ->
-                        change.consume()
-                        // Resist when there's no previous set to go back to.
-                        val step = if (dx > 0 && offset.value >= 0f && !vm.canGoBackBrowse()) dx * 0.25f else dx
-                        scope.launch { offset.snapTo(offset.value + step) }
-                    }
-                }
-                .graphicsLayer {
-                    translationX = offset.value
-                    alpha = 1f - (kotlin.math.abs(offset.value) / widthPx).coerceIn(0f, 0.5f)
-                },
-        ) {
-            shown.chunked(2).forEach { pair ->
-                Row(
-                    Modifier.fillMaxWidth().weight(1f).padding(vertical = 3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    pair.forEach { r ->
-                        RecipeTile(
-                            r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
-                            Modifier.weight(1f).fillMaxHeight()
-                                .onSizeChanged { TileSize.save(tileCtx, with(density) { it.height.toDp() }) },
-                            saleSave = Sales.savings(r, st.servings, cache),
-                            onHold = { onHold(r) },
-                            calories = vm.mealCalories(st, r),
+        SwipeSets(
+            shown, canBack = vm.canGoBackBrowse(), onNext = { vm.refreshBrowse() }, onBack = { vm.previousBrowse() },
+            modifier = Modifier.fillMaxWidth().weight(1f),
+        ) { r, mod ->
+            RecipeTile(
+                r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) }, mod,
+                saleSave = Sales.savings(r, st.servings, cache),
+                onHold = { onHold(r) },
+                calories = vm.mealCalories(st, r),
                 cost = vm.mealCost(st, r),
-                            filters = filters,
-                            leftover = vm.usesLeftovers(st, r),
+                filters = filters,
+                leftover = vm.usesLeftovers(st, r),
                 leftoverSave = vm.leftoverSavings(st, r),
-                        )
-                    }
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+            )
+        }
+    }
+}
+
+/**
+ * Up to 10 tiles in 5 rows that fill the space (no scrolling). Swipe left for the next set,
+ * right to go back ([canBack]); the tiles follow your finger and slide off and back in.
+ */
+@Composable
+private fun <T> SwipeSets(
+    shown: List<T>, canBack: Boolean, onNext: () -> Unit, onBack: () -> Unit, modifier: Modifier,
+    tile: @Composable (T, Modifier) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val offset = remember { Animatable(0f) }
+    var widthPx by remember { mutableStateOf(1f) }
+    // Read inside the gesture, which is set up once.
+    val back by androidx.compose.runtime.rememberUpdatedState(canBack)
+    val next by androidx.compose.runtime.rememberUpdatedState(onNext)
+    val prev by androidx.compose.runtime.rememberUpdatedState(onBack)
+    // Slide the grid off to one side, swap the set, slide the new one in.
+    fun slide(forward: Boolean) {
+        if (!forward && !back) return
+        scope.launch {
+            offset.animateTo(if (forward) -widthPx else widthPx, tween(180))
+            if (forward) next() else prev()
+            offset.snapTo(if (forward) widthPx else -widthPx)
+            offset.animateTo(0f, tween(220))
+        }
+    }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val tileCtx = LocalContext.current
+    Column(
+        modifier
+            .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        val v = offset.value
+                        when {
+                            v < -widthPx * 0.25f -> slide(true)
+                            v > widthPx * 0.25f && back -> slide(false)
+                            else -> scope.launch { offset.animateTo(0f, spring()) }
+                        }
+                    },
+                    onDragCancel = { scope.launch { offset.animateTo(0f, spring()) } },
+                ) { change, dx ->
+                    change.consume()
+                    // Resist when there's no previous set to go back to.
+                    val step = if (dx > 0 && offset.value >= 0f && !back) dx * 0.25f else dx
+                    scope.launch { offset.snapTo(offset.value + step) }
                 }
             }
-            repeat(5 - (shown.size + 1) / 2) { Spacer(Modifier.weight(1f)) }
+            .graphicsLayer {
+                translationX = offset.value
+                alpha = 1f - (kotlin.math.abs(offset.value) / widthPx).coerceIn(0f, 0.5f)
+            },
+    ) {
+        shown.take(10).chunked(2).forEach { pair ->
+            Row(
+                Modifier.fillMaxWidth().weight(1f).padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                pair.forEach { item ->
+                    tile(
+                        item,
+                        Modifier.weight(1f).fillMaxHeight()
+                            .onSizeChanged { TileSize.save(tileCtx, with(density) { it.height.toDp() }) },
+                    )
+                }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
+        repeat(5 - (shown.take(10).size + 1) / 2) { Spacer(Modifier.weight(1f)) }
     }
 }
 
@@ -1104,10 +1134,27 @@ private fun DessertResults(
     var method by rememberSaveable { mutableStateOf("") }
     val cache = vm.salesCache(st)
     val q = query.trim().lowercase()
-    val shown = vm.recipes(st).values.filter { r ->
+    val matches = vm.recipes(st).values.filter { r ->
         Logic.isDessert(r) && r.id !in st.removed && (method.isEmpty() || method in r.tags) &&
             matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }, { vm.usesLeftovers(st, it) })
-    }.sortedBy { it.name }
+    }
+    val shown = matches.sortedBy { it.name }
+    val browsing = q.isEmpty() && filters.isEmpty()
+    // Not searching: sets of 10 in a shuffled order, swipe for the next 10 (the chip you picked stays).
+    val deck = remember(method, matches.size) { matches.map { it.id }.shuffled() }
+    var page by rememberSaveable(method) { mutableIntStateOf(0) }
+    val tile: @Composable (Recipe, Modifier) -> Unit = { r, mod ->
+        RecipeTile(
+            r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) }, mod,
+            saleSave = Sales.savings(r, st.servings, cache),
+            onHold = { onHold(r) },
+            calories = vm.mealCalories(st, r),
+            cost = vm.mealCost(st, r),
+            filters = filters + listOfNotNull(method.ifEmpty { null }),
+            leftover = vm.usesLeftovers(st, r),
+            leftoverSave = vm.leftoverSavings(st, r),
+        )
+    }
     Column(modifier) {
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 2.dp),
@@ -1116,6 +1163,16 @@ private fun DessertResults(
             DESSERT_METHODS.forEach { (key, label) ->
                 FilterChip(selected = method == key, onClick = { method = key }, label = { Text(label) })
             }
+        }
+        if (browsing && deck.isNotEmpty()) {
+            val pages = (deck.size + 9) / 10
+            val byId = matches.associateBy { it.id }
+            SwipeSets(
+                deck.drop((page % pages) * 10).take(10).mapNotNull { byId[it] },
+                canBack = page > 0, onNext = { page++ }, onBack = { if (page > 0) page-- },
+                modifier = Modifier.fillMaxWidth().weight(1f), tile = tile,
+            )
+            return@Column
         }
         LazyVerticalGrid(
             state = gridState,
@@ -1133,18 +1190,136 @@ private fun DessertResults(
                     )
                 }
             }
-            items(shown, key = { it.id }) { r ->
-                RecipeTile(
-                    r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
-                    Modifier.fillMaxWidth().height(TileSize.height),
-                    saleSave = Sales.savings(r, st.servings, cache),
-                    onHold = { onHold(r) },
-                    calories = vm.mealCalories(st, r),
-                    cost = vm.mealCost(st, r),
-                    filters = filters + listOfNotNull(method.ifEmpty { null }),
-                    leftover = vm.usesLeftovers(st, r),
-                    leftoverSave = vm.leftoverSavings(st, r),
+            items(shown, key = { it.id }) { r -> tile(r, Modifier.fillMaxWidth().height(TileSize.height)) }
+        }
+    }
+}
+
+/**
+ * Browse with "Sides" picked: every side you can cook, in sets of 10 to swipe through (a search scrolls).
+ * + asks which night's dinner it goes with; tap a side to see it first.
+ */
+@Composable
+private fun SideResults(vm: MealsViewModel, st: UserState, query: String, gridState: LazyGridState, modifier: Modifier) {
+    val q = query.trim().lowercase()
+    val all = vm.allSides(st)
+    var adding by remember { mutableStateOf<Side?>(null) }
+    var lookAt by remember { mutableStateOf<Side?>(null) }
+    val tile: @Composable (Side, Modifier) -> Unit = { sd, mod ->
+        val fav = vm.isFavSide(st, sd.key)
+        BrowseSideTile(
+            sd, mod, calories = Nutrition.side(sd), cost = vm.sideCost(st, sd), budgetMax = st.budgetMax,
+            fav = fav, canFav = vm.isBuiltInSide(sd.key),
+            onFav = { if (fav) vm.removeFavSide(sd.key) else vm.addFavSide(sd.key) },
+            onOpen = { lookAt = sd }, onAdd = { adding = sd },
+        )
+    }
+    if (q.isEmpty()) {
+        val deck = remember(all.size) { all.shuffled() }
+        var page by rememberSaveable { mutableIntStateOf(0) }
+        val pages = ((deck.size + 9) / 10).coerceAtLeast(1)
+        SwipeSets(
+            deck.drop((page % pages) * 10).take(10),
+            canBack = page > 0, onNext = { page++ }, onBack = { if (page > 0) page-- },
+            modifier = modifier.fillMaxWidth(), tile = tile,
+        )
+    } else {
+        val shown = all.filter { sd -> sd.label.lowercase().contains(q) || sd.ingredients.any { it.name.lowercase().contains(q) } }
+        LazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Fixed(2),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(vertical = 4.dp),
+            modifier = modifier,
+        ) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "count") {
+                Text(
+                    "${shown.size} match${if (shown.size == 1) "" else "es"}",
+                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                 )
+            }
+            items(shown, key = { it.key }) { sd -> tile(sd, Modifier.fillMaxWidth().height(TileSize.height)) }
+        }
+    }
+    lookAt?.let { sd ->
+        SidePreview(
+            st, sd, onUse = { lookAt = null; adding = sd }, onBack = { lookAt = null },
+            fav = if (vm.isBuiltInSide(sd.key)) vm.isFavSide(st, sd.key) else null,
+            onFav = { if (vm.isFavSide(st, sd.key)) vm.removeFavSide(sd.key) else vm.addFavSide(sd.key) },
+        )
+    }
+    adding?.let { sd ->
+        // Which night's dinner it goes with: each day shows its dinner; days without one are greyed out.
+        val recipes = vm.recipes(st)
+        val plan = Logic.dayPlan(st)
+        DayPickerDialog(
+            st, "${sd.label} goes with…",
+            onPick = { d ->
+                plan.slots[d]?.let { id ->
+                    vm.chooseSide(id, sd.key)
+                    vm.message.value = "${plainLabel(sd.label)} added to ${Logic.DAY_LONG[d]}'s dinner"
+                }
+                adding = null
+            },
+            onDismiss = { adding = null },
+            detail = { d -> plan.slots[d]?.let { recipes[it]?.name } ?: "no dinner yet" },
+            enabled = { d -> plan.slots[d] != null },
+        )
+    }
+}
+
+/** A side in Browse: color block, name, calories and price, then ♥ (built-in sides) and + to put it with a dinner. */
+@Composable
+private fun BrowseSideTile(
+    sd: Side, modifier: Modifier, calories: Int?, cost: MealsViewModel.MealCost?, budgetMax: Double,
+    fav: Boolean, canFav: Boolean, onFav: () -> Unit, onOpen: () -> Unit, onAdd: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Look.color(sd.key.hashCode()), contentColor = Look.Ink),
+        modifier = modifier.clickable(onClick = onOpen),
+    ) {
+        OnColor {
+            Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 3.dp, end = 2.dp, bottom = 1.dp)) {
+                Column(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp, end = 8.dp)) {
+                    Text(
+                        plainLabel(sd.label),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 18.sp),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(Modifier.padding(top = 2.dp).height(17.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Badge("Side", small = true)
+                    }
+                    Text(
+                        buildAnnotatedString {
+                            calories?.let {
+                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("%,d cal".format(it)) }
+                                if (cost != null) append("  ·  ")
+                            }
+                            cost?.let { c ->
+                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append(Sales.money(c.total)) }
+                                if (c.saved >= 0.5) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(" · pantry") }
+                            }
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 14.sp), maxLines = 1,
+                        overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.weight(1f))
+                    if (canFav) {
+                        IconButton(onClick = onFav, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                if (fav) "Remove from favorites" else "Add to favorites", tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    IconButton(onClick = onAdd, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Add, "Add to a dinner", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
             }
         }
     }

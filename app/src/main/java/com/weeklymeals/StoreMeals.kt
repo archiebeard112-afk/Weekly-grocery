@@ -47,13 +47,17 @@ object BrowseScope {
     const val WEB = "web"
     const val STORE = "store"
     const val DESSERT = "dessert"
-    val ALL = listOf(APP to "In app", DESSERT to "Desserts", WEB to "Online", STORE to "King Soopers")
-    fun label(key: String) = ALL.firstOrNull { it.first == key }?.second ?: "In app"
+    const val SIDE = "side"
+    val ALL = listOf(APP to "Main meals", SIDE to "Sides", DESSERT to "Desserts", WEB to "Online recipes", STORE to "King Soopers")
+    fun label(key: String) = ALL.firstOrNull { it.first == key }?.second ?: "Main meals"
+    /** The shorter name shown on the button in the search bar. */
+    fun short(key: String) = if (key == WEB) "Online" else label(key)
     fun hint(key: String) = when (key) {
         WEB -> "Search online recipes"
         STORE -> "Search King Soopers"
         DESSERT -> "Search desserts"
-        else -> "Search"
+        SIDE -> "Search sides"
+        else -> "Search main meals"
     }
 }
 
@@ -67,7 +71,7 @@ internal fun ScopeMenu(scope: String, onPick: (String) -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                BrowseScope.label(scope), style = MaterialTheme.typography.labelLarge,
+                BrowseScope.short(scope), style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary, maxLines = 1,
             )
             Icon(Icons.Filled.ArrowDropDown, "Where to search", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
@@ -237,6 +241,8 @@ internal fun DayPickerDialog(
     st: UserState, title: String, onPick: (Int) -> Unit, onDismiss: () -> Unit,
     /** What's on each day already (e.g. that night's dinner); null shows the store item count. */
     detail: ((Int) -> String?)? = null,
+    /** Days you can't pick show greyed out. */
+    enabled: (Int) -> Boolean = { true },
 ) {
     val today = Logic.todayIndex()
     AlertDialog(
@@ -255,7 +261,7 @@ internal fun DayPickerDialog(
                                 n > 0 -> "  ·  $n store item${if (n == 1) "" else "s"}"
                                 else -> ""
                             }
-                            TextButton(onClick = { onPick(d) }, modifier = Modifier.fillMaxWidth()) {
+                            TextButton(onClick = { onPick(d) }, enabled = enabled(d), modifier = Modifier.fillMaxWidth()) {
                                 Text(
                                     name + (if (d == today) " (today)" else "") + extra,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,

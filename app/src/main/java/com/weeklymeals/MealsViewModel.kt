@@ -186,6 +186,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         message.value = "Added ${d.title} to your sides"
     }
 
+    /** What a side costs to make (for your servings), priced like a recipe written for 4. */
+    fun sideCost(st: UserState, sd: Side): MealCost? =
+        if (sd.ingredients.isEmpty()) null
+        else mealCost(st, Recipe(id = -1 - Math.floorMod(sd.key.hashCode(), 1_000_000), name = sd.label, emoji = "", steps = sd.steps, ingredients = sd.ingredients))
+
     /** Sides in Favorites: the ones you added (always) and built-in ones you hearted. */
     fun favoriteSides(st: UserState): List<Side> =
         (st.customSides + baseSides.values.filter { it.key in st.favSides && it.key !in st.hiddenSides })
