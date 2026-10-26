@@ -312,6 +312,19 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        // One time: 2% milk was removed from Quick add by accident; put it back with its receipt history.
+        viewModelScope.launch {
+            store.update { s ->
+                if (s.milkRestored) s else {
+                    val term = Logic.searchTerm("2% milk")
+                    val weeks = Receipts.quickAdd.firstOrNull { it.first == "2% milk" }?.second ?: 1
+                    s.copy(
+                        milkRestored = true,
+                        bought = if (term in s.bought) s.bought else s.bought + (term to Bought("2% milk", weeks, Receipts.LATEST)),
+                    )
+                }
+            }
+        }
         // One time: seed Quick add with the snacks and usual items picked before.
         viewModelScope.launch {
             store.update { s ->
@@ -1542,9 +1555,12 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         st.extraItems.count { Logic.baseExtra(it).equals(name, true) }
 
     fun forgetQuickAdd(term: String, name: String) {
-        edit { it.copy(bought = it.bought - term) }
-        message.value = "Removed $name from Quick add"
+        edit { s -> s.copy(bought = s.bought - term, quickRemoved = s.quickRemoved + (s.bought[term]?.let { mapOf(term to it) } ?: emptyMap())) }
+        message.value = "Removed $name from Quick add (Shop ⋮ menu brings it back)"
     }
+
+    /** Puts every Quick add chip you removed back. */
+    fun restoreQuickAdd() = edit { s -> s.copy(bought = s.quickRemoved + s.bought, quickRemoved = emptyMap()) }
 
     /** Searches King Soopers again for one item with your own words (e.g. "jasmine rice"). */
     fun researchLine(term: String, query: String) {
