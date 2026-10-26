@@ -34,6 +34,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -309,6 +315,8 @@ fun AddRecipeScreen(vm: MealsViewModel, linkMode: Boolean, startLink: String?, o
     var name by remember { mutableStateOf("") }
     var emoji by remember { mutableStateOf("🍽️") }
     var base by remember { mutableStateOf("4") }
+    // Main meal, side or dessert: guessed from the name when a link is imported; tap to change.
+    var kind by remember { mutableStateOf("main") }
     var ings by remember { mutableStateOf("") }
     var steps by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -326,6 +334,7 @@ fun AddRecipeScreen(vm: MealsViewModel, linkMode: Boolean, startLink: String?, o
                     val r = Importer.fromUrl(url)
                     name = r.name
                     emoji = r.emoji
+                    kind = Logic.guessKind(r.name)
                     r.serves?.let { base = it.toString() }
                     ings = r.ingredients.joinToString("\n")
                     steps = r.steps.joinToString("\n")
@@ -387,9 +396,10 @@ fun AddRecipeScreen(vm: MealsViewModel, linkMode: Boolean, startLink: String?, o
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
+            KindChoice(kind) { kind = it }
             OutlinedTextField(name, { name = it }, label = { Text("Recipe name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(emoji, { emoji = it }, label = { Text("Emoji") }, singleLine = true, modifier = Modifier.weight(1f))
+                EmojiPicker(emoji, { emoji = it }, Modifier.weight(1f))
                 OutlinedTextField(
                     base, { base = it.filter(Char::isDigit) }, label = { Text("Serves") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -407,11 +417,79 @@ fun AddRecipeScreen(vm: MealsViewModel, linkMode: Boolean, startLink: String?, o
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Button(
                 onClick = {
-                    val ok = vm.addCustomRecipe(name, emoji, base.toIntOrNull() ?: 4, ings, steps)
+                    val ok = vm.addCustomRecipe(name, emoji, base.toIntOrNull() ?: 4, ings, steps, kind)
                     if (ok) onBack() else error = "Needs a name, at least one ingredient and one step"
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Save to favorites") }
+        }
+    }
+}
+
+/** "This is a" Main meal / Side / Dessert: three buttons, the picked one filled. */
+@Composable
+internal fun KindChoice(kind: String, onPick: (String) -> Unit) {
+    Column {
+        Text("This is a", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("main" to "Main meal", "side" to "Side", "dessert" to "Dessert").forEach { (key, label) ->
+                val pad = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
+                if (key == kind) {
+                    Button(onClick = { onPick(key) }, contentPadding = pad, modifier = Modifier.weight(1f)) { Text(label, maxLines = 1) }
+                } else {
+                    OutlinedButton(onClick = { onPick(key) }, contentPadding = pad, modifier = Modifier.weight(1f)) { Text(label, maxLines = 1) }
+                }
+            }
+        }
+    }
+}
+
+private val EMOJI_GROUPS = listOf(
+    "Desserts" to listOf("🍪", "🍰", "🎂", "🧁", "🥧", "🍩", "🍫", "🍮", "🍨", "🍦", "🍞", "🥐", "🍌", "🍓", "🍎", "🍑", "🍒", "🍋"),
+    "Meals and sides" to listOf(
+        "🍝", "🍕", "🌮", "🌯", "🍔", "🥪", "🍛", "🍜", "🍲", "🥘", "🍗", "🥩", "🍖", "🐟", "🍤", "🥗",
+        "🥔", "🌽", "🥦", "🥕", "🍚", "🥖", "🍳", "🥞", "🍽️",
+    ),
+)
+
+/** The Emoji box: tap it for a grid to pick from (or type your own at the bottom). */
+@Composable
+private fun EmojiPicker(emoji: String, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
+    var open by remember { mutableStateOf(false) }
+    var typed by remember { mutableStateOf("") }
+    Box(modifier) {
+        OutlinedTextField(
+            emoji, {}, readOnly = true, label = { Text("Emoji") }, singleLine = true,
+            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        // The whole box opens the grid (a read-only field would just show a cursor).
+        Box(Modifier.matchParentSize().padding(top = 8.dp).clickable { open = true })
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            EMOJI_GROUPS.forEach { (title, list) ->
+                Text(
+                    title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 2.dp),
+                )
+                list.chunked(6).forEach { row ->
+                    Row(Modifier.padding(horizontal = 6.dp)) {
+                        row.forEach { e ->
+                            Box(
+                                Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))
+                                    .then(if (e == emoji) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier)
+                                    .clickable { onPick(e); open = false },
+                                contentAlignment = Alignment.Center,
+                            ) { Text(e, fontSize = 24.sp) }
+                        }
+                    }
+                }
+            }
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).width(264.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    typed, { typed = it }, label = { Text("Or type one") }, singleLine = true, modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { if (typed.isNotBlank()) { onPick(typed.trim()); typed = ""; open = false } }) { Text("Use") }
+            }
         }
     }
 }

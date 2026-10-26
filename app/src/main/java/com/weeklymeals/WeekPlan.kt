@@ -52,6 +52,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Button
@@ -66,7 +67,7 @@ private val STORE_PURPLE = androidx.compose.ui.graphics.Color(0xFFC79BFF)
 private val LEFT_BG = androidx.compose.ui.graphics.Color(0xFF26301A)
 
 /** Meals planned this week: each recipe, plus one for each day that has store items. */
-fun mealCount(st: UserState): Int = st.week.size + st.storeMeals.map { it.day }.distinct().size
+fun mealCount(st: UserState): Int = st.mains.size + st.storeMeals.map { it.day }.distinct().size
 
 /** A side's name without its emoji ("🥚 Egg rolls" → "Egg rolls"). */
 internal fun plainLabel(s: String): String = if (s.firstOrNull()?.isLetterOrDigit() != false) s else s.substringAfter(" ")
@@ -155,6 +156,26 @@ private fun StoreLine(m: StoreMeal, onClick: () -> Unit) {
     }
 }
 
+/** A dessert under a day: a DESSERT tag, its name and ✕ to take it off. Tap to open the recipe. */
+@Composable
+private fun DessertLine(r: Recipe, onClick: () -> Unit, onRemove: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(top = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "DESSERT", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp,
+            color = MaterialTheme.colorScheme.onPrimary, maxLines = 1,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.primary).padding(horizontal = 8.dp, vertical = 3.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(r.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        androidx.compose.material3.IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Filled.Close, "Remove dessert", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 /** Tonight's dinner, big at the top of the Week page, with Start cooking right on it. */
 @Composable
 private fun TonightCard(r: Recipe, day: Int, meta: String, onOpen: () -> Unit, onCook: () -> Unit) {
@@ -201,7 +222,7 @@ fun WeekScreen(
     onFlashed: () -> Unit = {},
 ) {
     val all = vm.recipes(st)
-    val plan = Logic.dayPlan(st.week, st.days, st.weekStart)
+    val plan = Logic.dayPlan(st)
     val dayAt = Logic.dayOrder(st.weekStart)
     val today = Logic.todayIndex()
     val density = LocalDensity.current
@@ -232,7 +253,7 @@ fun WeekScreen(
     LaunchedEffect(flashId, st.week) {
         val id = flashId ?: return@LaunchedEffect
         if (id !in st.week) return@LaunchedEffect
-        if (id in Logic.dayPlan(st.week, st.days, st.weekStart).extras) scroll.animateScrollTo(scroll.maxValue)
+        if (id in Logic.dayPlan(st).extras) scroll.animateScrollTo(scroll.maxValue)
         flash.snapTo(1f)
         flash.animateTo(0f, androidx.compose.animation.core.tween(1400))
         onFlashed()
@@ -367,9 +388,12 @@ fun WeekScreen(
             }
             // Store-bought meals on this day (frozen pizza): the row grows by a line for each.
             val meals = if (index < 7) st.storeMeals.filter { it.day == dayAt[index] } else emptyList()
+            // Desserts on this day: a line each under the dinner.
+            val sweets = if (index < 7) st.dessertDays.filterValues { it == dayAt[index] }.keys.mapNotNull { all[it] } else emptyList()
+            val oneLine = meals.isEmpty() && sweets.isEmpty()
             Row(
-                rowMod.padding(horizontal = 14.dp, vertical = if (meals.isEmpty()) 0.dp else 8.dp),
-                verticalAlignment = if (meals.isEmpty()) Alignment.CenterVertically else Alignment.Top,
+                rowMod.padding(horizontal = 14.dp, vertical = if (oneLine) 0.dp else 8.dp),
+                verticalAlignment = if (oneLine) Alignment.CenterVertically else Alignment.Top,
             ) {
                 // The day in a round dot: the meal's color, an outline when empty; today's has a lime ring.
                 val dot = when {
@@ -378,7 +402,7 @@ fun WeekScreen(
                     else -> androidx.compose.ui.graphics.Color.Transparent
                 }
                 Box(
-                    Modifier.padding(top = if (meals.isEmpty()) 0.dp else 2.dp).size(36.dp).clip(CircleShape).background(dot)
+                    Modifier.padding(top = if (oneLine) 0.dp else 2.dp).size(36.dp).clip(CircleShape).background(dot)
                         .then(
                             when {
                                 isToday -> Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
@@ -425,6 +449,7 @@ fun WeekScreen(
                         }
                     }
                     meals.forEach { m -> StoreLine(m) { openMeal = m } }
+                    sweets.forEach { d -> DessertLine(d, onClick = { onOpen(d.id) }, onRemove = { vm.removeFromWeek(d.id) }) }
                 }
             }
         }

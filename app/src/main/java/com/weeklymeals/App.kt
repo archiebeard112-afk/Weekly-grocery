@@ -41,6 +41,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
@@ -392,6 +393,22 @@ fun App(vm: MealsViewModel) {
             SidePicker(
                 vm, st, r,
                 onOnlineSide = { ref -> sideWebFor = id; webViewing = ref },
+            )
+        }
+    }
+
+    // "Which day?" when adding a dessert: each day shows that night's dinner.
+    val pickDay by vm.dessertPicker.collectAsState()
+    pickDay?.let { id ->
+        val all = vm.recipes(st)
+        val r = all[id]
+        if (r == null) { vm.dessertPicker.value = null } else {
+            val plan = Logic.dayPlan(st)
+            DayPickerDialog(
+                st, "${r.emoji} ${r.name}",
+                onPick = { d -> vm.addDessert(id, d); vm.dessertPicker.value = null },
+                onDismiss = { vm.dessertPicker.value = null },
+                detail = { d -> plan.slots[d]?.let { all[it]?.name } },
             )
         }
     }
@@ -797,6 +814,7 @@ private fun BrowseScreen(
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 when {
+                    st.browseScope == BrowseScope.DESSERT -> "Desserts"
                     st.browseScope != BrowseScope.APP -> "Search"
                     searching -> "Search"
                     saleOnly -> "On sale"
@@ -869,11 +887,16 @@ private fun BrowseScreen(
             return@Column
         }
 
+        if (scopeKey == BrowseScope.DESSERT) {
+            DessertResults(vm, st, toggleFav, query, filters, resultsState, onHold, onOpen, Modifier.weight(1f))
+            return@Column
+        }
+
         if (searching) {
             // All matches, scrolling.
             val q = query.trim().lowercase()
             val matches = all.values.filter { r ->
-                r.id !in st.removed &&
+                r.id !in st.removed && !Logic.isDessert(r) &&
                 matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }, { vm.usesLeftovers(st, it) }) && (!saleOnly || Sales.savings(r, st.servings, cache) >= st.saleMin)
             }.let { list ->
                 // Uses-leftovers filter: the meals that save you the most come first.
@@ -1069,6 +1092,64 @@ private fun RecipeTile(
     }
 }
 
+/** How desserts are made, as chips over the Desserts list ("" = all). */
+private val DESSERT_METHODS = listOf("" to "All", "oven" to "Oven", "stovetop" to "Stovetop", "nobake" to "No bake")
+
+/** Browse with "Desserts" picked: every dessert (built-in and yours), A to Z, with a chip row for how it's made. */
+@Composable
+private fun DessertResults(
+    vm: MealsViewModel, st: UserState, toggleFav: (Recipe) -> Unit, query: String, filters: List<String>,
+    gridState: LazyGridState, onHold: (Recipe) -> Unit, onOpen: (Int) -> Unit, modifier: Modifier,
+) {
+    var method by rememberSaveable { mutableStateOf("") }
+    val cache = vm.salesCache(st)
+    val q = query.trim().lowercase()
+    val shown = vm.recipes(st).values.filter { r ->
+        Logic.isDessert(r) && r.id !in st.removed && (method.isEmpty() || method in r.tags) &&
+            matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }, { vm.usesLeftovers(st, it) })
+    }.sortedBy { it.name }
+    Column(modifier) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            DESSERT_METHODS.forEach { (key, label) ->
+                FilterChip(selected = method == key, onClick = { method = key }, label = { Text(label) })
+            }
+        }
+        LazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Fixed(2),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(vertical = 4.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            if (shown.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "none") {
+                    Text(
+                        "No desserts match.", style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                    )
+                }
+            }
+            items(shown, key = { it.id }) { r ->
+                RecipeTile(
+                    r, st, toggleFav, onAdd = { vm.requestAdd(r.id) }, onOpen = { onOpen(r.id) },
+                    Modifier.fillMaxWidth().height(TileSize.height),
+                    saleSave = Sales.savings(r, st.servings, cache),
+                    onHold = { onHold(r) },
+                    calories = vm.mealCalories(st, r),
+                    cost = vm.mealCost(st, r),
+                    filters = filters + listOfNotNull(method.ifEmpty { null }),
+                    leftover = vm.usesLeftovers(st, r),
+                    leftoverSave = vm.leftoverSavings(st, r),
+                )
+            }
+        }
+    }
+}
+
 /**
  * Recipe tile height, taken from Browse's sets of 10 so Favorites and search results match.
  * Remembered on the phone, so Favorites matches from the start, even before Browse is opened.
@@ -1147,7 +1228,12 @@ internal fun Badge(text: String, small: Boolean) {
 /** On a planned recipe: which day, the side dish, and Remove from week. */
 @Composable
 private fun WeekControls(vm: MealsViewModel, st: UserState, r: Recipe, side: Side?) {
-    val day = Logic.dayPlan(st.week, st.days, st.weekStart).dayOf(r.id)
+    val day = Logic.dayPlan(st).dayOf(r.id)
+    if (Logic.isDessert(r)) {
+        Heading(if (day != null) "Dessert on ${Logic.DAY_LONG[day]}" else "Dessert this week")
+        OutlinedButton(onClick = { vm.dessertPicker.value = r.id }) { Text("Change day") }
+        return
+    }
     Heading(if (day != null) "Planned for ${Logic.DAY_LONG[day]}" else "In your week (extra meal)")
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Side: ", style = MaterialTheme.typography.bodyMedium)
@@ -1287,16 +1373,48 @@ private fun RecipeScreen(
                         onClick = { vm.requestAdd(id) },
                         contentPadding = pad, modifier = Modifier.weight(1f).fillMaxHeight(),
                     ) {
-                        Text("Add to week", textAlign = TextAlign.Center, maxLines = 2)
+                        Text(if (Logic.isDessert(r)) "Add to a day" else "Add to week", textAlign = TextAlign.Center, maxLines = 2)
                     }
                 }
             }
             if (inWeek) WeekControls(vm, st, r, side)
+            if (r.machine.isNotEmpty()) MachineCard(r.machine)
             SaleSection(vm, st, r)
             RecipeDetails(r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax, expired = vm.expiredTerms(st))
             ReviewsSection(r.id, r.rating, r.ratingCount, r.countLabel, r.reviews)
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+/** Bread maker settings for a recipe made in one: cycle, loaf size, crust, and the order things go in. */
+@Composable
+private fun MachineCard(settings: List<String>) {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer).padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Text(
+            "BREAD MAKER SETTINGS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            settings.forEach { s ->
+                Column(Modifier.weight(1f)) {
+                    Text(s.substringBefore(":").trim(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        s.substringAfter(":").trim(), style = MaterialTheme.typography.titleMedium.copy(fontFamily = Look.Display),
+                        fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        Text(
+            if (settings.any { it.substringAfter(":").trim() == "Dough" }) "The machine makes the dough; you shape and bake it in the oven."
+            else "Add the wet things first and the yeast or leavening last, then press Start.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
     }
 }
 
@@ -1455,16 +1573,34 @@ private fun FavoritesScreen(
     var filters by search.filters
     var showFilters by remember { mutableStateOf(false) }
     val cache = vm.salesCache(st)
-    val favs = vm.recipes(st).values.filter { Logic.isFav(it, st) }.sortedBy { it.name }
+    // The dropdown in the search bar: all, main meals, sides or desserts.
+    val kind = st.favKind
+    val favs = vm.recipes(st).values.filter { r ->
+        Logic.isFav(r, st) && when (kind) {
+            "main" -> !Logic.isDessert(r)
+            "dessert" -> Logic.isDessert(r)
+            "side" -> false
+            else -> true
+        }
+    }.sortedBy { it.name }
+    val favSides = if (kind == "all" || kind == "side") vm.favoriteSides(st) else emptyList()
     val q = query.trim().lowercase()
     val shown = favs.filter { r -> matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }, { vm.usesLeftovers(st, it) }) }
+    // Sides have no cooking-method tags, so they hide while a filter is on.
+    val shownSides = if (filters.isNotEmpty()) emptyList() else favSides.filter { sd ->
+        q.isEmpty() || sd.label.lowercase().contains(q) || sd.ingredients.any { it.name.lowercase().contains(q) }
+    }
+    val total = favs.size + favSides.size
+    val count = shown.size + shownSides.size
+    var lookAt by remember { mutableStateOf<Side?>(null) }
+    var unfav by remember { mutableStateOf<Side?>(null) }
     // Same layout and spacing as Browse so the title, search bar and tiles line up.
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Favorites", style = MaterialTheme.typography.titleLarge)
-            if (favs.isNotEmpty()) {
+            if (total > 0) {
                 Text(
-                    if (shown.size == favs.size) "${favs.size}" else "${shown.size} of ${favs.size}",
+                    if (count == total) "$total" else "$count of $total",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 8.dp),
@@ -1484,11 +1620,20 @@ private fun FavoritesScreen(
                 Text("Add recipe")
             }
         }
-        CompactSearch(query, { query = it }, Modifier.padding(top = 6.dp, bottom = 4.dp))
+        CompactSearch(
+            query, { query = it }, Modifier.padding(top = 6.dp, bottom = 4.dp),
+            placeholder = FAV_HINTS[kind] ?: "Search favorites",
+            trailing = { KindMenu(kind) { vm.setFavKind(it) } },
+        )
         if (showFilters) FiltersDialog(filters, onChange = { filters = it }, onDismiss = { showFilters = false })
-        if (favs.isEmpty()) {
+        if (total == 0) {
             Text(
-                "No favorites yet. Tap the ♥ on any recipe, or add your own.",
+                when (kind) {
+                    "main" -> "No favorite main meals yet. Tap the ♥ on any recipe, or add your own."
+                    "side" -> "No favorite sides yet. Tap the ♥ on a side when you pick one, or add your own."
+                    "dessert" -> "No favorite desserts yet. Find some in Browse → Desserts, or add your own."
+                    else -> "No favorites yet. Tap the ♥ on any recipe, or add your own."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
@@ -1516,7 +1661,91 @@ private fun FavoritesScreen(
                 leftoverSave = vm.leftoverSavings(st, r),
             )
         }
+        items(shownSides, key = { "side:" + it.key }) { sd ->
+            SideTile(sd, Modifier.fillMaxWidth().height(TileSize.height), onOpen = { lookAt = sd }) { unfav = sd }
+        }
     }
+    }
+    lookAt?.let { sd -> SidePreview(st, sd, onUse = null, onBack = { lookAt = null }) }
+    unfav?.let { sd ->
+        val mine = !vm.isBuiltInSide(sd.key)
+        AlertDialog(
+            onDismissRequest = { unfav = null },
+            title = { Text(if (mine) "Delete ${plainLabel(sd.label)}?" else "Remove from favorites?") },
+            text = {
+                Text(
+                    if (mine) "This removes the side you added for good."
+                    else "${plainLabel(sd.label)} stays in the side list when you pick a side.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { vm.removeFavSide(sd.key); unfav = null }) { Text(if (mine) "Delete" else "Remove") } },
+            dismissButton = { TextButton(onClick = { unfav = null }) { Text("Keep") } },
+        )
+    }
+}
+
+private val FAV_KINDS = listOf("all" to "All", "main" to "Main meals", "side" to "Sides", "dessert" to "Desserts")
+private val FAV_HINTS = mapOf("main" to "Search main meals", "side" to "Search sides", "dessert" to "Search desserts")
+
+/** The "what kind" button at the right end of the Favorites search bar: All, Main meals, Sides or Desserts. */
+@Composable
+private fun KindMenu(kind: String, onPick: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).clickable { open = true }.padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                FAV_KINDS.firstOrNull { it.first == kind }?.second ?: "All", style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary, maxLines = 1,
+            )
+            Icon(Icons.Filled.ArrowDropDown, "What to show", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            FAV_KINDS.forEach { (key, label) ->
+                DropdownMenuItem(
+                    text = { Text((if (key == kind) "✓  " else "     ") + label) },
+                    onClick = { open = false; onPick(key) },
+                )
+            }
+        }
+    }
+}
+
+/** A side in Favorites: its own color block, name, calories and a SIDE tag. Tap to see it; ♥ to remove it. */
+@Composable
+private fun SideTile(sd: Side, modifier: Modifier, onOpen: () -> Unit, onUnfav: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Look.color(sd.key.hashCode()), contentColor = Look.Ink),
+        modifier = modifier.clickable(onClick = onOpen),
+    ) {
+        OnColor {
+            Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 3.dp, end = 2.dp, bottom = 1.dp)) {
+                Column(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp, end = 8.dp)) {
+                    Text(
+                        plainLabel(sd.label),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 18.sp),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(Modifier.padding(top = 2.dp).height(17.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Badge("Side", small = true)
+                    }
+                    Nutrition.side(sd)?.let {
+                        Text(
+                            "%,d cal".format(it), style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = onUnfav, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Favorite, "Remove from favorites", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1616,6 +1845,26 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
                             Column(Modifier.heightIn(min = 44.dp).padding(horizontal = 6.dp, vertical = 4.dp), verticalArrangement = Arrangement.Center) {
                                 Text(it, style = MaterialTheme.typography.bodyLarge)
                                 Text("Store meal", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        w.desserts.entries.sortedBy { Logic.dayRank(it.value, st.weekStart) }.forEach { (id, day) ->
+                            val name = all[id]?.name ?: st.deletedNames[id]?.let { "$it (deleted)" } ?: "(recipe no longer available)"
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                    .then(if (all[id] != null) Modifier.clickable { open = if (open == id) null else id } else Modifier)
+                                    .heightIn(min = 44.dp).padding(horizontal = 6.dp, vertical = 4.dp),
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Text(name, style = MaterialTheme.typography.bodyLarge)
+                                Text("Dessert · ${Logic.DAY_SHORT.getOrElse(day) { "" }}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            all[id]?.takeIf { open == id }?.let { r ->
+                                Column(Modifier.padding(start = 12.dp, bottom = 6.dp)) {
+                                    RecipeDetails(r, w.servings, null)
+                                    TextButton(onClick = { vm.requestAdd(id) }, enabled = id !in st.week) {
+                                        Text(if (id in st.week) "In this week" else "Add to a day")
+                                    }
+                                }
                             }
                         }
                         Row(Modifier.padding(start = 6.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -156,6 +156,9 @@ internal fun WebRecipeScreen(
     val error by vm.webPreviewError.collectAsState()
     val d = loaded?.takeIf { it.id == webId }
     val saved = vm.savedWebRecipe(st, webId)
+    // Main meal, side or dessert when you save it (guessed from the title).
+    var kind by remember(webId) { mutableStateOf<String?>(null) }
+    val pickedKind = kind ?: d?.let { Logic.guessKind(it.title) } ?: "main"
 
     Scaffold(
         modifier = Modifier.swipeBack(onBack),
@@ -168,14 +171,19 @@ internal fun WebRecipeScreen(
         bottomBar = {
             if (d != null) {
                 Surface(tonalElevation = 3.dp) {
-                    Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+                    if (forSide == null && saved == null) {
+                        Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp)) { KindChoice(pickedKind) { kind = it } }
+                    }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         TextButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
                         Button(
                             onClick = {
                                 when {
                                     forSide != null -> { vm.saveWebSide(forSide, d); onBack() }
                                     saved != null -> onSaved(saved.id)
-                                    else -> vm.saveWebRecipe(d)?.let(onSaved)
+                                    pickedKind == "side" -> { vm.saveWebSideOnly(d); onBack() }
+                                    else -> vm.saveWebRecipe(d, pickedKind)?.let(onSaved)
                                 }
                             },
                             modifier = Modifier.weight(2f),
@@ -184,11 +192,13 @@ internal fun WebRecipeScreen(
                                 when {
                                     forSide != null -> "Use as side"
                                     saved != null -> "Open my copy"
+                                    pickedKind == "side" -> "Add to my sides"
                                     else -> "Add to my recipes"
                                 },
                             )
                         }
                     }
+                  }
                 }
             }
         },
