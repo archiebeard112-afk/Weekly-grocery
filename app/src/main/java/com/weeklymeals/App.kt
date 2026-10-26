@@ -805,7 +805,7 @@ private fun BrowseScreen(
                     st.browseScope != BrowseScope.APP -> "Search"
                     searching -> "Search"
                     saleOnly -> "On sale"
-                    else -> "Main meals"
+                    else -> "Meals"
                 },
                 style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f),
             )

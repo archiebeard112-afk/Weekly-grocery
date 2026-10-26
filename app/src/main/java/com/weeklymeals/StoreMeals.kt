@@ -48,8 +48,8 @@ object BrowseScope {
     const val STORE = "store"
     const val DESSERT = "dessert"
     const val SIDE = "side"
-    val ALL = listOf(APP to "Main meals", SIDE to "Sides", DESSERT to "Desserts", WEB to "Online recipes", STORE to "King Soopers")
-    fun label(key: String) = ALL.firstOrNull { it.first == key }?.second ?: "Main meals"
+    val ALL = listOf(APP to "Meals", SIDE to "Sides", DESSERT to "Desserts", WEB to "Online recipes", STORE to "King Soopers")
+    fun label(key: String) = ALL.firstOrNull { it.first == key }?.second ?: "Meals"
     /** The shorter name shown on the button in the search bar. */
     fun short(key: String) = if (key == WEB) "Online" else label(key)
     fun hint(key: String) = when (key) {
@@ -57,7 +57,7 @@ object BrowseScope {
         STORE -> "Search King Soopers"
         DESSERT -> "Search desserts"
         SIDE -> "Search sides"
-        else -> "Search main meals"
+        else -> "Search meals"
     }
 }
 
