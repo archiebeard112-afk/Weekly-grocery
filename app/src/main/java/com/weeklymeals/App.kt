@@ -1748,7 +1748,7 @@ private fun FavoritesScreen(
     var filters by search.filters
     var showFilters by remember { mutableStateOf(false) }
     val cache = vm.salesCache(st)
-    // The dropdown in the search bar: all, main meals, sides or desserts.
+    // The dropdown in the search bar: all, meals, sides or desserts.
     val kind = st.favKind
     val favs = vm.recipes(st).values.filter { r ->
         Logic.isFav(r, st) && when (kind) {
@@ -1804,7 +1804,7 @@ private fun FavoritesScreen(
         if (total == 0) {
             Text(
                 when (kind) {
-                    "main" -> "No favorite main meals yet. Tap the ♥ on any recipe, or add your own."
+                    "main" -> "No favorite meals yet. Tap the ♥ on any recipe, or add your own."
                     "side" -> "No favorite sides yet. Tap the ♥ on a side when you pick one, or add your own."
                     "dessert" -> "No favorite desserts yet. Find some in Browse → Desserts, or add your own."
                     else -> "No favorites yet. Tap the ♥ on any recipe, or add your own."
@@ -1859,10 +1859,10 @@ private fun FavoritesScreen(
     }
 }
 
-private val FAV_KINDS = listOf("all" to "All", "main" to "Main meals", "side" to "Sides", "dessert" to "Desserts")
-private val FAV_HINTS = mapOf("main" to "Search main meals", "side" to "Search sides", "dessert" to "Search desserts")
+private val FAV_KINDS = listOf("all" to "All", "main" to "Meals", "side" to "Sides", "dessert" to "Desserts")
+private val FAV_HINTS = mapOf("main" to "Search meals", "side" to "Search sides", "dessert" to "Search desserts")
 
-/** The "what kind" button at the right end of the Favorites search bar: All, Main meals, Sides or Desserts. */
+/** The "what kind" button at the right end of the Favorites search bar: All, Meals, Sides or Desserts. */
 @Composable
 private fun KindMenu(kind: String, onPick: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
