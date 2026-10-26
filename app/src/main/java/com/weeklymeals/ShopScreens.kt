@@ -82,14 +82,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import java.util.Locale
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /**
  * The Shop tab: the shopping list and the King Soopers product for each item on one page.
@@ -192,10 +188,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
         l.product!!.let { p -> if (p.promo != null && p.price != null) (p.price - p.promo) * l.quantity else 0.0 }
     }
 
-    // Where each aisle's items start in the list, so the "already have" tile can jump to that section.
     val sections = Logic.AISLES.map { aisle -> aisle to toBuy.filter { it.aisle == aisle } }.filter { it.second.isNotEmpty() }
-    val haveIndex = 1 + sections.sumOf { 1 + it.second.size }
-    val scope = rememberCoroutineScope()
     fun lineCost(term: String): Double =
         products[term]?.product?.let { (it.promo ?: it.price ?: 0.0) * (products[term]?.quantity ?: 1) } ?: 0.0
 
@@ -249,26 +242,6 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                                 onClick = { openKingSoopersCart(ctx); menu = false },
                             )
                         }
-                    }
-                }
-                // Cart total, what the sales save, and how much the Kitchen covers.
-                if (groups.isNotEmpty()) {
-                    Row(
-                        Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        StatTile(Modifier.weight(1f), if (cart.isEmpty()) "–" else "\$" + total.roundToInt(), null, "total")
-                        StatTile(
-                            Modifier.weight(1f), "\$" + saved.roundToInt(), null, "on sale",
-                            lime = saved >= 0.5,
-                        )
-                        StatTile(
-                            Modifier.weight(1f), "${have.size}", null, "already have",
-                            onClick = if (have.isNotEmpty()) ({
-                                showHave = true
-                                scope.launch { listState.animateScrollToItem(haveIndex) }
-                            }) else null,
-                        )
                     }
                 }
                 val add = { vm.addExtraItem(newItem); newItem = ""; focus.clearFocus() }
