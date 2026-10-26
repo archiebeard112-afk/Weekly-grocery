@@ -480,16 +480,19 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                             append(" · ")
                             withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) { append("you save " + Sales.money(saved)) }
                         }
-                        val missing = toBuy.count { products[it.term]?.let { l -> l.product == null } == true }
-                        if (missing > 0) {
-                            append(" · ")
-                            withStyle(SpanStyle(color = warn)) { append("$missing need${if (missing == 1) "s" else ""} a product") }
-                        }
                     },
                     style = if (cart.isEmpty()) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+                // Items with no product, on their own line.
+                val missing = toBuy.count { products[it.term]?.let { l -> l.product == null } == true }
+                if (missing > 0) {
+                    Text(
+                        "$missing need${if (missing == 1) "s" else ""} a product",
+                        style = MaterialTheme.typography.bodySmall, color = warn,
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             Button(
@@ -558,25 +561,22 @@ private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
 }
 
 /** Colors for the small labels on a Shop item (NEED 2, SALE, LOW IN PANTRY...). */
-private enum class Tag { NEED, SALE, PANTRY, FREEZER, PLAIN }
+private enum class Tag { SALE, PANTRY, FREEZER }
 
 /** A small all-caps label, like the STORE / LEFTOVERS tags on the Week tab. */
 @Composable
 private fun ShopTag(text: String, kind: Tag) {
     val shape = RoundedCornerShape(7.dp)
     val (bg, fg) = when (kind) {
-        Tag.NEED -> Color.Transparent to MaterialTheme.colorScheme.onSurface
         Tag.SALE -> MaterialTheme.colorScheme.primary to MaterialTheme.colorScheme.onPrimary
         Tag.PANTRY -> Color(0xFF3A2C14) to Color(0xFFF0B44C)
         Tag.FREEZER -> Color(0xFF15283A) to Color(0xFF8FC3F2)
-        Tag.PLAIN -> MaterialTheme.colorScheme.surfaceContainerHighest to Color(0xFFD9DCD4)
     }
     Text(
         text.uppercase(),
         style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp,
-        color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        color = fg, maxLines = 2,
         modifier = Modifier.clip(shape).background(bg)
-            .then(if (kind == Tag.NEED) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, shape) else Modifier)
             .padding(horizontal = 7.dp, vertical = 3.dp),
     )
 }
@@ -622,7 +622,7 @@ private fun ShopRow(
         topStart = if (first) r else 0.dp, topEnd = if (first) r else 0.dp,
         bottomStart = if (last) r else 0.dp, bottomEnd = if (last) r else 0.dp,
     )
-    // Store meals get a STORE MEAL · WED label instead of being listed as a source.
+    // Store meals say "store meal · wed" after the name instead of being listed as a source.
     val storeSources = g.sources.filter { it.startsWith("Store meal") }
     val sources = g.sources - storeSources.toSet()
     // Labels line up under the name when there's a photo.
@@ -648,10 +648,17 @@ private fun ShopRow(
                     Spacer(Modifier.width(12.dp))
                 }
                 Column(Modifier.weight(1f).clickable(enabled = line != null, onClick = pick)) {
+                    // "Chicken broth  ·  need 1 cup, 5 cans" (wraps rather than cutting off); store meals say which day.
+                    val accent = if (storeSources.isEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     Text(
-                        g.term.replaceFirstChar { it.uppercase() },
-                        style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        buildAnnotatedString {
+                            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(g.term.replaceFirstChar { it.uppercase() }) }
+                            withStyle(SpanStyle(color = accent)) {
+                                append("  ·  ")
+                                append(if (storeSources.isEmpty()) "need ${g.need}" else storeSources.joinToString(", ").lowercase())
+                            }
+                        },
+                        style = MaterialTheme.typography.bodyLarge,
                     )
                     if (hasStore) {
                         Text(
@@ -665,9 +672,10 @@ private fun ShopRow(
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    if (sources.isNotEmpty()) {
+                    // Each meal that needs it on its own line.
+                    sources.forEach { src ->
                         Text(
-                            sources.joinToString(", "),
+                            src,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -749,8 +757,6 @@ private fun ShopRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    if (storeSources.isEmpty()) ShopTag("Need ${g.need}", Tag.NEED)
-                    storeSources.forEach { ShopTag(it, Tag.PLAIN) }
                     if (p?.promo != null) ShopTag("Sale", Tag.SALE)
                     if (p?.lowStock == true) ShopTag("Low stock", Tag.PANTRY)
                     pantryNote?.let { ShopTag(it, Tag.PANTRY) }
