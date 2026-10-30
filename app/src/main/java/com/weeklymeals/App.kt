@@ -1003,7 +1003,7 @@ private fun BrowseScreen(
 }
 
 /**
- * Up to 10 tiles in 5 rows that fill the space (scrolling only if the text is too big to fit). Swipe left for the next set,
+ * Up to 10 tiles in 5 rows that fill the space (no scrolling; the tiles fit their text to it). Swipe left for the next set,
  * right to go back ([canBack]); the tiles follow your finger and slide off and back in.
  */
 @Composable
@@ -1058,16 +1058,9 @@ private fun <T> SwipeSets(
     ) {
         // The keyboard squeezes these tiles; don't copy that size to the other pages.
         val imeOpen = WindowInsets.ime.getBottom(density) > 0
-        // The 5 rows share the space, but never get shorter than a tile needs for a two-line name
-        // with the calories line under it (bigger phone text makes that taller). If they'd need
-        // more room than the screen has, the set scrolls instead of cutting text off.
-        val minRow = with(density) { (14 + 17 * 2 + 14).sp.toDp() } + 50.dp
-        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-        val rowH = maxOf(maxHeight / 5, minRow)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         shown.take(10).chunked(2).forEach { pair ->
             Row(
-                Modifier.fillMaxWidth().height(rowH).padding(vertical = 3.dp),
+                Modifier.fillMaxWidth().weight(1f).padding(vertical = 3.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 pair.forEach { item ->
@@ -1080,8 +1073,7 @@ private fun <T> SwipeSets(
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
-        }
-        }
+        repeat(5 - (shown.take(10).size + 1) / 2) { Spacer(Modifier.weight(1f)) }
         // So it's clear there are more: arrows (tap them, or swipe) around a short hint.
         Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { slide(false) }, enabled = canBack, modifier = Modifier.size(32.dp)) {
@@ -1118,6 +1110,7 @@ private fun RecipeTile(
         colors = CardDefaults.cardColors(containerColor = Look.color(r.id), contentColor = Look.Ink),
         modifier = modifier.combinedClickable(onClick = onOpen, onLongClick = onHold),
     ) {
+      FitTileText {
       Box(Modifier.fillMaxSize()) {
       OnColor {
         Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 6.dp, end = 2.dp)) {
@@ -1130,8 +1123,7 @@ private fun RecipeTile(
             val keep = (week + all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = (week + all).filter { it in keep }
             // Every card has the same lines in the same spots: tags (empty if none), the name (up to
-            // two lines), calories and price, then time and buttons at the bottom. The name takes
-            // whatever room is left, so the calories line under it is never cut off.
+            // two lines), calories and price, then time and buttons at the bottom.
             Column(Modifier.weight(1f).fillMaxWidth().padding(end = 8.dp)) {
                     Row(
                         Modifier.heightIn(min = 18.dp),
@@ -1143,8 +1135,9 @@ private fun RecipeTile(
                     Text(
                         r.name,
                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 17.sp),
-                        maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 1.dp).weight(1f, fill = false),
+                        // Always two lines tall, so the calories line sits in the same spot on every tile.
+                        minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 1.dp),
                     )
                     // Calories, then what you'd pay for this meal (bold at or under your budget line),
                     // then the Kitchen icon when things you have cover part of it.
@@ -1177,6 +1170,26 @@ private fun RecipeTile(
         }
       }
       }
+      }
+    }
+}
+
+/**
+ * Browse always shows 10 tiles that fill the screen, so a tile's height is set by the phone. If the
+ * phone's text size is too big for a tile's lines (tags, two-line name, calories, time and
+ * buttons), the text inside is made just small enough to fit instead of being cut off.
+ */
+@Composable
+private fun FitTileText(content: @Composable () -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val d = androidx.compose.ui.platform.LocalDensity.current
+        // Fixed parts: 6dp top, 18dp tag row, 1dp gap, 30dp bottom row, 2dp spare.
+        // Text parts: name 2 x 17sp, calories line 14sp.
+        val fit = if (maxHeight == androidx.compose.ui.unit.Dp.Infinity) d.fontScale else (maxHeight.value - 57f) / 48f
+        val scale = minOf(d.fontScale, fit).coerceAtLeast(0.75f)
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(d.density, scale),
+        ) { content() }
     }
 }
 

@@ -128,8 +128,9 @@ private fun NothingTonight(day: Int, onAdd: () -> Unit) {
                 fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                "Nothing planned tonight", style = MaterialTheme.typography.titleLarge.copy(fontSize = 19.sp),
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
+                // The label above already says TONIGHT, so this stays short enough to fit beside the button.
+                "Nothing planned", style = MaterialTheme.typography.titleLarge.copy(fontSize = 19.sp),
+                maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
             )
         }
         Button(onClick = onAdd, contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.padding(start = 8.dp).height(42.dp)) {
