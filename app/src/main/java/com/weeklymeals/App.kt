@@ -1122,9 +1122,16 @@ private fun RecipeTile(
             val week = if (inWeek) listOf("week" to ("In week" + (day?.let { " · " + Logic.DAY_SHORT[it] } ?: ""))) else emptyList()
             val keep = (week + all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = (week + all).filter { it in keep }
-            // Every card has the same lines in the same spots: tags (empty if none), the name (up to
-            // two lines), calories and price, then time and buttons at the bottom.
+            // Every card has the same lines in the same spots: the name (two lines tall), tags
+            // (empty if none), calories and price, then time and buttons at the bottom.
             Column(Modifier.weight(1f).fillMaxWidth().padding(end = 8.dp)) {
+                    Text(
+                        r.name,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 17.sp),
+                        // Always two lines tall, so the tags and calories line sit in the same spot on every tile.
+                        minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(bottom = 1.dp),
+                    )
                     Row(
                         Modifier.heightIn(min = 18.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1132,13 +1139,6 @@ private fun RecipeTile(
                     ) {
                         badges.forEach { (key, label) -> Badge(label, small = true, dark = key == "week") }
                     }
-                    Text(
-                        r.name,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 17.sp),
-                        // Always two lines tall, so the calories line sits in the same spot on every tile.
-                        minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 1.dp),
-                    )
                     // Calories, then what you'd pay for this meal (bold at or under your budget line),
                     // then the Kitchen icon when things you have cover part of it.
                     TileInfo(calories, cost, st.budgetMax)
@@ -1183,7 +1183,7 @@ private fun RecipeTile(
 private fun FitTileText(content: @Composable () -> Unit) {
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
         val d = androidx.compose.ui.platform.LocalDensity.current
-        // Fixed parts: 6dp top, 18dp tag row, 1dp gap, 30dp bottom row, 2dp spare.
+        // Fixed parts: 6dp top, 1dp gap, 18dp tag row, 30dp bottom row, 2dp spare.
         // Text parts: name 2 x 17sp, calories line 14sp.
         val fit = if (maxHeight == androidx.compose.ui.unit.Dp.Infinity) d.fontScale else (maxHeight.value - 57f) / 48f
         val scale = minOf(d.fontScale, fit).coerceAtLeast(0.75f)
