@@ -8,6 +8,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -39,6 +44,8 @@ data class CartLine(
     val options: List<Product>,
     val selected: Int = 0,
     val quantity: Int = 1,
+    /** The list's amount ([ShopGroup.need]) this line was worked out for; when it changes, the quantity is redone. */
+    val needText: String = "",
 ) {
     val product: Product? get() = options.getOrNull(selected)
 }
@@ -266,6 +273,12 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     /** King Soopers products looked up for the Shop tab, by search term. */
     val products = MutableStateFlow<Map<String, CartLine>>(emptyMap())
     private var productsStore = ""
+    /** The week [products] were looked up in (see [weekKey]); a new week looks everything up again. */
+    private var productsWeek = ""
+    /** Done once the saved Shop lookups (shop_cache.json) have been read back. */
+    private val productsReady = kotlinx.coroutines.CompletableDeferred<Unit>()
+    /** Picks to keep when Refresh prices looks everything up again. */
+    private var refreshPicks: Map<String, Choice> = emptyMap()
 
     /** (done, total) while products are being looked up; null when idle. */
     val productsLoading = MutableStateFlow<Pair<Int, Int>?>(null)
@@ -285,6 +298,25 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshBrowse()
+        // Read back this week's King Soopers lookups, then save them whenever they change.
+        viewModelScope.launch {
+            try {
+                val st = store.flow.first()
+                val saved = withContext(Dispatchers.IO) { ShopCacheFile.load(getApplication<Application>()) }
+                if (saved.week == weekKey(st) && saved.store == st.kroger.store.id && saved.store.isNotEmpty()) {
+                    products.update { now -> saved.lines.mapValues { it.value.line() } + now }
+                    productsStore = saved.store
+                    productsWeek = saved.week
+                }
+            } finally {
+                productsReady.complete(Unit)
+            }
+            products.drop(1).collectLatest { m ->
+                delay(800)
+                val cache = ShopCache(productsWeek, productsStore, m.mapValues { it.value.saved() })
+                withContext(Dispatchers.IO) { ShopCacheFile.save(getApplication<Application>(), cache) }
+            }
+        }
         // Keep the thaw reminder alarms in step with the week and the settings.
         viewModelScope.launch {
             store.flow.map { runCatching { thawPlan(it) }.getOrNull() }.distinctUntilChanged().collect { p ->
@@ -1510,13 +1542,35 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Looks up King Soopers products for any Shop items that don't have one yet. */
     fun loadProducts() {
+        if (!productsReady.isCompleted) {
+            viewModelScope.launch { productsReady.await(); loadProducts() }
+            return
+        }
         val k = state.value.kroger
         if (k.store.id.isEmpty() || k.clientId.isBlank() || productsLoading.value != null) return
-        if (productsStore != k.store.id) {
+        val week = weekKey(state.value)
+        if (productsStore != k.store.id || productsWeek != week) {
             products.value = emptyMap()
             productsStore = k.store.id
+            productsWeek = week
         }
-        val todo = shopGroups().filter { it.term !in products.value }
+        val groups = shopGroups()
+        // Items already looked up this week whose amount changed: redo the quantity here, no store search.
+        val changed = groups.filter { g -> products.value[g.term]?.let { it.needText != g.need } == true }
+        if (changed.isNotEmpty()) products.update { m ->
+            m + changed.associate { g ->
+                val l = m.getValue(g.term)
+                val needAmount = Logic.needOf(g.items)
+                // Lines added straight from a product (store meals, Add box) keep their own count the first time.
+                val q = when {
+                    l.needText.isEmpty() -> l.quantity
+                    isExact(g) -> g.items.sumOf { it.qty }.toInt().coerceAtLeast(1)
+                    else -> Logic.suggestQty(needAmount, l.product)
+                }
+                g.term to l.copy(needAmount = needAmount, needText = g.need, quantity = q)
+            }
+        }
+        val todo = groups.filter { it.term !in products.value }
         if (todo.isEmpty()) return
         productsLoading.value = 0 to todo.size
         viewModelScope.launch {
@@ -1541,6 +1595,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 message.value = e.message ?: "Could not look up King Soopers products"
             } finally {
                 productsLoading.value = null
+                refreshPicks = emptyMap()
             }
             // Items added while this was running get looked up next.
             if (ok && shopGroups().any { it.term !in products.value }) loadProducts()
@@ -1549,7 +1604,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun lookup(token: String, k: KrogerState, g: ShopGroup): CartLine {
         // Your pick, or else the product your receipts show you usually buy.
-        val saved = k.choices["term:${g.term}"] ?: g.items.firstNotNullOfOrNull { k.choices[it.key] } ?: Receipts.usual(g.term)
+        val saved = refreshPicks[g.term] ?: k.choices["term:${g.term}"] ?: g.items.firstNotNullOfOrNull { k.choices[it.key] } ?: Receipts.usual(g.term)
         val search = saved?.search?.ifBlank { null } ?: Logic.baseExtra(g.term)
         val all = runCatching { api.searchProducts(token, k.store.id, search) }.getOrDefault(emptyList())
         // Leave out anything out of stock, not sold here, or not deliverable.
@@ -1560,13 +1615,28 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         } else null
         val needAmount = Logic.needOf(g.items)
         val sel = if (remembered >= 0) remembered else 0
-        // Store-bought meals and sides are exact products: one per day or meal, whatever the package size says.
-        val exact = g.items.isNotEmpty() && g.items.all { it.key.startsWith("meal:") || it.key.startsWith("side:") }
         return CartLine(
             term = g.term, search = search, options = options, selected = sel, needAmount = needAmount,
-            note = note,
-            quantity = if (exact) g.items.sumOf { it.qty }.toInt().coerceAtLeast(1) else Logic.suggestQty(needAmount, options.getOrNull(sel)),
+            note = note, needText = g.need,
+            quantity = if (isExact(g)) g.items.sumOf { it.qty }.toInt().coerceAtLeast(1) else Logic.suggestQty(needAmount, options.getOrNull(sel)),
         )
+    }
+
+    /** Store-bought meals and sides are exact products: one per day or meal, whatever the package size says. */
+    private fun isExact(g: ShopGroup) = g.items.isNotEmpty() && g.items.all { it.key.startsWith("meal:") || it.key.startsWith("side:") }
+
+    /** First day of the current week (by the week's start day), e.g. "2026-10-27". */
+    private fun weekKey(st: UserState): String =
+        java.time.LocalDate.now().minusDays(((Logic.todayIndex() - st.weekStart + 7) % 7).toLong()).toString()
+
+    /** Shop ⋮ menu: looks every item up at King Soopers again for today's prices, keeping your picks. */
+    fun refreshProducts() {
+        if (productsLoading.value != null) return
+        refreshPicks = products.value.mapNotNull { (term, l) ->
+            l.product?.let { p -> term to Choice(p.upc, p.title, if (l.search != l.term) l.search else "") }
+        }.toMap()
+        products.value = emptyMap()
+        loadProducts()
     }
 
     fun updateLine(term: String, block: (CartLine) -> CartLine) {

@@ -11,7 +11,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class Product(
     val upc: String,
     val title: String,

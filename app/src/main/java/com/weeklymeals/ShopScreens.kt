@@ -233,6 +233,10 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                                 .background(MaterialTheme.colorScheme.surfaceContainer),
                         ) { Icon(Icons.Filled.MoreVert, "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (hasStore) DropdownMenuItem(
+                                text = { Text("Refresh King Soopers prices") },
+                                onClick = { vm.refreshProducts(); menu = false },
+                            )
                             DropdownMenuItem(
                                 text = { Text("Bring back all \"Already have\" items") },
                                 onClick = { vm.clearHave(); menu = false },
