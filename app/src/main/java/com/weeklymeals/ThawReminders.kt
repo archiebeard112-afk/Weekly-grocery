@@ -414,7 +414,7 @@ fun ColumnScope.ThawSettings(vm: MealsViewModel, st: UserState) {
     Label("Snooze for")
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         listOf(5, 10, 30).forEach { m ->
-            FilterChip(selected = st.thawSnooze == m, onClick = { vm.setThawSnooze(m) }, label = { Text("$m min") })
+            PillChip("$m min", st.thawSnooze == m) { vm.setThawSnooze(m) }
         }
     }
 
