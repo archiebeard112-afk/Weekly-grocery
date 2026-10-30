@@ -312,9 +312,9 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                     }
                 }
                 if (groups.isEmpty()) {
-                    Text(
-                        "Your list is empty. Add meals to your week, pick snacks, or add an item above.",
-                        modifier = Modifier.padding(top = 24.dp),
+                    EmptyState(
+                        Icons.Filled.ShoppingCart, "Your list is empty",
+                        "Add meals to your week, pick snacks, or add an item above.",
                     )
                 }
             }
@@ -336,7 +336,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         )
                         val sub = section.sumOf { lineCost(it.term) }
                         if (sub > 0) {
-                            Text(Sales.money(sub), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(Sales.money(sub), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -445,7 +445,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
             Column(Modifier.weight(1f)) {
                 val count = "${toBuy.size} item${if (toBuy.size == 1) "" else "s"}"
                 if (cart.isNotEmpty()) {
-                    Text(Sales.money(total), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold))
+                    Text(Sales.money(total), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold, fontFeatureSettings = "tnum"))
                 }
                 val highlight = MaterialTheme.colorScheme.primary
                 val warn = MaterialTheme.colorScheme.error
@@ -710,7 +710,7 @@ private fun ShopRow(
                     Column(Modifier.padding(start = 8.dp), horizontalAlignment = Alignment.End) {
                         val now = p.promo ?: p.price
                         if (now != null) {
-                            Text(Sales.money(now * line.quantity), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                            Text(Sales.money(now * line.quantity), style = MaterialTheme.typography.bodyLarge.copy(fontFamily = Look.Display, fontFeatureSettings = "tnum"), fontWeight = FontWeight.ExtraBold)
                         }
                         if (p.promo != null && p.price != null) {
                             Text(

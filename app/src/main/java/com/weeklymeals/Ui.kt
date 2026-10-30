@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 /** How a pop-up button looks: lime (the thing to do), dark (the other choice), or red (removes something). */
 enum class ActionKind { Primary, Secondary, Danger }
@@ -201,5 +202,35 @@ fun PageHeader(
         }
         trailing()
         if (onBack == null) LocalTopIcons.current?.invoke()
+    }
+}
+
+/** What a page shows when there's nothing in it yet: an icon, a short headline, one sentence, and one button. */
+@Composable
+fun EmptyState(
+    icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, text: String,
+    modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {},
+) {
+    Column(
+        modifier.fillMaxWidth().padding(horizontal = Space.L, vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Space.M),
+    ) {
+        Box(
+            Modifier.size(64.dp).clip(RoundedCornerShape(22.dp)).background(MaterialTheme.colorScheme.surfaceContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            androidx.compose.material3.Icon(icon, null, Modifier.size(30.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+        Text(
+            title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp), textAlign = TextAlign.Center,
+        )
+        Text(
+            text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        if (action != null) {
+            Box(Modifier.padding(top = Space.XS)) { ActionButton(DialogAction(action, ActionKind.Primary, onClick = onAction)) }
+        }
     }
 }

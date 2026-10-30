@@ -242,6 +242,15 @@ fun App(vm: MealsViewModel) {
             vm.message.value = null
         }
     }
+    // A message with Undo (e.g. after removing a meal from the week).
+    val undo by vm.undo.collectAsState()
+    LaunchedEffect(undo) {
+        undo?.let { (text, action) ->
+            val r = snack.showSnackbar(text, actionLabel = "Undo", duration = androidx.compose.material3.SnackbarDuration.Long)
+            if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) action()
+            vm.undo.value = null
+        }
+    }
 
     // On the four main tabs the keyboard slides over the screen instead of squishing it.
     // Other screens (Settings, Add recipe, product picker) still make room for it.
@@ -371,8 +380,9 @@ fun App(vm: MealsViewModel) {
             Column(
                 Modifier.padding(pad).statusBarsPadding().fillMaxSize().keepFullHeight(),
             ) {
-                run {
-                    when (tab) {
+                // A quick fade between tabs.
+                androidx.compose.animation.Crossfade(targetState = tab, animationSpec = tween(180), label = "tab") { shown ->
+                    when (shown) {
                     0 -> WeekScreen(
                         vm, st, onOpen = { viewing = it }, onBrowse = { vm.setBrowseScope(BrowseScope.APP); tab = 1 }, flashId = flashId,
                         onLeftovers = { vm.setBrowseScope(BrowseScope.APP); pendingFilter = "leftovers"; tab = 1 },
@@ -629,7 +639,7 @@ internal fun TimerButton(key: String, label: String, t: Logic.StepTime, ctl: Tim
         OutlinedButton(
             onClick = { ctl.start(key, label, t.minutes) },
             contentPadding = small, modifier = Modifier.height(34.dp),
-        ) { Text("⏱ " + Logic.fmtMinutes(t.minutes) + if (t.perSide) " per side" else "") }
+        ) { TimerGlyph(); Spacer(Modifier.width(6.dp)); Text(Logic.fmtMinutes(t.minutes) + if (t.perSide) " per side" else "") }
         return
     }
     var now by remember(key) { mutableLongStateOf(System.currentTimeMillis()) }
@@ -645,12 +655,25 @@ internal fun TimerButton(key: String, label: String, t: Logic.StepTime, ctl: Tim
         FilledTonalButton(
             onClick = { ctl.stop(key) },
             contentPadding = small, modifier = Modifier.height(34.dp),
-        ) { Text("⏱ %d:%02d  ·  Stop".format(left / 60, left % 60)) }
+        ) { TimerGlyph(); Spacer(Modifier.width(6.dp)); Text("%d:%02d  ·  Stop".format(left / 60, left % 60)) }
     } else {
         Button(
             onClick = { ctl.stop(key) },
             contentPadding = small, modifier = Modifier.height(34.dp),
-        ) { Text("⏰ Done! Tap to stop") }
+        ) { TimerGlyph(); Spacer(Modifier.width(6.dp)); Text("Done! Tap to stop") }
+    }
+}
+
+/** A small line-drawn timer (a clock face with a button on top), in the button's text color. */
+@Composable
+internal fun TimerGlyph(modifier: Modifier = Modifier.size(16.dp)) {
+    val c = androidx.compose.material3.LocalContentColor.current
+    androidx.compose.foundation.Canvas(modifier) {
+        val u = size.minDimension / 24f
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f * u, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        drawCircle(c, radius = 8f * u, center = androidx.compose.ui.geometry.Offset(12f * u, 13.5f * u), style = stroke)
+        drawLine(c, androidx.compose.ui.geometry.Offset(12f * u, 13.5f * u), androidx.compose.ui.geometry.Offset(12f * u, 9f * u), 2f * u, androidx.compose.ui.graphics.StrokeCap.Round)
+        drawLine(c, androidx.compose.ui.geometry.Offset(9.5f * u, 2.5f * u), androidx.compose.ui.geometry.Offset(14.5f * u, 2.5f * u), 2f * u, androidx.compose.ui.graphics.StrokeCap.Round)
     }
 }
 
@@ -713,7 +736,7 @@ private fun RecipeDetails(
                                 price.have -> "$0.00"
                                 else -> Sales.money(price.cost)
                             },
-                            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
                             color = if (first && price?.have == true) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.End,
                         )
@@ -744,7 +767,7 @@ private fun RecipeDetails(
         Row(Modifier.padding(top = 12.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Total", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
             Text(
-                Sales.money(cost.total), style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
+                Sales.money(cost.total), style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum", fontWeight = FontWeight.ExtraBold),
                 color = if (cost.total <= budgetMax) BUDGET_GREEN else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(start = 12.dp),
             )
@@ -1560,15 +1583,13 @@ private fun RecipeScreen(
                 Button(onClick = onCook, contentPadding = pad, modifier = Modifier.weight(1f).fillMaxHeight()) {
                     Text("Start cooking", textAlign = TextAlign.Center, maxLines = 2, fontWeight = FontWeight.Bold)
                 }
-                // Adds the meal; once it's planned, you hold for 3 seconds to remove it.
+                // Adds the meal; once it's planned, removes it (with Undo on the message).
                 if (inWeek) {
-                    HoldToRemoveButton(
-                        Modifier.weight(1f).fillMaxHeight(),
-                        onHint = { vm.message.value = "Hold to remove from week" },
+                    OutlinedButton(
+                        onClick = { vm.removeFromWeekUndoable(id, r.name); onRemoved() },
+                        contentPadding = pad, modifier = Modifier.weight(1f).fillMaxHeight(),
                     ) {
-                        vm.removeFromWeek(id)
-                        vm.message.value = "Removed ${r.name} from your week"
-                        onRemoved()
+                        Text("Remove from week", textAlign = TextAlign.Center, maxLines = 2)
                     }
                 } else {
                     OutlinedButton(
@@ -1779,10 +1800,10 @@ private fun FilterChipFor(key: String, label: String, on: Boolean, onClick: () -
 // ---- Favorites ---------------------------------------------------------------------
 
 private val FAV_FILTERS = listOf(
-    "crockpot" to "🍲 Crock-Pot", "instantpot" to "⚡ Instant Pot", "airfryer" to "🌬️ Air Fryer",
-    "sheetpan" to "♨️ Sheet-Pan", "grill" to "🔥 Grill", "onepan" to "🍳 One-Pan",
-    "budget" to "💲 Budget", "quick" to "⏱ Quick", "lowcal" to "$LOW_CAL cal",
-    "leftovers" to "♻️ Uses leftovers",
+    "crockpot" to "Crock-Pot", "instantpot" to "Instant Pot", "airfryer" to "Air fryer",
+    "sheetpan" to "Sheet pan", "grill" to "Grill", "onepan" to "One pan",
+    "budget" to "Budget", "quick" to "Quick", "lowcal" to "$LOW_CAL cal",
+    "leftovers" to "Uses leftovers",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1844,16 +1865,15 @@ private fun FavoritesScreen(
         }
         if (showFilters) FiltersDialog(filters, onChange = { filters = it }, onDismiss = { showFilters = false })
         if (total == 0) {
-            Text(
+            EmptyState(
+                Icons.Filled.FavoriteBorder,
+                when (kind) { "main" -> "No favorite meals yet"; "side" -> "No favorite sides yet"; "dessert" -> "No favorite desserts yet"; else -> "Keep the meals you love here" },
                 when (kind) {
-                    "main" -> "No favorite meals yet. Tap the ♥ on any recipe, or add your own."
-                    "side" -> "No favorite sides yet. Tap the ♥ on a side when you pick one, or add your own."
-                    "dessert" -> "No favorite desserts yet. Find some in Browse → Desserts, or add your own."
-                    else -> "No favorites yet. Tap the ♥ on any recipe, or add your own."
+                    "side" -> "Tap the heart on a side when you pick one, and it shows up here."
+                    "dessert" -> "Find some in Browse → Desserts and tap the heart."
+                    else -> "Tap the heart on any recipe and it shows up here, ready to add to a week."
                 },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                action = "Add your own recipe", onAction = onAdd,
             )
         }
     LazyVerticalGrid(
@@ -2009,9 +2029,9 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
             }
             if (st.history.isEmpty()) {
                 item {
-                    Text(
-                        "No past weeks yet. When you're done with a week, tap Finish week on the Week tab to save it here.",
-                        style = MaterialTheme.typography.bodyLarge,
+                    EmptyState(
+                        Icons.Filled.DateRange, "No past weeks yet",
+                        "When you're done with a week, tap Finish week on the Week tab. It's saved here so you can repeat it later.",
                     )
                 }
             }
@@ -2153,51 +2173,6 @@ private fun TopIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label
     }
 }
 
-private const val HOLD_MS = 3000
-
-/**
- * "Hold to remove": fills with red while you hold it. Let go early and it fades back;
- * hold the full 3 seconds and it buzzes and calls [onRemove]. A quick tap shows a hint.
- */
-@Composable
-private fun HoldToRemoveButton(modifier: Modifier, onHint: () -> Unit, onRemove: () -> Unit) {
-    val progress = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
-    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val red = MaterialTheme.colorScheme.error
-    val holding = progress.value > 0.02f
-    Box(
-        modifier
-            .clip(RoundedCornerShape(20.dp))
-            .border(1.dp, if (holding) red else MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
-            .background(red.copy(alpha = 0.85f * progress.value))
-            .pointerInput(Unit) {
-                detectTapGestures(onPress = {
-                    val fill = scope.launch {
-                        progress.animateTo(1f, tween(((1f - progress.value) * HOLD_MS).toInt(), easing = LinearEasing))
-                        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                        onRemove()
-                        progress.snapTo(0f)
-                    }
-                    val released = tryAwaitRelease()
-                    if (fill.isActive) {
-                        fill.cancel()
-                        if (released && progress.value < 0.15f) onHint()
-                        scope.launch { progress.animateTo(0f, tween(250)) }
-                    }
-                })
-            }
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            if (holding) "Keep holding…" else "Hold to remove",
-            textAlign = TextAlign.Center, maxLines = 2,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (progress.value > 0.5f) MaterialTheme.colorScheme.onError else if (holding) red else MaterialTheme.colorScheme.primary,
-        )
-    }
-}
 
 /** "Filters" button that opens the filter chips; shows how many are on. */
 @Composable
@@ -2238,7 +2213,7 @@ private fun FiltersDialog(
                 horizontalArrangement = Arrangement.spacedBy(Space.S),
             ) {
                 if (sale != null) {
-                    FilterChip(selected = sale, onClick = { onSale(!sale) }, label = { Text("🏷️ Sale") })
+                    FilterChip(selected = sale, onClick = { onSale(!sale) }, label = { Text("On sale") })
                 }
                 FAV_FILTERS.forEach { (key, label) ->
                     val on = key in filters

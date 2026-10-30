@@ -475,14 +475,14 @@ object Logic {
     private val BADGES = linkedMapOf(
         "crockpot" to "Crock-Pot",
         "instantpot" to "Instant Pot",
-        "airfryer" to "Air Fryer",
-        "sheetpan" to "Sheet-Pan",
+        "airfryer" to "Air fryer",
+        "sheetpan" to "Sheet pan",
         "grill" to "Grill",
-        "onepan" to "One-Pan",
-        "breadmaker" to "Bread Maker",
+        "onepan" to "One pan",
+        "breadmaker" to "Bread maker",
         "oven" to "Oven",
         "stovetop" to "Stovetop",
-        "nobake" to "No-Bake",
+        "nobake" to "No bake",
         "budget" to "Budget",
     )
 

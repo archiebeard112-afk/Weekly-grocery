@@ -904,6 +904,35 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         s.copy(week = s.week - id, sides = s.sides - id, days = Logic.dayPlan(s).asMap() - id, dessertDays = s.dessertDays - id)
     }
 
+    /** A message with an Undo button: the text, and what Undo does. */
+    val undo = MutableStateFlow<Pair<String, () -> Unit>?>(null)
+
+    /** Takes a meal off the week, with Undo putting it back on the same day with the same side. */
+    fun removeFromWeekUndoable(id: Int, name: String) {
+        val s0 = state.value
+        val side = s0.sides[id]
+        val size = s0.sideSize[id]
+        val day = Logic.dayPlan(s0).asMap()[id]
+        val dessert = s0.dessertDays[id]
+        removeFromWeek(id)
+        undo.value = "Removed $name from your week" to {
+            edit { s ->
+                if (id in s.week) s else {
+                    val plan = Logic.dayPlan(s).asMap()
+                    // Back on its day, unless something else took that day meanwhile.
+                    val free = day != null && dessert == null && plan.values.none { it == day }
+                    s.copy(
+                        week = s.week + id,
+                        sides = if (side != null) s.sides + (id to side) else s.sides,
+                        sideSize = if (size != null) s.sideSize + (id to size) else s.sideSize,
+                        days = if (free) plan + (id to day!!) else plan,
+                        dessertDays = if (dessert != null) s.dessertDays + (id to dessert) else s.dessertDays,
+                    )
+                }
+            }
+        }
+    }
+
     /** Moves a meal to a day; if that day already has a meal, the two swap. */
     fun moveToDay(id: Int, day: Int) = edit { s ->
         if (id in s.dessertDays) return@edit if (day in 0..6) s.copy(dessertDays = s.dessertDays + (id to day)) else s
