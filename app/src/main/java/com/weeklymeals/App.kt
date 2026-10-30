@@ -1003,7 +1003,7 @@ private fun BrowseScreen(
 }
 
 /**
- * Up to 10 tiles in 5 rows that fill the space (no scrolling). Swipe left for the next set,
+ * Up to 10 tiles in 5 rows that fill the space (scrolling only if the text is too big to fit). Swipe left for the next set,
  * right to go back ([canBack]); the tiles follow your finger and slide off and back in.
  */
 @Composable
@@ -1058,9 +1058,16 @@ private fun <T> SwipeSets(
     ) {
         // The keyboard squeezes these tiles; don't copy that size to the other pages.
         val imeOpen = WindowInsets.ime.getBottom(density) > 0
+        // The 5 rows share the space, but never get shorter than a tile needs for a two-line name
+        // with the calories line under it (bigger phone text makes that taller). If they'd need
+        // more room than the screen has, the set scrolls instead of cutting text off.
+        val minRow = with(density) { (14 + 17 * 2 + 14).sp.toDp() } + 50.dp
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+        val rowH = maxOf(maxHeight / 5, minRow)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         shown.take(10).chunked(2).forEach { pair ->
             Row(
-                Modifier.fillMaxWidth().weight(1f).padding(vertical = 3.dp),
+                Modifier.fillMaxWidth().height(rowH).padding(vertical = 3.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 pair.forEach { item ->
@@ -1073,7 +1080,8 @@ private fun <T> SwipeSets(
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
-        repeat(5 - (shown.take(10).size + 1) / 2) { Spacer(Modifier.weight(1f)) }
+        }
+        }
         // So it's clear there are more: arrows (tap them, or swipe) around a short hint.
         Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { slide(false) }, enabled = canBack, modifier = Modifier.size(32.dp)) {
@@ -1112,7 +1120,7 @@ private fun RecipeTile(
     ) {
       Box(Modifier.fillMaxSize()) {
       OnColor {
-        Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 3.dp, end = 2.dp, bottom = 1.dp)) {
+        Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 6.dp, end = 2.dp)) {
             // At most 2 tags: in your week, on sale, then cooking method, then Budget. A tag you're
             // filtering by always gets a spot, so you can see why the meal matched.
             val all = (if (saleSave >= st.saleMin) listOf("sale" to "Sale " + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
@@ -1122,8 +1130,9 @@ private fun RecipeTile(
             val keep = (week + all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = (week + all).filter { it in keep }
             // Every card has the same lines in the same spots: tags (empty if none), the name (up to
-            // two lines), calories and price, then time and buttons at the bottom.
-            Column(Modifier.weight(1f).fillMaxWidth().padding(top = 5.dp, end = 8.dp)) {
+            // two lines), calories and price, then time and buttons at the bottom. The name takes
+            // whatever room is left, so the calories line under it is never cut off.
+            Column(Modifier.weight(1f).fillMaxWidth().padding(end = 8.dp)) {
                     Row(
                         Modifier.heightIn(min = 18.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1135,13 +1144,13 @@ private fun RecipeTile(
                         r.name,
                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 17.sp),
                         maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 3.dp),
+                        modifier = Modifier.padding(top = 1.dp).weight(1f, fill = false),
                     )
                     // Calories, then what you'd pay for this meal (bold at or under your budget line),
                     // then the Kitchen icon when things you have cover part of it.
-                    TileInfo(calories, cost, st.budgetMax, Modifier.padding(top = 2.dp))
+                    TileInfo(calories, cost, st.budgetMax)
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     Logic.fmtShort(Logic.cookMinutes(r)),
                     style = MaterialTheme.typography.labelMedium,
@@ -1149,13 +1158,13 @@ private fun RecipeTile(
                     modifier = Modifier.weight(1f),
                 )
                 // Compact buttons (the touch area is still the full 48dp).
-                FavButton(r, st, toggleFav, Modifier.size(32.dp))
+                FavButton(r, st, toggleFav, Modifier.size(30.dp))
                 IconButton(
                     onClick = onAdd, enabled = !inWeek,
                     colors = if (inWeek) androidx.compose.material3.IconButtonDefaults.iconButtonColors(
                         disabledContainerColor = Look.Ink, disabledContentColor = Look.Lime,
                     ) else androidx.compose.material3.IconButtonDefaults.iconButtonColors(),
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(30.dp),
                 ) {
                     Icon(
                         if (inWeek) Icons.Filled.Check else Icons.Filled.Add,
@@ -1174,7 +1183,7 @@ private fun RecipeTile(
 /** A tile's calories · price line, with the Kitchen icon when things you have cover part of it. Never shrinks. */
 @Composable
 private fun TileInfo(calories: Int?, cost: MealsViewModel.MealCost?, budgetMax: Double, modifier: Modifier = Modifier) {
-    Row(modifier.heightIn(min = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.heightIn(min = 14.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
             buildAnnotatedString {
                 calories?.let {
