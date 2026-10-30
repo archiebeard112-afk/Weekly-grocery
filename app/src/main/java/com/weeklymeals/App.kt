@@ -129,6 +129,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.launch
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 
 private enum class Overlay { None, Settings, AddRecipe, History, Pantry }
 
@@ -1019,6 +1021,8 @@ private fun <T> SwipeSets(
                 alpha = 1f - (kotlin.math.abs(offset.value) / widthPx).coerceIn(0f, 0.5f)
             },
     ) {
+        // The keyboard squeezes these tiles; don't copy that size to the other pages.
+        val imeOpen = WindowInsets.ime.getBottom(density) > 0
         shown.take(10).chunked(2).forEach { pair ->
             Row(
                 Modifier.fillMaxWidth().weight(1f).padding(vertical = 3.dp),
@@ -1028,7 +1032,7 @@ private fun <T> SwipeSets(
                     tile(
                         item,
                         Modifier.weight(1f).fillMaxHeight()
-                            .onSizeChanged { TileSize.save(tileCtx, with(density) { it.height.toDp() }) },
+                            .onSizeChanged { if (!imeOpen) TileSize.save(tileCtx, with(density) { it.height.toDp() }) },
                     )
                 }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -1341,7 +1345,7 @@ private fun BrowseSideTile(
 /**
  * Recipe tile height, taken from Browse's sets of 10 so Favorites and search results match.
  * Remembered on the phone, so Favorites matches from the start, even before Browse is opened.
- * Only grows: a keyboard opening over Browse squeezes its tiles, and that shouldn't shrink the rest.
+ * Always follows Browse's latest size (except while the keyboard is open), so the pages match exactly.
  */
 private object TileSize {
     var height by mutableStateOf(104.dp)
@@ -1351,7 +1355,7 @@ private object TileSize {
         if (saved > 0f) height = saved.dp
     }
     fun save(ctx: android.content.Context, h: androidx.compose.ui.unit.Dp) {
-        if (h.value <= height.value + 0.5f && prefs(ctx).contains("height")) return
+        if (kotlin.math.abs(h.value - height.value) < 0.5f && prefs(ctx).contains("height")) return
         height = h
         prefs(ctx).edit().putFloat("height", h.value).apply()
     }
