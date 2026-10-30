@@ -196,6 +196,12 @@ data class UserState(
     val favSides: Set<String> = emptySet(),
     /** What Favorites shows: "all", "main", "side" or "dessert". */
     val favKind: String = "all",
+    /** Thaw reminders: a buzz before meals that use meat from the freezer. */
+    val thawOn: Boolean = true,
+    val thawTimes: List<ThawTime> = listOf(ThawTime()),
+    /** Which food buzz beat (Thaw.BEATS key). */
+    val thawBeat: String = "popcorn",
+    val thawSnooze: Int = 10,
 ) {
     /** This week's dinners: everything planned except desserts. */
     val mains: List<Int> get() = if (dessertDays.isEmpty()) week else week.filter { it !in dessertDays }

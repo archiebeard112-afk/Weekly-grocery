@@ -137,6 +137,7 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     }
                 }
             }
+            SettingsCard("❄️", "Thaw reminders", if (st.thawOn) st.thawTimes.joinToString(" · ") { Thaw.label(it) } else "Off") { ThawSettings(vm, st) }
             SettingsCard("🛒", "King Soopers", storeLine) {
                 Text(
                     "Create a free app at developer.kroger.com. Set its redirect URI to ${KrogerApi.REDIRECT} " +
