@@ -267,7 +267,6 @@ private fun ZoneTag(text: String, bg: Color, fg: Color) {
         modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 7.dp, vertical = 3.dp),
     )
 }
-}
 
 /** The Kitchen zone's own icon, small, in its color: "you have it" (pantry, fridge, freezer or produce). */
 @Composable
