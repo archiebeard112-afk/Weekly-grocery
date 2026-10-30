@@ -1,4 +1,11 @@
 package com.weeklymeals
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.text.style.TextAlign
@@ -93,219 +100,173 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
         Column(
             // Same margins and title spot as the tabs.
             Modifier.padding(pad).imePadding().padding(horizontal = 10.dp, vertical = 6.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Settings", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 4.dp))
-            val storeLine = listOf(
-                if (k.store.id.isEmpty()) "No store yet" else k.store.name,
-                if (vm.signedIn) "Signed in" else "Not signed in",
-            ).joinToString(" · ")
-            // How many you cook for (moved here from the Week tab).
-            SettingsCard("🍽️", "Cooking for", "${st.servings} ${if (st.servings == 1) "person" else "people"}") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Recipes and the Shop list scale to", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    FilledTonalButton(
-                        onClick = { vm.setServings(st.servings - 1) },
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.height(34.dp).width(40.dp),
-                    ) { Text("−") }
-                    Text("${st.servings}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 10.dp))
-                    FilledTonalButton(
-                        onClick = { vm.setServings(st.servings + 1) },
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.height(34.dp).width(40.dp),
-                    ) { Text("+") }
-                }
-                Text(
-                    "Recipes you added keep their own servings and amounts.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            // Which day the Week tab starts on (your shopping day works well).
-            SettingsCard("📅", "Week starts on", Logic.DAY_LONG[st.weekStart]) {
-                Text(
-                    "The Week tab lists days from here, and new meals fill the first empty day from here.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Logic.DAY_SHORT.forEachIndexed { d, name ->
-                        FilterChip(selected = st.weekStart == d, onClick = { vm.setWeekStart(d) }, label = { Text(name) })
-                    }
-                }
-            }
-            SettingsCard("❄️", "Thaw reminders", if (st.thawOn) st.thawTimes.joinToString(" · ") { Thaw.label(it) } else "Off") { ThawSettings(vm, st) }
-            SettingsCard("🛒", "King Soopers", storeLine) {
-                Text(
-                    "Create a free app at developer.kroger.com. Set its redirect URI to ${KrogerApi.REDIRECT} " +
-                        "and enable the Product, Location and Cart APIs. Then paste the keys below.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                OutlinedTextField(id, { id = it }, label = { Text("Client ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(
-                    secret, { secret = it }, label = { Text("Client secret") }, singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    zip, { zip = it }, label = { Text("Your ZIP code") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Button(
-                    onClick = { vm.findStore(id, secret, zip) },
-                    enabled = !busy, modifier = Modifier.fillMaxWidth(),
-                ) { Text("Save and find my store") }
-                Text(
-                    if (k.store.id.isEmpty()) "Store: not set" else "Store: ${k.store.name}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+            Text("Settings", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(horizontal = 4.dp))
 
-                Spacer(Modifier.padding(4.dp))
-                Text(
-                    if (vm.signedIn) "Signed in to King Soopers" else "Not signed in",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(
-                        onClick = {
-                            val uri = vm.beginLogin(id, secret)
-                            if (uri != null) CustomTabsIntent.Builder().build().launchUrl(ctx, uri)
-                        },
-                        enabled = !busy && id.isNotBlank() && secret.isNotBlank(),
-                    ) { Text(if (vm.signedIn) "Sign in again" else "Sign in") }
-                    if (vm.signedIn) OutlinedButton(onClick = { vm.signOut() }) { Text("Sign out") }
+            SettingsSection("Meals") {
+                // How many you cook for (moved here from the Week tab).
+                SettingsCard("Cooking for", "${st.servings} ${if (st.servings == 1) "person" else "people"}", first = true) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RoundButton("−") { vm.setServings(st.servings - 1) }
+                        Text(
+                            "${st.servings}", style = MaterialTheme.typography.headlineMedium, color = Look.Lime,
+                            textAlign = TextAlign.Center, modifier = Modifier.width(44.dp),
+                        )
+                        RoundButton("+") { vm.setServings(st.servings + 1) }
+                        Spacer(Modifier.width(12.dp))
+                        Note("Recipes and the Shop list scale to this", Modifier.weight(1f))
+                    }
+                    Note("Recipes you added keep their own servings and amounts.")
                 }
-                Text(
-                    "Checkout still happens in the King Soopers app or website. This app only fills your cart.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                // Which day the Week tab starts on (your shopping day works well).
+                SettingsCard("Week starts on", Logic.DAY_LONG[st.weekStart]) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Logic.DAY_SHORT.forEachIndexed { d, name ->
+                            PillChip(name, st.weekStart == d) { vm.setWeekStart(d) }
+                        }
+                    }
+                    Note("The Week tab starts here, and new meals fill the first empty day from here.")
+                }
+                SettingsCard(
+                    "Cook whole",
+                    if (st.wholeCuts.isEmpty()) "Off" else Packs.WHOLE_CUTS.filter { it.first in st.wholeCuts }.joinToString(", ") { it.second },
+                ) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Packs.WHOLE_CUTS.forEach { (key, label) ->
+                            PillChip(label, key in st.wholeCuts) { vm.toggleWholeCut(key) }
+                        }
+                    }
+                    Note("Cuts you cook whole, 1 per person. Recipes, shopping and the freezer count them by the piece instead of by weight.")
+                }
             }
-            SettingsCard("🔍", "Recipe search", RecipeSources.label(RecipeSources.effective(st))) {
-                Text(
-                    "Browse search also looks for recipes online. Pick which site to search:",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                val current = RecipeSources.effective(st)
-                val notes = mapOf(
-                    RecipeSources.SPOONACULAR to "Big selection. Needs a free key.",
-                    RecipeSources.ALLRECIPES to "Big selection, no key. Could stop working if the site changes.",
-                    RecipeSources.MEALDB to "No key, but only about 600 recipes.",
-                    RecipeSources.OFF to "Search only the recipes in the app.",
-                )
-                Column {
-                    RecipeSources.CHOICES.forEach { (key, label) ->
-                        Row(
-                            Modifier.fillMaxWidth().clickable { vm.setWebSource(key) }.padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(selected = current == key, onClick = { vm.setWebSource(key) })
-                            Column {
-                                Text(label, style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    notes[key].orEmpty(),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+
+            SettingsSection("Shopping") {
+                SettingsCard("King Soopers", if (vm.signedIn) "Signed in" else if (k.store.id.isEmpty()) "Not set up" else "Not signed in", first = true) {
+                    Note(
+                        "Create a free app at developer.kroger.com. Set its redirect URI to ${KrogerApi.REDIRECT} " +
+                            "and enable the Product, Location and Cart APIs. Then paste the keys below.",
+                    )
+                    SettingsField(id, { id = it }, "Client ID")
+                    SettingsField(secret, { secret = it }, "Client secret", hidden = true)
+                    SettingsField(zip, { zip = it }, "Your ZIP code", keyboard = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    Button(
+                        onClick = { vm.findStore(id, secret, zip) },
+                        enabled = !busy, modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Save and find my store", fontFamily = Look.Display, fontWeight = FontWeight.Bold) }
+                    Note(if (k.store.id.isEmpty()) "Store: not set" else "Store: ${k.store.name}")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                val uri = vm.beginLogin(id, secret)
+                                if (uri != null) CustomTabsIntent.Builder().build().launchUrl(ctx, uri)
+                            },
+                            enabled = !busy && id.isNotBlank() && secret.isNotBlank(),
+                            modifier = Modifier.weight(1f),
+                        ) { Text(if (vm.signedIn) "Sign in again" else "Sign in") }
+                        if (vm.signedIn) OutlinedButton(onClick = { vm.signOut() }, modifier = Modifier.weight(1f)) { Text("Sign out") }
+                    }
+                    Note("Checkout still happens in the King Soopers app or website. This app only fills your cart.")
+                }
+                SettingsCard("Sales and budget", "${Sales.money(st.saleMin).substringBefore(".")}+ · ${Sales.money(st.budgetMax).substringBefore(".")}") {
+                    Note("A meal counts as on sale (the Sale filter and tag on tiles) when it saves at least")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(1.0, 2.0, 3.0, 5.0).forEach { v ->
+                            PillChip(Sales.money(v).substringBefore("."), st.saleMin == v) { vm.setSaleMin(v) }
+                        }
+                    }
+                    Note("A meal is Budget (and its price shows green) when what you'd buy for it costs at most")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(10.0, 15.0, 20.0, 25.0).forEach { v ->
+                            PillChip(Sales.money(v).substringBefore("."), st.budgetMax == v) { vm.setBudgetMax(v) }
+                        }
+                    }
+                    Note("Things in your pantry or marked Already have don't count toward the price.")
+                }
+            }
+
+            SettingsSection("Recipes") {
+                SettingsCard("Recipe search", RecipeSources.label(RecipeSources.effective(st)), first = true) {
+                    Note("Browse search also looks for recipes online. Pick which site to search:")
+                    val current = RecipeSources.effective(st)
+                    val notes = mapOf(
+                        RecipeSources.SPOONACULAR to "Big selection. Needs a free key.",
+                        RecipeSources.ALLRECIPES to "Big selection, no key. Could stop working if the site changes.",
+                        RecipeSources.MEALDB to "No key, but only about 600 recipes.",
+                        RecipeSources.OFF to "Search only the recipes in the app.",
+                    )
+                    Column {
+                        RecipeSources.CHOICES.forEach { (key, label) ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable { vm.setWebSource(key) }.padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(selected = current == key, onClick = { vm.setWebSource(key) })
+                                Column {
+                                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                                    Note(notes[key].orEmpty())
+                                }
                             }
                         }
                     }
+                    if (current == RecipeSources.SPOONACULAR) {
+                        Note("Sign up for free at spoonacular.com/food-api, open your Profile, copy your API key and paste it below.")
+                        SettingsField(spoon, { spoon = it }, "Spoonacular API key", hidden = true)
+                        Button(
+                            onClick = { vm.setSpoonKey(spoon) },
+                            enabled = spoon.trim() != st.spoonKey,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(if (st.spoonKey.isBlank()) "Save key" else "Update key", fontFamily = Look.Display, fontWeight = FontWeight.Bold) }
+                        if (st.spoonKey.isNotBlank()) Note("Key saved.")
+                    }
                 }
-                if (current == RecipeSources.SPOONACULAR) {
-                    Text(
-                        "Sign up for free at spoonacular.com/food-api, open your Profile, copy your API key and paste it below.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    OutlinedTextField(
-                        spoon, { spoon = it }, label = { Text("Spoonacular API key") }, singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
-                    )
-                    Button(
-                        onClick = { vm.setSpoonKey(spoon) },
-                        enabled = spoon.trim() != st.spoonKey,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (st.spoonKey.isBlank()) "Save key" else "Update key") }
-                    if (st.spoonKey.isNotBlank()) {
-                        Text("Key saved.", style = MaterialTheme.typography.bodySmall)
+                val hiddenList = vm.recipes(st).values.filter { it.id in st.removed }.sortedBy { it.name }
+                val hiddenSides = vm.sideMap.values.filter { it.key in st.hiddenSides }.sortedBy { it.label.substringAfter(" ") }
+                val hiddenCount = hiddenList.size + hiddenSides.size
+                SettingsCard("Hidden recipes & sides", if (hiddenCount == 0) "None" else "$hiddenCount hidden") {
+                    if (hiddenCount == 0) {
+                        Note("Hold down on a recipe tile, or on a side in the Pick a side pop-up, to hide it.")
+                    }
+                    hiddenList.forEach { r ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                r.name, style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { vm.restoreRecipe(r.id) }) { Text("Show again") }
+                        }
+                    }
+                    hiddenSides.forEach { sd ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "${sd.label} (side)", style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { vm.restoreSide(sd.key) }) { Text("Show again") }
+                        }
                     }
                 }
             }
-            SettingsCard(
-                "🍗", "Cook whole",
-                if (st.wholeCuts.isEmpty()) "Off" else Packs.WHOLE_CUTS.filter { it.first in st.wholeCuts }.joinToString(", ") { it.second },
-            ) {
-                Text(
-                    "Cuts you cook whole, 1 per person. Recipes, shopping and the freezer count them by the piece instead of by weight.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Packs.WHOLE_CUTS.forEach { (key, label) ->
-                        FilterChip(selected = key in st.wholeCuts, onClick = { vm.toggleWholeCut(key) }, label = { Text(label) })
-                    }
-                }
-            }
-            val hiddenList = vm.recipes(st).values.filter { it.id in st.removed }.sortedBy { it.name }
-            val hiddenSides = vm.sideMap.values.filter { it.key in st.hiddenSides }.sortedBy { it.label.substringAfter(" ") }
-            val hiddenCount = hiddenList.size + hiddenSides.size
-            SettingsCard("🙈", "Hidden recipes & sides", if (hiddenCount == 0) "None" else "$hiddenCount hidden") {
-                if (hiddenCount == 0) {
-                    Text(
-                        "Hold down on a recipe tile, or on a side in the Pick a side pop-up, to hide it.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                hiddenList.forEach { r ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "${r.emoji}  ${r.name}", style = MaterialTheme.typography.bodyLarge,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = { vm.restoreRecipe(r.id) }) { Text("Show again") }
-                    }
-                }
-                hiddenSides.forEach { sd ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "${sd.label} (side)", style = MaterialTheme.typography.bodyLarge,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = { vm.restoreSide(sd.key) }) { Text("Show again") }
-                    }
-                }
-            }
-            SettingsCard("🏷️", "Sales and budget", "Sale ${Sales.money(st.saleMin).substringBefore(".")}+ · Budget ${Sales.money(st.budgetMax).substringBefore(".")} a meal") {
-                Text(
-                    "A meal counts as on sale (the Sale filter and 🏷️ on tiles) when it saves at least:",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(1.0, 2.0, 3.0, 5.0).forEach { v ->
-                        FilterChip(selected = st.saleMin == v, onClick = { vm.setSaleMin(v) }, label = { Text(Sales.money(v).substringBefore(".")) })
-                    }
-                }
-                Text(
-                    "A meal is 💲 Budget (and its price shows green) when what you'd buy for it costs at most:",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(10.0, 15.0, 20.0, 25.0).forEach { v ->
-                        FilterChip(selected = st.budgetMax == v, onClick = { vm.setBudgetMax(v) }, label = { Text(Sales.money(v).substringBefore(".")) })
-                    }
-                }
-                Text(
-                    "Things in your pantry or marked Already have don't count toward the price.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            BackupCard(vm)
 
-            // Updates: just a button at the bottom.
-            Spacer(Modifier.height(8.dp))
-            UpdateSection(vm)
-            Spacer(Modifier.height(16.dp))
+            SettingsSection("Reminders") {
+                SettingsCard(
+                    "Thaw reminders", if (st.thawOn) st.thawTimes.joinToString(" · ") { Thaw.label(it) } else "Off",
+                    first = true,
+                ) { ThawSettings(vm, st) }
+            }
+
+            SettingsSection("App") {
+                BackupCard(vm)
+                UpdateCard(vm)
+            }
+            Text(
+                "Version ${Updater.currentVersionName(ctx)}",
+                style = MaterialTheme.typography.bodySmall, color = Look.Muted,
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 16.dp),
+            )
         }
     }
 }
@@ -495,104 +456,160 @@ private fun EmojiPicker(emoji: String, onPick: (String) -> Unit, modifier: Modif
     }
 }
 
-/** "App updates": version, Check for updates, download progress and install. */
+/** "Check for updates" row: shows where the update stands; open it for the buttons. */
 @Composable
-private fun UpdateSection(vm: MealsViewModel) {
+private fun UpdateCard(vm: MealsViewModel) {
     val ctx = LocalContext.current
     val state by vm.update.collectAsState()
     val full = Modifier.fillMaxWidth()
-    when (val u = state) {
-        UpdateState.Idle, UpdateState.UpToDate, is UpdateState.Error ->
-            OutlinedButton(onClick = { vm.checkForUpdate() }, modifier = full) { Text("Check for updates") }
-        UpdateState.Checking -> OutlinedButton(onClick = {}, modifier = full) {
-            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-            Spacer(Modifier.width(8.dp))
-            Text("Checking…")
-        }
-        is UpdateState.Available -> Button(onClick = { vm.downloadUpdate(u.release) }, modifier = full) {
-            Text("Update to ${u.release.name}")
-        }
-        is UpdateState.Downloading -> OutlinedButton(onClick = {}, modifier = full) {
-            Text("Downloading… ${u.percent}%")
-        }
-        is UpdateState.Ready -> {
-            LaunchedEffect(u.file) {
-                if (Updater.canInstall(ctx)) Updater.install(ctx, u.file)
+    val bold = FontWeight.Bold
+    val value = when (state) {
+        UpdateState.UpToDate -> "Up to date"
+        UpdateState.Checking -> "Checking…"
+        is UpdateState.Available -> "Update ready"
+        is UpdateState.Downloading -> "Downloading"
+        is UpdateState.Ready -> "Ready to install"
+        is UpdateState.Error -> "Couldn't check"
+        UpdateState.Idle -> ""
+    }
+    SettingsCard("Check for updates", value, dim = state !is UpdateState.Available && state !is UpdateState.Ready) {
+        when (val u = state) {
+            UpdateState.Idle, UpdateState.UpToDate, is UpdateState.Error ->
+                Button(onClick = { vm.checkForUpdate() }, modifier = full) { Text("Check for updates", fontFamily = Look.Display, fontWeight = bold) }
+            UpdateState.Checking -> OutlinedButton(onClick = {}, modifier = full) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("Checking…")
             }
-            if (!Updater.canInstall(ctx)) {
-                Text(
-                    "One-time step: allow Weekly Meals to install updates, then come back and tap Install.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedButton(onClick = { Updater.openInstallPermission(ctx) }, modifier = full) { Text("Allow installs") }
+            is UpdateState.Available -> Button(onClick = { vm.downloadUpdate(u.release) }, modifier = full) {
+                Text("Update to ${u.release.name}", fontFamily = Look.Display, fontWeight = bold)
             }
-            Button(onClick = {
-                if (Updater.canInstall(ctx)) Updater.install(ctx, u.file) else Updater.openInstallPermission(ctx)
-            }, modifier = full) { Text("Install") }
+            is UpdateState.Downloading -> {
+                OutlinedButton(onClick = {}, modifier = full) { Text("Downloading… ${u.percent}%") }
+                LinearProgressIndicator(progress = { u.percent / 100f }, modifier = full)
+            }
+            is UpdateState.Ready -> {
+                LaunchedEffect(u.file) {
+                    if (Updater.canInstall(ctx)) Updater.install(ctx, u.file)
+                }
+                if (!Updater.canInstall(ctx)) {
+                    Note("One-time step: allow Weekly Meals to install updates, then come back and tap Install.")
+                    OutlinedButton(onClick = { Updater.openInstallPermission(ctx) }, modifier = full) { Text("Allow installs") }
+                }
+                Button(onClick = {
+                    if (Updater.canInstall(ctx)) Updater.install(ctx, u.file) else Updater.openInstallPermission(ctx)
+                }, modifier = full) { Text("Install", fontFamily = Look.Display, fontWeight = bold) }
+            }
+        }
+        when (val u = state) {
+            UpdateState.UpToDate -> Note("You're on the newest version.")
+            is UpdateState.Error -> Text(u.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            else -> {}
         }
     }
-    if (state is UpdateState.Downloading) {
-        LinearProgressIndicator(
-            progress = { (state as UpdateState.Downloading).percent / 100f },
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-        )
-    }
-    Text(
-        "Version ${Updater.currentVersionName(ctx)}" + when (val u = state) {
-            UpdateState.UpToDate -> " · You're on the newest version"
-            is UpdateState.Error -> " · ${u.message}"
-            else -> ""
-        },
-        style = MaterialTheme.typography.bodySmall,
-        color = if (state is UpdateState.Error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-    )
 }
 
-/** A tappable settings group: icon, title and one-line summary; tap to open or close. */
+/** A small grey section name over one dark card that holds its rows. */
+@Composable
+private fun SettingsSection(label: String, content: @Composable ColumnScope.() -> Unit) {
+    Text(
+        label.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.5.sp, color = Look.Muted, modifier = Modifier.padding(start = 6.dp, top = 8.dp),
+    )
+    Surface(shape = RoundedCornerShape(16.dp), color = Look.Card, modifier = Modifier.fillMaxWidth()) {
+        Column(content = content)
+    }
+}
+
+/** A row in a section: title, its current setting in lime, and a chevron; tap to open or close. */
 @Composable
 private fun SettingsCard(
-    icon: String, title: String, summary: String, startOpen: Boolean = false,
+    title: String, summary: String, first: Boolean = false, dim: Boolean = false, startOpen: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     var open by rememberSaveable(title) { mutableStateOf(startOpen) }
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column {
-            Row(
-                Modifier.fillMaxWidth().clickable { open = !open }.padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(icon, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        summary, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Icon(
-                    if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                    if (open) "Close" else "Open",
-                )
-            }
-            AnimatedVisibility(open) {
-                Column(
-                    Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    content = content,
-                )
-            }
+    val turn by animateFloatAsState(if (open) 180f else 0f, label = "chevron")
+    Column {
+        // Thin line between rows; none above the first row or between a row and what it opens.
+        if (!first) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            Modifier.fillMaxWidth().clickable { open = !open }
+                .padding(start = 14.dp, end = 12.dp, top = 13.dp, bottom = if (open) 6.dp else 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                summary, style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (dim) FontWeight.Normal else FontWeight.SemiBold,
+                color = if (dim) Look.Muted else Look.Lime,
+                textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                Icons.Filled.KeyboardArrowDown, if (open) "Close" else "Open",
+                tint = Look.Muted, modifier = Modifier.size(20.dp).rotate(turn),
+            )
+        }
+        AnimatedVisibility(open) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                content = content,
+            )
         }
     }
 }
 
+/** Small grey help text inside a settings row. */
+@Composable
+private fun Note(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = Look.Muted, modifier = modifier)
+}
+
+/** A pill choice: outlined, or filled lime when picked. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun PillChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected, onClick = onClick,
+        label = { Text(label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
+        shape = CircleShape,
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = Look.Lime, selectedLabelColor = Look.Ink,
+        ),
+    )
+}
+
+/** Round − / + button for the servings stepper. */
+@Composable
+private fun RoundButton(label: String, onClick: () -> Unit) {
+    FilledTonalButton(
+        onClick = onClick, shape = CircleShape, contentPadding = PaddingValues(0.dp),
+        modifier = Modifier.size(38.dp),
+    ) { Text(label, fontSize = 18.sp) }
+}
+
+/** A dark rounded typing box (no Android outline until you tap it). */
+@Composable
+private fun SettingsField(
+    value: String, onChange: (String) -> Unit, label: String, hidden: Boolean = false,
+    keyboard: KeyboardOptions = KeyboardOptions.Default,
+) {
+    OutlinedTextField(
+        value, onChange, label = { Text(label) }, singleLine = true, keyboardOptions = keyboard,
+        visualTransformation = if (hidden) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            unfocusedBorderColor = Color.Transparent,
+            focusedBorderColor = Look.Lime,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
 /** Save everything to a file, or restore from one. */
 @Composable
 private fun BackupCard(vm: MealsViewModel) {
@@ -614,21 +631,23 @@ private fun BackupCard(vm: MealsViewModel) {
             if (pending == null) vm.message.value = "Couldn't read that file"
         }
     }
-    SettingsCard("💾", "Backup and restore", "Save everything to a file") {
-        Text(
+    SettingsCard("Backup and restore", "Save to a file", first = true, dim = true) {
+        Note(
             "Saves your recipes, sides, favorites, pantry, history, this week and settings (including your keys) " +
                 "to one file. Keep it in Google Drive or Downloads. After restoring, sign in to King Soopers again.",
-            style = MaterialTheme.typography.bodyMedium,
         )
-        Button(
-            onClick = {
-                val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-                save.launch("weekly-meals-backup-$day.json")
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Save backup") }
-        OutlinedButton(onClick = { open.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Restore from backup")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                    save.launch("weekly-meals-backup-$day.json")
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("Save backup", fontFamily = Look.Display, fontWeight = FontWeight.Bold) }
+            OutlinedButton(
+                onClick = { open.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+                modifier = Modifier.weight(1f),
+            ) { Text("Restore") }
         }
     }
     pending?.let { text ->
