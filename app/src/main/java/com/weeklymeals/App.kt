@@ -129,6 +129,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.launch
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 
 private enum class Overlay { None, Settings, AddRecipe, History, Pantry }
 
@@ -1020,7 +1022,7 @@ private fun <T> SwipeSets(
             },
     ) {
         // The keyboard squeezes these tiles; don't copy that size to the other pages.
-        val imeOpen = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(density) > 0
+        val imeOpen = WindowInsets.ime.getBottom(density) > 0
         shown.take(10).chunked(2).forEach { pair ->
             Row(
                 Modifier.fillMaxWidth().weight(1f).padding(vertical = 3.dp),
