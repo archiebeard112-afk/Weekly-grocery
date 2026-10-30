@@ -303,4 +303,3 @@ internal fun DayPickerDialog(
         }
     }
 }
-}
