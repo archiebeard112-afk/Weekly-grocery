@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: the system splash is just the dark background (no icon), so the
+         app's own opening animation (Intro.kt) starts from an empty screen. -->
+    <style name="Theme.WeeklyMeals" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/ic_bg</item>
+        <item name="android:windowSplashScreenBackground">@color/ic_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+    </style>
+</resources>
