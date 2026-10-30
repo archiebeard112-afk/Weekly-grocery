@@ -1660,7 +1660,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         out
     }
 
-    /** Your most-bought extras: how often, with a boost for recent buys. Top 12. */
+    /** Your most-added extras: how many you've added, with a boost for recent buys. Top 12. */
     fun quickAdd(st: UserState = state.value): List<Pair<String, Bought>> {
         val now = System.currentTimeMillis()
         val day = 86_400_000.0
@@ -1690,9 +1690,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun quickCount(st: UserState, name: String): Int =
         st.extraItems.count { Logic.baseExtra(it).equals(name, true) }
 
-    fun forgetQuickAdd(term: String, name: String) {
-        edit { s -> s.copy(bought = s.bought - term, quickRemoved = s.quickRemoved + (s.bought[term]?.let { mapOf(term to it) } ?: emptyMap())) }
-        message.value = "Removed $name from Quick add (Shop ⋮ menu brings it back)"
+    /** Quick add long-press: takes one of this item off the list (the newest row). The chip stays. */
+    fun removeOneQuickAdd(name: String) = edit { s ->
+        val i = s.extraItems.indexOfLast { Logic.baseExtra(it).equals(name, true) }
+        if (i < 0) s else s.copy(extraItems = s.extraItems.filterIndexed { j, _ -> j != i })
     }
 
     /** Puts every Quick add chip you removed back. */
@@ -2251,13 +2252,15 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                     val now = System.currentTimeMillis()
                     val extraTerms = shopGroups(s).filter { it.aisle == EXTRAS }.associateBy { it.term }
                     val bought = s.bought.toMutableMap()
-                    // Extra rows of the same thing ("… #2") count toward the one Quick add item.
-                    chosen.filter { it.term in extraTerms }.map { l ->
-                        Logic.baseExtra(extraTerms.getValue(l.term).items.first().name)
-                    }.distinctBy { it.lowercase() }.forEach { name ->
+                    // Quick add ranks by how many you've added: every row ("… #2") and every unit counts
+                    // toward the one Quick add item.
+                    chosen.filter { it.term in extraTerms }.groupBy { l ->
+                        Logic.baseExtra(extraTerms.getValue(l.term).items.first().name).lowercase()
+                    }.forEach { (_, lines) ->
+                        val name = Logic.baseExtra(extraTerms.getValue(lines.first().term).items.first().name)
                         val term = Logic.searchTerm(name)
                         val old = bought[term]
-                        bought[term] = Bought(old?.name ?: name, (old?.count ?: 0) + 1, now)
+                        bought[term] = Bought(old?.name ?: name, (old?.count ?: 0) + lines.sumOf { it.quantity }, now)
                     }
                     s.copy(
                         kroger = s.kroger.copy(choices = s.kroger.choices + newChoices), bought = bought,

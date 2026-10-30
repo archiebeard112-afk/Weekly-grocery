@@ -1,5 +1,15 @@
 package com.weeklymeals
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.launch
 import androidx.compose.material3.AlertDialog
 
 import androidx.compose.ui.graphics.Color
@@ -501,8 +511,10 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
     }
 }
 
-/** Your most-bought extras as chips. Tap to add one more (its own row); long-press to stop suggesting it. */
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * Your most-added extras as chips (ranked by how many you've added, so the order keeps up with you).
+ * Tap adds one more (its own row); hold and the chip fills red, and when it's full one comes off the list.
+ */
 @Composable
 private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
     val chips = vm.quickAdd(st)
@@ -512,34 +524,81 @@ private fun QuickAddChips(vm: MealsViewModel, st: UserState) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         chips.forEach { (term, b) ->
-            val on = vm.onList(st, b.name)
-            val shape = RoundedCornerShape(16.dp)
-            // Round pills, lime once it's on the list; long names end in "…".
-            Box(
-                Modifier
-                    .widthIn(max = 200.dp)
-                    .height(32.dp)
-                    .clip(shape)
-                    .background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent)
-                    .border(1.dp, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, shape)
-                    .combinedClickable(
-                        onClick = { vm.toggleQuickAdd(b.name) },
-                        onLongClick = { vm.forgetQuickAdd(term, b.name) },
-                    )
-                    .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Text(
-                    // Each tap adds another row; the chip shows how many are on the list.
-                    (if (on) (vm.quickCount(st, b.name).let { if (it > 1) "✓ $it× " else "✓ " }) else "+ ") + b.name,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+            key(term) {
+                QuickChip(
+                    name = b.name, count = vm.quickCount(st, b.name),
+                    onAdd = { vm.toggleQuickAdd(b.name) },
+                    onRemoveOne = { vm.removeOneQuickAdd(b.name) },
                 )
             }
         }
+    }
+}
+
+private const val CHIP_HOLD_MS = 1200
+private const val CHIP_TAP_MS = 250L
+
+/** One Quick add pill: lime once it's on the list, shows "✓ 2×" for more than one, fills red while held. */
+@Composable
+private fun QuickChip(name: String, count: Int, onAdd: () -> Unit, onRemoveOne: () -> Unit) {
+    val on = count > 0
+    val progress = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val canRemove by rememberUpdatedState(on)
+    val add by rememberUpdatedState(onAdd)
+    val removeOne by rememberUpdatedState(onRemoveOne)
+    val red = MaterialTheme.colorScheme.error
+    val base = if (on) MaterialTheme.colorScheme.primary else Color.Transparent
+    val shape = RoundedCornerShape(16.dp)
+    val p = progress.value
+    // Round pills; long names end in "…".
+    Box(
+        Modifier
+            .widthIn(max = 200.dp)
+            .height(32.dp)
+            .clip(shape)
+            .background(lerp(base, red, p))
+            .border(
+                1.dp,
+                if (p > 0f) red else if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                shape,
+            )
+            .pointerInput(Unit) {
+                detectTapGestures(onPress = {
+                    val start = System.currentTimeMillis()
+                    // Only something on the list can be held off; the red starts after a short wait so taps don't flash.
+                    val fill = if (!canRemove) null else scope.launch {
+                        delay(CHIP_TAP_MS)
+                        progress.animateTo(1f, tween(CHIP_HOLD_MS, easing = LinearEasing))
+                        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        removeOne()
+                        progress.animateTo(0f, tween(200))
+                    }
+                    val released = tryAwaitRelease()
+                    if (fill?.isCompleted != true) {
+                        fill?.cancel()
+                        if (released && System.currentTimeMillis() - start < CHIP_TAP_MS) add()
+                        scope.launch { progress.animateTo(0f, tween(200)) }
+                    }
+                })
+            }
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            // Each tap adds another row; the chip shows how many are on the list.
+            (if (on) (if (count > 1) "✓ $count× " else "✓ ") else "+ ") + name,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = when {
+                p > 0.5f -> MaterialTheme.colorScheme.onError
+                on -> MaterialTheme.colorScheme.onPrimary
+                else -> MaterialTheme.colorScheme.onSurface
+            },
+        )
     }
 }
 
