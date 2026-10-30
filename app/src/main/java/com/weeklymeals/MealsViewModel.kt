@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.async
@@ -283,6 +285,12 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshBrowse()
+        // Keep the thaw reminder alarms in step with the week and the settings.
+        viewModelScope.launch {
+            store.flow.map { runCatching { thawPlan(it) }.getOrNull() }.distinctUntilChanged().collect { p ->
+                if (p != null) Thaw.update(getApplication<Application>(), p)
+            }
+        }
         // Pantry items from before freshness tracking start their clock today.
         viewModelScope.launch {
             store.update { s ->
@@ -978,6 +986,45 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     fun setServings(n: Int) = edit { it.copy(servings = n.coerceIn(1, 12)) }
 
     fun setWeekStart(day: Int) = edit { it.copy(weekStart = day.coerceIn(0, 6)) }
+
+    // ---- Thaw reminders --------------------------------------------------------
+
+    fun setThawOn(on: Boolean) = edit { it.copy(thawOn = on) }
+    fun setThawTimes(times: List<ThawTime>) = edit { it.copy(thawTimes = times) }
+    fun setThawBeat(key: String) = edit { it.copy(thawBeat = key) }
+    fun setThawSnooze(minutes: Int) = edit { it.copy(thawSnooze = minutes) }
+
+    /**
+     * This week's meals that use meat from the freezer, by date: the freezer is used up in day order,
+     * so a later meal only counts if there's still some left for it.
+     */
+    fun thawPlan(st: UserState): ThawPlan {
+        val left = st.freezer.groupBy { it.term }.mapValues { (_, l) -> l.sumOf { it.amount() } }.toMutableMap()
+        val byCount = st.freezer.filter { it.byCount }.map { it.term }.toSet()
+        val names = st.freezer.associate { it.term to it.name }
+        val all = recipes(st)
+        val plan = Logic.dayPlan(st)
+        val first = java.time.LocalDate.now().minusDays(((Logic.todayIndex() - st.weekStart + 7) % 7).toLong())
+        val days = mutableListOf<ThawDay>()
+        if (left.isNotEmpty()) for (day in Logic.dayOrder(st.weekStart)) {
+            val id = plan.slots[day] ?: continue
+            val r = all[id] ?: continue
+            val items = Logic.shopList(listOf(id), st.sides.filterKeys { it == id }, all, sideMap, st.servings, st.sideSize)
+            val thaw = mutableListOf<ThawItem>()
+            items.groupBy { Logic.searchTerm(it.name) }.forEach { (term, list) ->
+                val have = left[term] ?: 0.0
+                if (have <= 1e-6 || !Packs.weighed(term)) return@forEach
+                val take = minOf(have, meatNeed(st, term, list))
+                if (take <= 1e-6) return@forEach
+                left[term] = have - take
+                val amount = if (term in byCount) Math.round(take).toInt().let { "$it ${if (it == 1) "piece" else "pieces"}" }
+                else Logic.fmt(Math.round(take * 4) / 4.0) + " lb"
+                thaw += ThawItem(names[term] ?: term.replaceFirstChar { it.uppercase() }, amount, r.name)
+            }
+            if (thaw.isNotEmpty()) days += ThawDay(first.plusDays(Logic.dayRank(day, st.weekStart).toLong()).toString(), thaw)
+        }
+        return ThawPlan(st.thawOn, st.thawTimes, st.thawBeat, st.thawSnooze, days)
+    }
 
     // ---- Favorites -----------------------------------------------------------
 
