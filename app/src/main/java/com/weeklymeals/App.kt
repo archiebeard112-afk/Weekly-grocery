@@ -181,7 +181,9 @@ fun App(vm: MealsViewModel) {
     LaunchedEffect(cookOn, st.cookingId, st.timers, appVisible) {
         val id = st.cookingId
         CookOverlay.info.value = if (cookOn && id != null) vm.recipes(st)[id]?.let { r ->
-            CookOverlay.Info(id, r.name, st.timers.filterKeys { it.startsWith("r$id:") || it.startsWith("r${id}side:") }.values.toList())
+            val mine = st.timers.filterKeys { it.startsWith("r$id:") || it.startsWith("r${id}side:") }
+            val soonest = mine.minByOrNull { it.value }?.key
+            CookOverlay.Info(id, r.name, mine.values.toList(), soonest?.let { st.timerStarts[it] })
         } else null
         if (appVisible) CookOverlay.sync(bubbleCtx)
     }

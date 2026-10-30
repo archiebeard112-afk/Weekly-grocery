@@ -164,7 +164,7 @@ class TimerAlarmService : Service() {
         stopSound()
         if (keys.isNotEmpty()) {
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                runCatching { Store(applicationContext).update { s -> s.copy(timers = s.timers - keys.toSet()) } }
+                runCatching { Store(applicationContext).update { s -> s.copy(timers = s.timers - keys.toSet(), timerStarts = s.timerStarts - keys.toSet()) } }
             }
         }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)

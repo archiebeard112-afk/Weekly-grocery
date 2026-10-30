@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cook bubble with no timer running: a lime line-drawn pot with steam (the dark circle and ring are drawn by CookRing). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="56dp"
+    android:height="56dp"
+    android:viewportWidth="56"
+    android:viewportHeight="56">
+    <path android:strokeColor="#D4F25A" android:strokeWidth="2" android:strokeLineJoin="round"
+        android:pathData="M17,28H39V34a5,5 0,0 1,-5 5H22a5,5 0,0 1,-5 -5z" />
+    <path android:strokeColor="#D4F25A" android:strokeWidth="2" android:strokeLineCap="round"
+        android:pathData="M14.5,28H41.5" />
+    <path android:strokeColor="#F1EFE8" android:strokeWidth="1.6" android:strokeLineCap="round"
+        android:pathData="M23,23c-2,-2.5 2,-4 0,-7M28,23c-2,-2.5 2,-4 0,-7M33,23c-2,-2.5 2,-4 0,-7" />
+</vector>
