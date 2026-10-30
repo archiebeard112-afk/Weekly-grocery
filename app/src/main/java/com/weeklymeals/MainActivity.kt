@@ -7,6 +7,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 
 class MainActivity : ComponentActivity() {
     private val vm: MealsViewModel by viewModels()
@@ -21,7 +28,17 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         if (savedInstanceState == null) handle(intent)
-        setContent { WeeklyTheme { App(vm) } }
+        // Opening animation only when the app starts fresh from the launcher.
+        val fromLauncher = savedInstanceState == null && intent?.action == Intent.ACTION_MAIN
+        setContent {
+            WeeklyTheme {
+                var intro by rememberSaveable { mutableStateOf(fromLauncher) }
+                Box(Modifier.fillMaxSize()) {
+                    App(vm)
+                    if (intro) Intro { intro = false }
+                }
+            }
+        }
     }
 
     // singleTask: Kroger sends you back here after sign-in.

@@ -30,6 +30,8 @@ object Look {
     val Paper = Color(0xFFF4F3EE)
     val Muted = Color(0xFFA3A89F)
     val Lime = Color(0xFFD4F25A)
+    /** The other days in the app icon and opening animation. */
+    val DimDay = Color(0xFF55612F)
 
     /** Chunky headline font (Bricolage Grotesque). Body text stays the phone's normal font. */
     val Display = FontFamily(
