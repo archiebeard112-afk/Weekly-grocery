@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -443,16 +442,20 @@ fun ColumnScope.ThawSettings(vm: MealsViewModel, st: UserState) {
     picking?.let { i ->
         val t = st.thawTimes.getOrNull(i) ?: return@let
         val state = rememberTimePickerState(initialHour = t.minute / 60, initialMinute = t.minute % 60, is24Hour = false)
-        AlertDialog(
-            onDismissRequest = { picking = null },
-            confirmButton = {
-                TextButton(onClick = {
+        AppDialog(
+            onDismiss = { picking = null },
+            eyebrow = "Thaw reminder",
+            title = "Pick a time",
+            centered = true,
+            actions = listOf(
+                DialogAction("Set", ActionKind.Primary) {
                     vm.setThawTimes(st.thawTimes.mapIndexed { j, x -> if (j == i) x.copy(minute = state.hour * 60 + state.minute) else x })
                     picking = null
-                }) { Text("Set") }
-            },
-            dismissButton = { TextButton(onClick = { picking = null }) { Text("Cancel") } },
-            text = { TimePicker(state) },
-        )
+                },
+                DialogAction("Cancel") { picking = null },
+            ),
+        ) {
+            TimePicker(state)
+        }
     }
 }

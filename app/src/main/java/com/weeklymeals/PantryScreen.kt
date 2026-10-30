@@ -27,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Switch
@@ -89,8 +88,8 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val PLENTY = Color(0xFF1D9E75)
-private val LOW = Color(0xFFBA7517)
+private val PLENTY = Look.Good
+private val LOW = Look.Warn
 private val SHELF_WOOD = Color(0xFF8B5A2B)
 private val FREEZER = Color(0xFF85B7EB)
 
@@ -158,7 +157,7 @@ private fun digitsFor(at: Long): String {
     return f.format(java.util.Date(at))
 }
 
-private val DATE_RED = Color(0xFFE24B4A)
+private val DATE_RED = Look.Danger
 
 /** Order on a shelf: past best-by, past sell-by, low, then the rest. */
 private val MARK_ORDER = listOf("best", "sell", "low", "")
@@ -298,7 +297,7 @@ internal fun ZoneIcon(kind: String, color: Color, modifier: Modifier) {
     }
 }
 
-private val SELL_ORANGE = Color(0xFFEF9F27)
+private val SELL_ORANGE = Look.Warn
 
 private fun boughtAgo(at: Long): String {
     val days = ((System.currentTimeMillis() - at) / 86_400_000L).toInt()
@@ -369,10 +368,22 @@ private fun FreezerDialog(start: FreezerItem, isNew: Boolean, onSave: (FreezerIt
     var item by remember(start.id) { mutableStateOf(start) }
     var frozenText by remember(start.id) { mutableStateOf(if (start.frozenAt > 0) frozenDigits(start.frozenAt) else "") }
     val frozenBad = frozenText.isNotEmpty() && parseTypedDate(frozenText, past = true) == null
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (isNew) "Add to freezer" else item.name) },
-        text = {
+    AppDialog(
+        onDismiss = onDismiss,
+        eyebrow = "Freezer",
+        title = if (isNew) "Add to freezer" else item.name,
+        centered = true,
+        actions = listOfNotNull(
+            DialogAction(if (isNew) "Add" else "Save", ActionKind.Primary) {
+                val name = item.name.trim()
+                if (name.isNotEmpty()) {
+                    onSave(item.copy(name = name.replaceFirstChar { it.uppercase() }, term = item.term.ifEmpty { Logic.searchTerm(name) }))
+                }
+            },
+            if (!isNew) DialogAction("Remove from freezer", ActionKind.Danger, onClick = onRemove) else null,
+            DialogAction("Cancel", onClick = onDismiss),
+        ),
+    ) {
             Column {
                 if (isNew) {
                     OutlinedTextField(
@@ -418,25 +429,8 @@ private fun FreezerDialog(start: FreezerItem, isNew: Boolean, onSave: (FreezerIt
                     visualTransformation = DateSlashes,
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                 )
-                if (!isNew) {
-                    TextButton(onClick = onRemove, modifier = Modifier.padding(top = 4.dp)) {
-                        Text("Remove from freezer", color = MaterialTheme.colorScheme.error)
-                    }
-                }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val name = item.name.trim()
-                    if (name.isNotEmpty()) {
-                        onSave(item.copy(name = name.replaceFirstChar { it.uppercase() }, term = item.term.ifEmpty { Logic.searchTerm(name) }))
-                    }
-                },
-            ) { Text(if (isNew) "Add" else "Save") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    }
 }
 
 /** Top-bar icon: two shelves with jars, drawn in the same solid style as the other icons. */
@@ -780,12 +774,9 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
         )
     }
     if (lookingUp) {
-        AlertDialog(
-            onDismissRequest = {},
-            title = { Text("Looking it up…") },
-            text = { CircularProgressIndicator() },
-            confirmButton = {},
-        )
+        AppDialog(onDismiss = {}, title = "Looking it up…", centered = true, dismissable = false) {
+            CircularProgressIndicator()
+        }
     }
     adding?.let { shelf ->
         PantryAddDialog(
@@ -822,11 +813,14 @@ private fun PantryAddDialog(
     }
     val close = { vm.suggestions.value = emptyList(); onDismiss() }
 
-    AlertDialog(
-        onDismissRequest = close,
-        title = { Text(if (shelf != null) "Add to ${Pantry.shelfLabel(shelf)}" else "Add to pantry") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+    AppDialog(
+        onDismiss = close,
+        eyebrow = "Kitchen",
+        title = if (shelf != null) "Add to ${Pantry.shelfLabel(shelf)}" else "Add an item",
+        centered = true,
+        actions = listOf(DialogAction("Cancel", onClick = close)),
+    ) {
+            Column {
                 Button(
                     onClick = {
                         val options = GmsBarcodeScannerOptions.Builder()
@@ -897,10 +891,7 @@ private fun PantryAddDialog(
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = close) { Text("Cancel") } },
-    )
+    }
 }
 
 /** One item: drag the big container up or down to set how much is left. */
@@ -925,11 +916,21 @@ private fun PantryItemDialog(
     }
     val current = if (counted) item.left else level * item.full
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (isNew) "Add to pantry" else item.term.replaceFirstChar { it.uppercase() }) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+    AppDialog(
+        onDismiss = onDismiss,
+        eyebrow = Pantry.shelfLabel(item.shelf),
+        title = if (isNew) "Add to the Kitchen" else item.term.replaceFirstChar { it.uppercase() },
+        centered = true,
+        actions = listOfNotNull(
+            DialogAction(if (isNew) "Add" else "Save", ActionKind.Primary, enabled = !dateBad) {
+                val term = item.term.trim().ifEmpty { Logic.searchTerm(item.name) }
+                onSave(if (counted) item.copy(term = term) else item.copy(term = term, left = level * item.full))
+            },
+            if (!isNew) DialogAction("Remove from the Kitchen", ActionKind.Danger) { confirmRemove = true } else null,
+            DialogAction("Cancel", onClick = onDismiss),
+        ),
+    ) {
+            Column {
                 Text(item.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (item.size.isNotBlank()) {
                     Text(item.size, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1096,29 +1097,20 @@ private fun PantryItemDialog(
                         )
                     }
                 }
-                if (!isNew) {
-                    TextButton(onClick = { confirmRemove = true }, modifier = Modifier.padding(top = 6.dp)) {
-                        Text("Remove from pantry", color = MaterialTheme.colorScheme.error)
-                    }
-                }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = !dateBad, onClick = {
-                val term = item.term.trim().ifEmpty { Logic.searchTerm(item.name) }
-                onSave(if (counted) item.copy(term = term) else item.copy(term = term, left = level * item.full))
-            }) { Text(if (isNew) "Add" else "Save") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    }
 
     if (confirmRemove) {
-        AlertDialog(
-            onDismissRequest = { confirmRemove = false },
-            title = { Text("Remove ${item.term}?") },
-            text = { Text("It comes off your pantry shelves. You can add it again any time.") },
-            confirmButton = { TextButton(onClick = { confirmRemove = false; onRemove() }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
-        )
+        AppDialog(
+            onDismiss = { confirmRemove = false },
+            title = "Remove ${item.term}?",
+            centered = true,
+            actions = listOf(
+                DialogAction("Remove", ActionKind.Danger) { confirmRemove = false; onRemove() },
+                DialogAction("Cancel") { confirmRemove = false },
+            ),
+        ) {
+            Text("It comes off your Kitchen shelves. You can add it again any time.")
+        }
     }
 }

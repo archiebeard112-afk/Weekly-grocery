@@ -10,7 +10,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.launch
-import androidx.compose.material3.AlertDialog
 
 import androidx.compose.ui.graphics.Color
 
@@ -123,13 +122,14 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
     // Items you skipped last time start unticked (and are marked so).
     var kitchenMem by remember { mutableStateOf(setOf<String>()) }
     kitchenAsk?.let { lines ->
-        AlertDialog(
-            onDismissRequest = { kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet() },
-            title = { Text("Add these to your Kitchen too?") },
-            text = {
+        AppDialog(
+            onDismiss = { kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet() },
+            eyebrow = "Add to cart",
+            title = "Add these to your Kitchen too?",
+            actions = listOf(DialogAction("Cancel") { kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet() }),
+        ) {
               Column {
-                // Only the list scrolls; the two buttons below stay put.
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                Column {
                     lines.forEach { l ->
                         val on = l.term !in kitchenOff
                         Row(
@@ -161,25 +161,20 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         KitchenAskButton("Cart only", false, Modifier.weight(1f), onClick = {
                             kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet()
                             vm.confirmAddToCart()
-                        }) { Text("🛒", style = MaterialTheme.typography.headlineSmall) }
+                        }) { Icon(Icons.Filled.ShoppingCart, null, Modifier.size(26.dp)) }
                         KitchenAskButton("Cart + Kitchen", true, Modifier.weight(1f), onClick = {
                             val terms = lines.map { it.term }.filter { it !in kitchenOff }.toSet()
                             vm.rememberKitchenChoices(lines, kitchenOff)
                             kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet()
                             vm.confirmAddToCart(terms)
                         }) {
-                            Text("🛒", style = MaterialTheme.typography.headlineSmall)
+                            Icon(Icons.Filled.ShoppingCart, null, Modifier.size(26.dp))
                             Text("+", style = MaterialTheme.typography.titleMedium)
                             Icon(PantryIcon, contentDescription = null, modifier = Modifier.size(28.dp))
                         }
                     }
                 }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { kitchenAsk = null; kitchenOff = emptySet(); kitchenMem = emptySet() }) { Text("Cancel") }
-            },
-        )
+        }
     }
 
     // Search King Soopers as you type (short pause so it doesn't search on every letter).
@@ -239,7 +234,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                     Box {
                         IconButton(
                             onClick = { menu = true },
-                            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(20.dp))
+                            modifier = Modifier.size(40.dp).clip(Radius.Pill)
                                 .background(MaterialTheme.colorScheme.surfaceContainer),
                         ) { Icon(Icons.Filled.MoreVert, "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -277,7 +272,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                 if (newItem.trim().length >= 2) {
                     Surface(
                         tonalElevation = 4.dp, shadowElevation = 4.dp,
-                        shape = RoundedCornerShape(12.dp),
+                        shape = Radius.Card,
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                     ) {
                         Column {
@@ -550,7 +545,7 @@ private fun QuickChip(name: String, count: Int, onAdd: () -> Unit, onRemoveOne: 
     val removeOne by rememberUpdatedState(onRemoveOne)
     val red = MaterialTheme.colorScheme.error
     val base = if (on) MaterialTheme.colorScheme.primary else Color.Transparent
-    val shape = RoundedCornerShape(16.dp)
+    val shape = Radius.Pill
     val p = progress.value
     // Round pills; long names end in "…".
     Box(
@@ -608,10 +603,10 @@ private enum class Tag { SALE, PANTRY, FREEZER }
 /** A small all-caps label, like the STORE / LEFTOVERS tags on the Week tab. */
 @Composable
 private fun ShopTag(text: String, kind: Tag) {
-    val shape = RoundedCornerShape(7.dp)
+    val shape = RoundedCornerShape(8.dp)
     val (bg, fg) = when (kind) {
         Tag.SALE -> MaterialTheme.colorScheme.primary to MaterialTheme.colorScheme.onPrimary
-        Tag.PANTRY -> Color(0xFF3A2C14) to Color(0xFFF0B44C)
+        Tag.PANTRY -> Look.WarnBg to Look.Warn
         Tag.FREEZER -> Color(0xFF15283A) to Color(0xFF8FC3F2)
     }
     Text(
@@ -627,7 +622,7 @@ private fun ShopTag(text: String, kind: Tag) {
 @Composable
 private fun Stepper(qty: Int, onLess: () -> Unit, onMore: () -> Unit) {
     Row(
-        Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        Modifier.height(34.dp).clip(Radius.Pill).background(MaterialTheme.colorScheme.surfaceContainerHighest),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(34.dp).clickable(onClick = onLess), contentAlignment = Alignment.Center) {
@@ -805,7 +800,7 @@ private fun ShopRow(
                 // Past its date: buy more, or say you're fine using what you have.
                 if (usePantry != null) {
                     TextButton(onClick = usePantry, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                        Text("Use mine", color = Color(0xFFF0B44C), fontWeight = FontWeight.Bold)
+                        Text("Use mine", color = Look.Warn, fontWeight = FontWeight.Bold)
                     }
                 }
                 if (showHave) {
@@ -909,18 +904,19 @@ fun ProductPicker(vm: MealsViewModel, term: String, onClose: () -> Unit) {
 private fun KitchenAskButton(
     label: String, highlight: Boolean, modifier: Modifier, onClick: () -> Unit, icons: @Composable () -> Unit,
 ) {
-    val shape = RoundedCornerShape(14.dp)
+    val fg = if (highlight) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     Column(
         modifier
-            .clip(shape)
-            .background(if (highlight) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+            .clip(Radius.Card)
+            .background(if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 8.dp),
+            .padding(vertical = 12.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) { icons() }
-        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides fg) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) { icons() }
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = fg, modifier = Modifier.padding(top = 4.dp))
+        }
     }
 }
 
@@ -928,10 +924,17 @@ private fun KitchenAskButton(
 @Composable
 private fun PackWeightDialog(term: String, m: MealsViewModel.MeatPack, onSet: (Double?) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf(Logic.fmt(m.pack.lb)) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("${term.replaceFirstChar { it.uppercase() }} pack size") },
-        text = {
+    AppDialog(
+        onDismiss = onDismiss,
+        eyebrow = "Pack size",
+        title = term.replaceFirstChar { it.uppercase() },
+        centered = true,
+        actions = listOfNotNull(
+            DialogAction("Save", ActionKind.Primary) { onSet(text.toDoubleOrNull()) },
+            if (m.pack.source == Packs.Source.YOU) DialogAction("Use the estimate") { onSet(null) } else null,
+            DialogAction("Cancel", onClick = onDismiss),
+        ),
+    ) {
             Column {
                 Text(
                     "How much does one pack weigh? Check the label after you buy it. The app remembers it for this product.",
@@ -956,15 +959,7 @@ private fun PackWeightDialog(term: String, m: MealsViewModel.MeatPack, onSet: (D
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 )
             }
-        },
-        confirmButton = { TextButton(onClick = { onSet(text.toDoubleOrNull()) }) { Text("Save") } },
-        dismissButton = {
-            Row {
-                if (m.pack.source == Packs.Source.YOU) TextButton(onClick = { onSet(null) }) { Text("Use estimate") }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
-        },
-    )
+    }
 }
 
 /** For cuts cooked whole: how many pieces come in one pack (remembered for that product). */
@@ -972,10 +967,16 @@ private fun PackWeightDialog(term: String, m: MealsViewModel.MeatPack, onSet: (D
 private fun PackCountDialog(term: String, m: MealsViewModel.MeatPack, onSet: (Int?) -> Unit, onDismiss: () -> Unit) {
     val cut = m.cut ?: term
     var n by remember { mutableStateOf(m.perPack) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("${term.replaceFirstChar { it.uppercase() }} pack") },
-        text = {
+    AppDialog(
+        onDismiss = onDismiss,
+        eyebrow = "Pieces per pack",
+        title = term.replaceFirstChar { it.uppercase() },
+        actions = listOfNotNull(
+            DialogAction("Save", ActionKind.Primary) { onSet(n) },
+            if (m.perPackYours) DialogAction("Use the estimate") { onSet(null) } else null,
+            DialogAction("Cancel", onClick = onDismiss),
+        ),
+    ) {
             Column {
                 Text(
                     "How many ${Packs.pieceWord(cut, 2)} come in one pack? The app remembers it for this product.",
@@ -990,15 +991,7 @@ private fun PackCountDialog(term: String, m: MealsViewModel.MeatPack, onSet: (In
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = { onSet(n) }) { Text("Save") } },
-        dismissButton = {
-            Row {
-                if (m.perPackYours) TextButton(onClick = { onSet(null) }) { Text("Use estimate") }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
-        },
-    )
+    }
 }
 
 

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -25,6 +24,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -201,13 +204,16 @@ internal fun StoreSearch(vm: MealsViewModel, st: UserState, query: String, onSet
         DayPickerDialog(st, m.title, onPick = { d -> vm.addRecentStoreMeal(d, m); pickRecent = null }, onDismiss = { pickRecent = null })
     }
     removing?.let { m ->
-        AlertDialog(
-            onDismissRequest = { removing = null },
-            title = { Text("Remove from recent?") },
-            text = { Text(m.title) },
-            confirmButton = { TextButton(onClick = { vm.forgetRecentStoreMeal(m.upc); removing = null }) { Text("Remove") } },
-            dismissButton = { TextButton(onClick = { removing = null }) { Text("Keep") } },
-        )
+        AppDialog(
+            onDismiss = { removing = null },
+            title = "Remove from recent?",
+            actions = listOf(
+                DialogAction("Remove", ActionKind.Danger) { vm.forgetRecentStoreMeal(m.upc); removing = null },
+                DialogAction("Keep it") { removing = null },
+            ),
+        ) {
+            Text(m.title)
+        }
     }
 }
 
@@ -245,36 +251,56 @@ internal fun DayPickerDialog(
     enabled: (Int) -> Boolean = { true },
 ) {
     val today = Logic.todayIndex()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Which day?") },
-        text = {
-            Column {
-                Text(title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Box(Modifier.padding(top = 6.dp)) {
-                    Column {
-                        Logic.dayOrder(st.weekStart).forEach { d ->
-                            val name = Logic.DAY_LONG[d]
-                            val n = st.storeMeals.count { it.day == d }
-                            val extra = when {
-                                detail != null -> detail(d)?.let { "  ·  $it" } ?: ""
-                                n > 0 -> "  ·  $n store item${if (n == 1) "" else "s"}"
-                                else -> ""
-                            }
-                            TextButton(onClick = { onPick(d) }, enabled = enabled(d), modifier = Modifier.fillMaxWidth()) {
-                                Text(
-                                    name + (if (d == today) " (today)" else "") + extra,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textAlign = TextAlign.Start,
-                                )
-                            }
-                        }
+    val plan = Logic.dayPlan(st)
+    AppDialog(
+        onDismiss = onDismiss,
+        eyebrow = "Add $title",
+        title = "Which day?",
+        actions = listOf(DialogAction("Cancel", onClick = onDismiss)),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Logic.dayOrder(st.weekStart).forEach { d ->
+                val n = st.storeMeals.count { it.day == d }
+                val sub = when {
+                    detail != null -> detail(d)
+                    n > 0 -> "$n store item${if (n == 1) "" else "s"}"
+                    else -> null
+                } ?: "Nothing planned"
+                val on = enabled(d)
+                val dinner = plan.slots[d]
+                Row(
+                    Modifier.fillMaxWidth().clip(Radius.Card).background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .clickable(enabled = on) { onPick(d) }
+                        .alpha(if (on) 1f else 0.4f)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // The day in a dot: that night's dinner color, an outline if nothing's planned.
+                    Box(
+                        Modifier.size(36.dp).clip(CircleShape)
+                            .then(
+                                if (dinner != null) Modifier.background(Look.color(dinner))
+                                else Modifier.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            Logic.DAY_SHORT[d].uppercase(),
+                            style = MaterialTheme.typography.labelMedium.copy(fontFamily = Look.Display), fontWeight = FontWeight.ExtraBold,
+                            color = if (dinner != null) Look.Ink else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(Logic.DAY_LONG[d] + if (d == today) " · today" else "", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        Text(
+                            sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+        }
+    }
+}
 }

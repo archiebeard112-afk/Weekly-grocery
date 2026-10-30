@@ -27,7 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -94,18 +94,17 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
         return
     }
 
-    AlertDialog(
-        onDismissRequest = close,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Pick a side", modifier = Modifier.weight(1f))
-                TextButton(onClick = { editing = !editing }) { Text(if (editing) "Done" else "Edit") }
-            }
-        },
-        text = {
-            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
-                Text("${r.emoji} ${r.name}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                CompactSearch(query, { query = it }, Modifier.padding(top = 8.dp), placeholder = "Find a side", icon = Icons.Filled.Search)
+    AppDialog(
+        onDismiss = close,
+        eyebrow = "Side for ${r.name}",
+        title = "Pick a side",
+        // Has a search box, so it sits in the middle and leaves room for the keyboard.
+        centered = true,
+        titleEnd = { TextButton(onClick = { editing = !editing }) { Text(if (editing) "Done" else "Edit", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) } },
+        actions = listOf(DialogAction("Cancel", onClick = close)),
+    ) {
+            Column {
+                CompactSearch(query, { query = it }, placeholder = "Find a side", icon = Icons.Filled.Search)
 
                 if (q.length >= 2) {
                     // 1) Your sides
@@ -186,42 +185,26 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = close) { Text("Cancel") } },
-    )
+    }
 
     held?.let { sd ->
         val name = sd.label.substringAfter(" ")
         val recommended = vm.sideOptions(st, r).any { it.key == sd.key }
         val builtIn = vm.isBuiltInSide(sd.key)
-        AlertDialog(
-            onDismissRequest = { held = null },
-            title = { Text(sd.label) },
-            text = {
-                Column {
-                    if (recommended) {
-                        TextButton(onClick = { vm.removeSideFromDish(id, sd.key); held = null }) {
-                            Text("Remove from ${r.name}", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        Note("Takes it off this dish's Recommended list. It stays under More sides.")
-                    }
-                    if (builtIn) {
-                        TextButton(onClick = { vm.hideSide(sd.key); held = null }) {
-                            Text("Hide everywhere", color = MaterialTheme.colorScheme.error)
-                        }
-                        Note("Hides $name for every dish. Bring it back in Settings → Hidden recipes & sides.")
-                    } else {
-                        TextButton(onClick = { vm.deleteSide(sd.key); held = null }) {
-                            Text("Delete", color = MaterialTheme.colorScheme.error)
-                        }
-                        Note("Removes $name for good.")
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { held = null }) { Text("Cancel") } },
-        )
+        AppDialog(
+            onDismiss = { held = null },
+            title = sd.label,
+            actions = listOfNotNull(
+                if (recommended) DialogAction("Remove from ${r.name}") { vm.removeSideFromDish(id, sd.key); held = null } else null,
+                if (builtIn) DialogAction("Hide everywhere", ActionKind.Danger) { vm.hideSide(sd.key); held = null }
+                else DialogAction("Delete", ActionKind.Danger) { vm.deleteSide(sd.key); held = null },
+                DialogAction("Cancel") { held = null },
+            ),
+        ) {
+            if (recommended) Note("Remove from ${r.name} takes it off this dish's Recommended list. It stays under More sides.")
+            if (builtIn) Note("Hide everywhere hides $name for every dish. Bring it back in Settings → Hidden recipes & sides.")
+            else Note("Delete removes $name for good.")
+        }
     }
 }
 
@@ -279,24 +262,25 @@ internal fun SidePreview(
     fav: Boolean? = null, onFav: () -> Unit = {},
 ) {
     var size by remember(sd.key) { mutableIntStateOf(Logic.SIDE_NORMAL) }
-    AlertDialog(
-        onDismissRequest = onBack,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(sd.label, modifier = Modifier.weight(1f))
-                if (fav != null) {
-                    IconButton(onClick = onFav) {
-                        Icon(
-                            if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            if (fav) "Remove from favorites" else "Add to favorites",
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
+    AppDialog(
+        onDismiss = onBack,
+        eyebrow = "Side",
+        title = plainLabel(sd.label),
+        titleEnd = {
+            if (fav != null) IconButton(onClick = onFav) {
+                Icon(
+                    if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    if (fav) "Remove from favorites" else "Add to favorites",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
             }
         },
-        text = {
-            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+        actions = listOfNotNull(
+            if (onUse != null) DialogAction("Use as side", ActionKind.Primary) { onUse(size) } else null,
+            DialogAction(if (onUse != null) "Back" else "Close", onClick = onBack),
+        ),
+    ) {
+            Column {
                 Nutrition.side(sd)?.let {
                     Text(
                         "≈ %,d cal per serving".format(it),
@@ -322,19 +306,17 @@ internal fun SidePreview(
                     ReviewsSection(sd.key, sd.rating, sd.ratingCount, sd.countLabel, sd.reviews)
                 }
             }
-        },
-        confirmButton = { if (onUse != null) TextButton(onClick = { onUse(size) }) { Text("Use as side") } },
-        dismissButton = { TextButton(onClick = onBack) { Text(if (onUse != null) "Back" else "Close") } },
-    )
+    }
 }
 
 @Composable
 private fun GroupLabel(text: String) {
     Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
+        text.uppercase(),
+        style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        letterSpacing = 1.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
     )
 }
 
@@ -342,7 +324,7 @@ private fun GroupLabel(text: String) {
 private fun Note(text: String) {
     Text(
         text,
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(vertical = 6.dp),
     )
