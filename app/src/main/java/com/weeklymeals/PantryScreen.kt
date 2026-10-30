@@ -575,18 +575,22 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
         // Swipe right: from a zone back to the Kitchen overview, from the overview out of the Kitchen.
         modifier = Modifier.swipeBack { if (zone != null) zone = null else onBack() },
     ) { pad ->
-        LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
+        LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = Space.Page, vertical = Space.S)) {
             item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (zone != null) {
-                        IconButton(onClick = { zone = null }, modifier = Modifier.size(36.dp)) {
-                            Icon(Icons.Filled.ArrowBack, "Back to Kitchen")
-                        }
-                    }
-                    Text(
-                        ZONES.firstOrNull { it.key == zone }?.label ?: "Kitchen",
-                        style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f),
-                    )
+                val inZone = ZONES.firstOrNull { it.key == zone }
+                val total = st.pantry.size + st.freezer.size
+                val zoneCount = if (zone == "freezer") st.freezer.size else st.pantry.count { zoneOf(it.shelf) == zone }
+                PageHeader(
+                    "Kitchen",
+                    inZone?.label ?: "$total item${if (total == 1) "" else "s"}",
+                    sub = if (inZone != null) "$zoneCount ${if (zone == "freezer") "bag" else "item"}${if (zoneCount == 1) "" else "s"}"
+                    else listOfNotNull(
+                        (bestCount + sellCount).takeIf { it > 0 }?.let { "$it past date" },
+                        lowCount.takeIf { it > 0 }?.let { "$it low" },
+                        st.freezer.size.takeIf { it > 0 }?.let { "$it in the freezer" },
+                    ).joinToString(" · ").ifEmpty { "Everything's in date" },
+                    onBack = { if (zone != null) zone = null else onBack() },
+                ) {
                     FilledTonalButton(
                         onClick = {
                             when (zone) {
@@ -595,8 +599,8 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                                 else -> scanFirst(null)
                             }
                         },
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                        modifier = Modifier.height(34.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.padding(top = 6.dp).size(44.dp),
                     ) { Icon(if (zone == "freezer") Icons.Filled.Add else BarcodeIcon, "Add an item", Modifier.size(22.dp)) }
                 }
             }

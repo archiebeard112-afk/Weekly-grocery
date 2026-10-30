@@ -57,14 +57,14 @@ object Look {
         Font(R.font.bricolage_800, FontWeight.ExtraBold),
     )
 
-    // Saffron, ocean, basil, tomato, plum, cream: each with a deeper shade for the round shape on top.
+    // Saffron, ocean, basil, tomato, plum, strawberry: each with a deeper shade for the round shape on top.
     private val swatches = listOf(
         Color(0xFFFFB830) to Color(0xFFFF9F1C),
         Color(0xFF6CB8FF) to Color(0xFF4A9CF0),
         Color(0xFF5BD68A) to Color(0xFF3FC274),
         Color(0xFFFF6B4A) to Color(0xFFF2502C),
         Color(0xFFC79BFF) to Color(0xFFB47FF5),
-        Color(0xFFF4F3EE) to Color(0xFFE2E0D6),
+        Color(0xFFFF8FB8) to Color(0xFFF772A3),
     )
 
     /** A recipe's color: always the same one for the same recipe. */

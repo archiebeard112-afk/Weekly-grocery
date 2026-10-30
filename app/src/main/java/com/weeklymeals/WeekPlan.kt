@@ -279,7 +279,7 @@ fun WeekScreen(
         Modifier.fillMaxSize()
             .verticalScroll(scroll)
             // Same margins as Browse and Favorites.
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = Space.Page, vertical = Space.S),
         verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
         // WEEK 43 over the dates of your week (Settings → Week starts on).
@@ -287,14 +287,7 @@ fun WeekScreen(
         val last = first.plusDays(6)
         val mon = java.time.format.DateTimeFormatter.ofPattern("MMM d")
         val range = mon.format(first) + "–" + (if (last.month == first.month) last.dayOfMonth.toString() else mon.format(last))
-        Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
-            Text(
-                "WEEK " + first.get(java.time.temporal.WeekFields.ISO.weekOfWeekBasedYear()),
-                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(range, style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 38.sp))
-        }
+        PageHeader("This week", range)
 
         if (tonightR != null) {
             val side = st.sides[tonightR.id]?.let { vm.sideMap[it] }
@@ -319,9 +312,9 @@ fun WeekScreen(
             )
         }
 
-        Row(Modifier.fillMaxWidth().padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(top = Space.XS), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "The rest of the week", style = MaterialTheme.typography.titleMedium.copy(fontFamily = Look.Display),
+                "Your week", style = MaterialTheme.typography.titleMedium.copy(fontFamily = Look.Display),
                 fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
             )
             if (st.week.isNotEmpty() || st.storeMeals.isNotEmpty()) {

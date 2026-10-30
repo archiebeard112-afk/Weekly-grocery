@@ -98,10 +98,10 @@ fun SettingsScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
     ) { pad ->
         Column(
             // Same margins and title spot as the tabs.
-            Modifier.padding(pad).imePadding().padding(horizontal = 10.dp, vertical = 6.dp).verticalScroll(rememberScrollState()),
+            Modifier.padding(pad).imePadding().padding(horizontal = Space.Page, vertical = Space.S).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Settings", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(horizontal = 4.dp))
+            PageHeader("Thyme Table", "Settings", onBack = onBack)
 
             SettingsSection("Meals") {
                 // How many you cook for (moved here from the Week tab).
