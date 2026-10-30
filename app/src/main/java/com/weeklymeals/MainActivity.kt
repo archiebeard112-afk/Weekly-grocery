@@ -29,7 +29,9 @@ class MainActivity : ComponentActivity() {
         )
         if (savedInstanceState == null) handle(intent)
         // Opening animation only when the app starts fresh from the launcher.
-        val fromLauncher = savedInstanceState == null && intent?.action == Intent.ACTION_MAIN
+        // Skipped when the phone's "Remove animations" setting is on.
+        val noMotion = android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+        val fromLauncher = savedInstanceState == null && intent?.action == Intent.ACTION_MAIN && !noMotion
         setContent {
             WeeklyTheme {
                 var intro by rememberSaveable { mutableStateOf(fromLauncher) }

@@ -82,6 +82,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
@@ -220,34 +225,47 @@ private fun ZoneCard(z: Zone, st: UserState, modifier: Modifier, onClick: () -> 
     val low = items.count { markFor(it) == "low" }
     Column(
         modifier
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-            .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+            .clip(Radius.Card)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
             .clickable(onClick = onClick)
-            .padding(12.dp),
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        ZoneIcon(z.key, z.color, Modifier.size(34.dp))
-        Text(z.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp))
+        Box(
+            Modifier.size(40.dp).clip(Radius.Chip).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            contentAlignment = Alignment.Center,
+        ) { ZoneIcon(z.key, Look.Lime, Modifier.size(26.dp)) }
+        Text(z.label, style = MaterialTheme.typography.titleMedium.copy(fontFamily = Look.Display), fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 6.dp))
         val count = if (z.key == "freezer") st.freezer.size else items.size
         Text(
             "$count " + (if (z.key == "freezer") (if (count == 1) "bag" else "bags") else if (count == 1) "item" else "items"),
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(Modifier.padding(top = 6.dp).height(18.dp), verticalAlignment = Alignment.CenterVertically) {
+        // What needs a look, as small colored tags: red past date, amber low, lime all good.
+        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (z.key == "freezer") {
                 val oldest = st.freezer.minOfOrNull { it.frozenAt }
-                Text(
-                    if (oldest == null) "Empty" else "Oldest " + frozenAgo(oldest).removePrefix("frozen "),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (oldest == null) ZoneTag("Empty", MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
+                else ZoneTag("Oldest " + frozenAgo(oldest).removePrefix("frozen "), MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
             } else if (best + sell + low == 0) {
-                Text(if (items.isEmpty()) "Empty" else "All good", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (items.isEmpty()) ZoneTag("Empty", MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
+                else ZoneTag("All good", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
             } else {
-                if (best > 0) { JarMark("best"); Text(" $best  ", style = MaterialTheme.typography.bodySmall) }
-                if (sell > 0) { JarMark("sell"); Text(" $sell  ", style = MaterialTheme.typography.bodySmall) }
-                if (low > 0) Text("$low low", style = MaterialTheme.typography.bodySmall, color = LOW)
+                if (best + sell > 0) ZoneTag("${best + sell} past date", Look.DangerBg, Look.DangerText)
+                if (low > 0) ZoneTag("$low low", Look.WarnBg, Look.Warn)
             }
         }
     }
+}
+
+/** A small all-caps tag on a Kitchen zone card. */
+@Composable
+private fun ZoneTag(text: String, bg: Color, fg: Color) {
+    Text(
+        text.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
+        color = fg, maxLines = 1,
+        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 7.dp, vertical = 3.dp),
+    )
 }
 
 /** The Kitchen zone's own icon, small, in its color: "you have it" (pantry, fridge, freezer or produce). */
@@ -624,6 +642,12 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     .sortedWith(compareBy({ MARK_ORDER.indexOf(markFor(it)) }, { it.term }))
                 if (showOnly != "" && onShelf.isEmpty()) return@forEach
                 item(key = "shelf_$key") {
+                  // Each shelf is a dark card: its name and count, then the jars.
+                  Column(
+                      Modifier.fillMaxWidth().padding(bottom = Space.M).clip(Radius.Card)
+                          .background(MaterialTheme.colorScheme.surfaceContainer)
+                          .padding(start = Space.M, end = Space.M, top = Space.XS, bottom = Space.S),
+                  ) {
                     // Closed shelves show their first row; tap the name to open the rest.
                     // Fridge and produce are one shelf each: always open.
                     val open = key in st.openShelves || showOnly != "" || zone != "pantry"
@@ -631,21 +655,22 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                     val more = cells.size > 4
                     Row(
                         Modifier.fillMaxWidth().clickable(enabled = more) { vm.toggleShelf(key) }
-                            .padding(start = 4.dp, top = 6.dp, bottom = 4.dp),
+                            .heightIn(min = 40.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             label + if (onShelf.isNotEmpty()) " · ${onShelf.size}" else "",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.titleSmall.copy(fontFamily = Look.Display), fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f),
                         )
                         if (more) {
-                            Text(
-                                if (open) "▾" else (onShelf.size - cells.take(4).count { it != null }).let { n -> if (n > 0) "+$n ▸" else "▸" },
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(end = 6.dp),
+                            if (!open) (onShelf.size - cells.take(4).count { it != null }).takeIf { it > 0 }?.let { n ->
+                                Text("+$n", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Icon(
+                                if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                if (open) "Close shelf" else "Open shelf",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -675,11 +700,11 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                                             }
                                             Text(
                                                 p.term.replaceFirstChar { it.uppercase() },
-                                                fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                                 textAlign = TextAlign.Center, modifier = Modifier.padding(top = 3.dp),
                                             )
                                             if (p.measure == Pantry.LB || p.measure == Pantry.STICK || p.measure == Pantry.EGG) {
-                                                Text(Pantry.amountText(p), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                                Text(Pantry.amountText(p), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                             }
                                         }
                                     }
@@ -688,10 +713,7 @@ fun PantryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit) {
                             repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
-                    Box(
-                        Modifier.fillMaxWidth().padding(bottom = 12.dp).height(4.dp)
-                            .background(SHELF_WOOD, RoundedCornerShape(2.dp)),
-                    )
+                  }
                 }
             }
             // The freezer: leftover meat, counted by the piece (whole cuts) or by the pound.
