@@ -20,7 +20,7 @@ object CrashLog {
                 val sw = StringWriter()
                 e.printStackTrace(PrintWriter(sw))
                 file(app).writeText(
-                    "Weekly Meals ${Updater.currentVersionName(app)} · Android ${android.os.Build.VERSION.RELEASE}\n" +
+                    "Thyme Table ${Updater.currentVersionName(app)} · Android ${android.os.Build.VERSION.RELEASE}\n" +
                         "${java.util.Date()}\n\n" + sw.toString().take(12_000),
                 )
             }

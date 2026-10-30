@@ -493,7 +493,7 @@ private fun UpdateCard(vm: MealsViewModel) {
                     if (Updater.canInstall(ctx)) Updater.install(ctx, u.file)
                 }
                 if (!Updater.canInstall(ctx)) {
-                    Note("One-time step: allow Weekly Meals to install updates, then come back and tap Install.")
+                    Note("One-time step: allow Thyme Table to install updates, then come back and tap Install.")
                     OutlinedButton(onClick = { Updater.openInstallPermission(ctx) }, modifier = full) { Text("Allow installs") }
                 }
                 Button(onClick = {
@@ -640,7 +640,7 @@ private fun BackupCard(vm: MealsViewModel) {
             Button(
                 onClick = {
                     val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-                    save.launch("weekly-meals-backup-$day.json")
+                    save.launch("thyme-table-backup-$day.json")
                 },
                 modifier = Modifier.weight(1f),
             ) { Text("Save backup", fontFamily = Look.Display, fontWeight = FontWeight.Bold) }
@@ -657,7 +657,7 @@ private fun BackupCard(vm: MealsViewModel) {
             text = { Text("Everything in the app now will be replaced with what's in the backup.") },
             confirmButton = {
                 TextButton(onClick = {
-                    if (!vm.restoreBackup(text)) vm.message.value = "That file isn't a Weekly Meals backup"
+                    if (!vm.restoreBackup(text)) vm.message.value = "That file isn't a Thyme Table backup"
                     pending = null
                 }) { Text("Restore", color = MaterialTheme.colorScheme.error) }
             },

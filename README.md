@@ -1,4 +1,4 @@
-# Weekly Meals (Android)
+# Thyme Table (Android)
 
 Kotlin + Jetpack Compose. 111 recipes, sides, favorites, store-aisle shopping list, and King Soopers cart.
 

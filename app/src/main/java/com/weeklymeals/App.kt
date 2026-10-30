@@ -313,7 +313,7 @@ fun App(vm: MealsViewModel) {
             contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
             topBar = {
                 TopAppBar(
-                    title = { Text("Weekly Meals") },
+                    title = { Text("Thyme Table") },
                     actions = {
                         // Tap to open below the bar (highlighted); tap again to close.
                         val toggle: (Overlay) -> Unit = { o -> overlay = if (overlay == o) Overlay.None else o }
@@ -500,7 +500,7 @@ fun App(vm: MealsViewModel) {
             text = {
                 Text(
                     "The cooking bubble can float over your home screen and other apps, so you can jump back " +
-                        "to your steps. Turn on \"Allow display over other apps\" for Weekly Meals on the next screen.",
+                        "to your steps. Turn on \"Allow display over other apps\" for Thyme Table on the next screen.",
                 )
             },
             confirmButton = {
@@ -1642,7 +1642,7 @@ fun recipeShareText(r: Recipe, serv: Int, side: Side?, sideSize: Int? = null): S
         side.steps.forEachIndexed { n, t -> appendLine("${n + 1}. $t") }
     }
     appendLine()
-    append("Shared from Weekly Meals")
+    append("Shared from Thyme Table")
 }
 
 /** Opens the phone's share menu (texts, email, notes…) with the recipe as text. */
