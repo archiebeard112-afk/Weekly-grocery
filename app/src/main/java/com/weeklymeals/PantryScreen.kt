@@ -242,7 +242,9 @@ private fun ZoneCard(z: Zone, st: UserState, modifier: Modifier, onClick: () -> 
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         // What needs a look, as small colored tags: red past date, amber low, lime all good.
-        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Wraps to a second line when both tags don't fit side by side.
+        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+        androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (z.key == "freezer") {
                 val oldest = st.freezer.minOfOrNull { it.frozenAt }
                 if (oldest == null) ZoneTag("Empty", MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
@@ -263,7 +265,7 @@ private fun ZoneCard(z: Zone, st: UserState, modifier: Modifier, onClick: () -> 
 private fun ZoneTag(text: String, bg: Color, fg: Color) {
     Text(
         text.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
-        color = fg, maxLines = 1,
+        color = fg, maxLines = 1, softWrap = false,
         modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 7.dp, vertical = 3.dp),
     )
 }
