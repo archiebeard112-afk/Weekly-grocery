@@ -92,6 +92,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -590,12 +591,25 @@ data class TimerCtl(
 @Composable
 private fun Steps(steps: List<String>, ctl: TimerCtl? = null) {
     steps.forEachIndexed { n, s ->
-        Text("${n + 1}. $s", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp))
+        // The step number in a small lime circle, the text beside it.
+        Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.Top) {
+            Box(
+                Modifier.size(26.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "${n + 1}", style = MaterialTheme.typography.labelLarge.copy(fontFamily = Look.Display),
+                    fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(s, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f).padding(top = 2.dp))
+        }
         if (ctl != null) {
             val times = Logic.stepTimes(s)
             if (times.isNotEmpty()) {
                 Row(
-                    Modifier.padding(start = 16.dp, bottom = 4.dp),
+                    Modifier.padding(start = 38.dp, bottom = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     times.forEachIndexed { k, t ->
@@ -642,10 +656,11 @@ internal fun TimerButton(key: String, label: String, t: Logic.StepTime, ctl: Tim
 
 @Composable
 internal fun Heading(text: String) {
+    // A grey all-caps section label, like the ones on Week and Settings.
     Text(
-        text, style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+        text.uppercase(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
     )
 }
 
@@ -665,9 +680,9 @@ private fun RecipeDetails(
         val price = cost?.lines?.get(term)
         val first = price != null && priced.add(term)
         val zone = price?.zone
-        Row(verticalAlignment = Alignment.Top) {
+        Row(Modifier.padding(vertical = 7.dp), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
-                Text("• " + Logic.ingText(i, serv, base), style = MaterialTheme.typography.bodyMedium)
+                Text(Logic.ingText(i, serv, base), style = MaterialTheme.typography.bodyLarge)
                 // In the pantry but past its date.
                 expired[term]?.let {
                     val amber = Look.Warn
@@ -687,17 +702,18 @@ private fun RecipeDetails(
                         }
                         // ♻️ = shared with another meal this week (or left over): always right by the price.
                         if (first && price != null && price.note.startsWith("♻️")) {
-                            Text("♻️", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 4.dp))
+                            Icon(Icons.Filled.Refresh, "Shared this week", Modifier.padding(start = 4.dp).size(16.dp), tint = Look.Info)
                         }
                         Spacer(Modifier.width(4.dp))
                         Text(
                             when {
-                                price == null -> "—"
-                                !first -> "incl. above"
+                                price == null -> ""
+                                // Same item as a line above: its price is up there.
+                                !first -> "↑"
                                 price.have -> "$0.00"
                                 else -> Sales.money(price.cost)
                             },
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
                             color = if (first && price?.have == true) BUDGET_GREEN else MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.End,
                         )
@@ -714,22 +730,21 @@ private fun RecipeDetails(
         }
     }
     val mainServ = Logic.servFor(r, serv)
-    Heading("Ingredients (for $mainServ)")
-    r.ingredients.forEach { line(it, mainServ, r.base) }
+    // Ingredients sit in a dark card, prices lined up on the right.
+    val card = Modifier.fillMaxWidth().clip(Radius.Card).background(MaterialTheme.colorScheme.surfaceContainer)
+        .padding(horizontal = 14.dp, vertical = 6.dp)
+    Heading("Ingredients · for $mainServ")
+    Column(card) { r.ingredients.forEach { line(it, mainServ, r.base) } }
     if (side != null && side.ingredients.isNotEmpty()) {
-        Text(
-            "Side: ${side.label}" + if (sideSize != Logic.SIDE_NORMAL) " (for ${sideServesText(serv, sideSize)})" else "",
-            style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
-        )
-        if (onSideSize != null) SideSizeChoice(sideSize, onSideSize, Modifier.padding(bottom = 2.dp))
-        side.ingredients.forEach { line(it, Logic.sideServ(serv, sideSize), Logic.SIDE_BASE) }
+        Heading("Side · ${plainLabel(side.label)}" + if (sideSize != Logic.SIDE_NORMAL) " · for ${sideServesText(serv, sideSize)}" else "")
+        if (onSideSize != null) SideSizeChoice(sideSize, onSideSize, Modifier.padding(bottom = 6.dp))
+        Column(card) { side.ingredients.forEach { line(it, Logic.sideServ(serv, sideSize), Logic.SIDE_BASE) } }
     }
     if (cost != null) {
-        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-        Row {
-            Text("Total", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+        Row(Modifier.padding(top = 12.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Total", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
             Text(
-                Sales.money(cost.total), style = MaterialTheme.typography.titleSmall,
+                Sales.money(cost.total), style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
                 color = if (cost.total <= budgetMax) BUDGET_GREEN else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(start = 12.dp),
             )
@@ -740,7 +755,7 @@ private fun RecipeDetails(
                     "You save with what you have", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), textAlign = TextAlign.End,
                 )
-                Text(Sales.money(cost.saved), style = MaterialTheme.typography.bodySmall, color = BUDGET_GREEN, modifier = Modifier.padding(start = 12.dp))
+                Text(Sales.money(cost.saved), style = MaterialTheme.typography.bodySmall, color = BUDGET_GREEN, modifier = Modifier.padding(start = 12.dp, end = 14.dp))
             }
         }
         Text(
@@ -1475,40 +1490,40 @@ private fun RecipeScreen(
         Column(
             Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         ) {
-            // The recipe's color block with its name in big type.
+            // Your rating (Loved it / It was fine / Not for us), changed from its fact tile.
+            var rating by remember { mutableStateOf(false) }
+            val mine = st.ratings[r.id]
+            // The recipe's color block: its name in big type, then four facts (time, calories, cost, your rating).
             Box(
                 Modifier.fillMaxWidth().clip(Radius.Hero).background(Look.color(r.id)),
             ) {
                 ColorBlob(r.id, 150.dp, 40.dp, (-30).dp, Modifier.align(Alignment.TopEnd))
                 OnColor {
-                    Text(
-                        r.name, style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 36.sp),
-                        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 40.dp, bottom = 18.dp),
-                    )
+                    Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 36.dp, bottom = 14.dp)) {
+                        Text(r.name, style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 36.sp), modifier = Modifier.padding(end = 24.dp))
+                        Row(Modifier.fillMaxWidth().padding(top = 14.dp).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val cal = Nutrition.perServing(r)
+                            val cost = vm.mealCost(st, r)?.total
+                            HeroFact(Logic.fmtShort(Logic.cookMinutes(r)), "time", Modifier.weight(1f))
+                            HeroFact(cal?.let { "%,d".format(it) } ?: "—", "cal", Modifier.weight(1f))
+                            HeroFact(cost?.let { "$" + Math.round(it) } ?: "—", "cost", Modifier.weight(1f))
+                            HeroFact(
+                                when (mine) { 1 -> "Loved"; 2 -> "Fine"; -1 -> "Not for us"; else -> "Rate" },
+                                if (mine == 1 || mine == 2 || mine == -1) "you" else "tap",
+                                Modifier.weight(1f), onClick = { rating = true },
+                            )
+                        }
+                    }
                 }
             }
             val badges = Logic.badges(r, vm.isBudget(st, r))
-            // Badges, then your rating (👍 Loved it / 😐 It was fine / 👎 Not for us), or "Rate" if you haven't yet. Tap it to change.
-            var rating by remember { mutableStateOf(false) }
-            val mine = st.ratings[r.id]
-            Row(
-                Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
-            ) {
-                badges.forEach { Badge(it, small = false) }
-                val rated = mine == 1 || mine == 2 || mine == -1
-                Text(
-                    when (mine) { 1 -> "👍 Loved it"; 2 -> "😐 It was fine"; -1 -> "👎 Not for us"; else -> "👍😐👎 Rate" },
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (rated) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.clip(RoundedCornerShape(50))
-                        .then(
-                            if (rated) Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
-                            else Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50)),
-                        )
-                        .clickable { rating = true }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                )
+            if (badges.isNotEmpty()) {
+                Row(
+                    Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    badges.forEach { Badge(it, small = false) }
+                }
             }
             if (rating) {
                 fun pick(v: Int) { rating = false; vm.rate(r.id, v) }
@@ -1525,27 +1540,20 @@ private fun RecipeScreen(
                     RatingChoices(mine, ::pick)
                 }
             }
-            Text(
-                "About ${Logic.fmtMinutes(Logic.cookMinutes(r))} total",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 6.dp),
-            )
             LaunchedEffect(r.id) { vm.fetchReviewsIfMissing(r) }
-            Nutrition.perServing(r)?.let { cal ->
-                val sideCal = if (inWeek) Nutrition.side(side) else null
+            // Calories are per serving; the side adds its own.
+            if (inWeek && side != null) Nutrition.side(side)?.let { sideCal ->
                 Text(
-                    "≈ %,d cal per serving".format(cal) +
-                        (if (sideCal != null && side != null) " · + %,d with ${side.label.substringAfter(" ")}".format(sideCal) else ""),
+                    "Calories are per serving · + %,d with ${side.label.substringAfter(" ")}".format(sideCal),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = 8.dp),
                 )
             }
             r.rating?.let { Row(Modifier.padding(top = 4.dp)) { RatingLine(it, r.ratingCount, r.countLabel, 16.dp) } }
             // Two equal buttons, labels on one line so they line up.
             Row(
-                Modifier.fillMaxWidth().padding(top = 8.dp).height(androidx.compose.foundation.layout.IntrinsicSize.Min),
+                Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).height(androidx.compose.foundation.layout.IntrinsicSize.Min),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 val pad = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
@@ -1582,6 +1590,24 @@ private fun RecipeScreen(
             ReviewsSection(r.id, r.rating, r.ratingCount, r.countLabel, r.reviews)
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+/** One fact on a recipe's color block: a bold value over a small label. */
+@Composable
+private fun HeroFact(value: String, label: String, modifier: Modifier, onClick: (() -> Unit)? = null) {
+    Column(
+        modifier.fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(Look.Ink.copy(alpha = 0.1f))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            value, style = MaterialTheme.typography.titleMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, lineHeight = 18.sp),
+            maxLines = 2, textAlign = TextAlign.Center,
+        )
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Look.Ink.copy(alpha = 0.72f), maxLines = 1)
     }
 }
 

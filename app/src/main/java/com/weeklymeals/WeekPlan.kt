@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
@@ -87,8 +88,9 @@ internal fun StatTile(
     modifier: Modifier, value: String, suffix: String?, label: String,
     lime: Boolean = false, onClick: (() -> Unit)? = null,
 ) {
-    val bg = if (lime) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer
-    val fg = if (lime) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    // Lime is for "do this now", so a highlighted tile just gets a lime number.
+    val bg = MaterialTheme.colorScheme.surfaceContainer
+    val fg = if (lime) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
     Column(
         modifier.fillMaxHeight().clip(RoundedCornerShape(18.dp)).background(bg)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
@@ -107,8 +109,7 @@ internal fun StatTile(
         )
         Text(
             label, style = MaterialTheme.typography.bodySmall, maxLines = 1,
-            color = if (lime) fg else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = if (lime) FontWeight.SemiBold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -336,6 +337,8 @@ fun WeekScreen(
             val dragged = id != null && id == dragId
             val isTarget = dragId != null && index == target && !dragged
             val isToday = index < 7 && dayAt[index] == today
+            // Days already gone this week fade back.
+            val isPast = index < 7 && index < dayAt.indexOf(today)
             val flashing = id != null && id == flashId && flash.value > 0f
             val bg = when {
                 flashing -> androidx.compose.ui.graphics.lerp(
@@ -358,6 +361,7 @@ fun WeekScreen(
                 .graphicsLayer { translationY = if (dragged) dragY else 0f }
                 .then(if (dragged) Modifier.shadow(8.dp, Radius.Card) else Modifier)
                 .background(bg)
+                .alpha(if (isPast && !dragged) 0.45f else 1f)
             if (id != null && r != null) {
                 rowMod = rowMod
                     .pointerInput(id, index) {
@@ -398,7 +402,7 @@ fun WeekScreen(
                         .then(
                             when {
                                 isToday -> Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                                r == null && meals.isEmpty() -> Modifier.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                r == null && meals.isEmpty() -> Modifier.border(1.5.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), CircleShape)
                                 else -> Modifier
                             },
                         ),
@@ -442,7 +446,8 @@ fun WeekScreen(
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            if (usesLeftovers(r.id)) Tag("LEFTOVERS", LEFT_BG, MaterialTheme.colorScheme.primary)
+                            if (isToday) Tag("TONIGHT", Look.Ink, MaterialTheme.colorScheme.primary)
+                            else if (usesLeftovers(r.id)) Tag("LEFTOVERS", LEFT_BG, MaterialTheme.colorScheme.primary)
                         }
                     }
                     meals.forEach { m -> StoreLine(m) { openMeal = m } }
