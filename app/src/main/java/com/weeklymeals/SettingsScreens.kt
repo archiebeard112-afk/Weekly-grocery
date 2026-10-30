@@ -10,7 +10,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material3.TextButton
@@ -516,7 +515,7 @@ private fun SettingsSection(label: String, content: @Composable ColumnScope.() -
         label.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
         letterSpacing = 1.5.sp, color = Look.Muted, modifier = Modifier.padding(start = 6.dp, top = 8.dp),
     )
-    Surface(shape = RoundedCornerShape(16.dp), color = Look.Card, modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = Radius.Card, color = Look.Card, modifier = Modifier.fillMaxWidth()) {
         Column(content = content)
     }
 }
@@ -600,7 +599,7 @@ private fun SettingsField(
     OutlinedTextField(
         value, onChange, label = { Text(label) }, singleLine = true, keyboardOptions = keyboard,
         visualTransformation = if (hidden) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
-        shape = RoundedCornerShape(12.dp),
+        shape = Radius.Chip,
         colors = OutlinedTextFieldDefaults.colors(
             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -651,17 +650,18 @@ private fun BackupCard(vm: MealsViewModel) {
         }
     }
     pending?.let { text ->
-        AlertDialog(
-            onDismissRequest = { pending = null },
-            title = { Text("Restore this backup?") },
-            text = { Text("Everything in the app now will be replaced with what's in the backup.") },
-            confirmButton = {
-                TextButton(onClick = {
+        AppDialog(
+            onDismiss = { pending = null },
+            title = "Restore this backup?",
+            actions = listOf(
+                DialogAction("Replace with backup", ActionKind.Danger) {
                     if (!vm.restoreBackup(text)) vm.message.value = "That file isn't a Thyme Table backup"
                     pending = null
-                }) { Text("Restore", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { pending = null }) { Text("Cancel") } },
-        )
+                },
+                DialogAction("Cancel") { pending = null },
+            ),
+        ) {
+            Text("Everything in the app now will be replaced with what's in the backup.")
+        }
     }
 }

@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
@@ -63,7 +62,7 @@ import kotlin.math.roundToInt
 
 private val ROW_HEIGHT = 52.dp
 private val ROW_GAP = 6.dp
-private val STORE_PURPLE = androidx.compose.ui.graphics.Color(0xFFC79BFF)
+private val STORE_PURPLE = Look.Store
 private val LEFT_BG = androidx.compose.ui.graphics.Color(0xFF26301A)
 
 /** Meals planned this week: each recipe, plus one for each day that has store items. */
@@ -118,7 +117,7 @@ internal fun StatTile(
 @Composable
 private fun NothingTonight(day: Int, onAdd: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp)).background(MaterialTheme.colorScheme.surfaceContainer)
+        Modifier.fillMaxWidth().clip(Radius.Hero).background(MaterialTheme.colorScheme.surfaceContainer)
             .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -152,7 +151,7 @@ private fun StoreLine(m: StoreMeal, onClick: () -> Unit) {
         m.price?.let {
             Text(Sales.money(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp))
         }
-        Tag("STORE", androidx.compose.ui.graphics.Color(0xFF2A2540), androidx.compose.ui.graphics.Color(0xFFD9C2FF))
+        Tag("STORE", Look.StoreBg, androidx.compose.ui.graphics.Color(0xFFD9C2FF))
     }
 }
 
@@ -180,7 +179,7 @@ private fun DessertLine(r: Recipe, onClick: () -> Unit, onRemove: () -> Unit) {
 @Composable
 private fun TonightCard(r: Recipe, day: Int, meta: String, onOpen: () -> Unit, onCook: () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp)).background(Look.color(r.id)).clickable(onClick = onOpen),
+        Modifier.fillMaxWidth().clip(Radius.Hero).background(Look.color(r.id)).clickable(onClick = onOpen),
     ) {
         ColorBlob(r.id, 140.dp, 36.dp, (-36).dp, Modifier.align(Alignment.TopEnd))
         OnColor {
@@ -336,7 +335,7 @@ fun WeekScreen(
         // All the days in one rounded panel, a thin line between them.
         Column(
             Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(22.dp))
+                .clip(Radius.Card)
                 .background(MaterialTheme.colorScheme.surfaceContainer),
         ) {
         rows.forEachIndexed { index, (label, id) ->
@@ -364,7 +363,7 @@ fun WeekScreen(
                 }
                 .zIndex(if (dragged) 1f else 0f)
                 .graphicsLayer { translationY = if (dragged) dragY else 0f }
-                .then(if (dragged) Modifier.shadow(8.dp, RoundedCornerShape(14.dp)) else Modifier)
+                .then(if (dragged) Modifier.shadow(8.dp, Radius.Card) else Modifier)
                 .background(bg)
             if (id != null && r != null) {
                 rowMod = rowMod
@@ -463,67 +462,62 @@ fun WeekScreen(
     }
 
     if (showLeft) {
-        AlertDialog(
-            onDismissRequest = { showLeft = false },
-            title = { Text("Left over this week") },
-            text = {
-                Column {
-                    Text(
-                        "Fresh things you'll only use part of. Most valuable first.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    left.forEach { l ->
-                        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("${l.label} ${l.term}", style = MaterialTheme.typography.bodyMedium)
-                                Text("keeps ${l.keeps}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (l.value >= 0.05) Text(Sales.money(l.value), style = MaterialTheme.typography.bodyMedium)
-                        }
+        AppDialog(
+            onDismiss = { showLeft = false },
+            eyebrow = "${left.size} " + if (left.size == 1) "leftover" else "leftovers",
+            title = "Left over this week",
+            actions = listOf(
+                DialogAction("See meals that use them", ActionKind.Primary) { showLeft = false; onLeftovers() },
+                DialogAction("Close") { showLeft = false },
+            ),
+        ) {
+            Text(
+                "Fresh things you'll only use part of. Most valuable first.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            left.forEach { l ->
+                HorizontalDivider(Modifier.padding(vertical = Space.S), color = MaterialTheme.colorScheme.outlineVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${l.label} ${l.term}", style = MaterialTheme.typography.bodyLarge)
+                        Text("Keeps ${l.keeps}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    if (l.value >= 0.05) Text(Sales.money(l.value), style = MaterialTheme.typography.bodyLarge.copy(fontFamily = Look.Display, fontWeight = FontWeight.Bold))
                 }
-            },
-            confirmButton = { TextButton(onClick = { showLeft = false; onLeftovers() }) { Text("See meals that use them") } },
-            dismissButton = { TextButton(onClick = { showLeft = false }) { Text("Close") } },
-        )
+            }
+        }
     }
 
     openMeal?.let { m ->
-        AlertDialog(
-            onDismissRequest = { openMeal = null },
-            title = { Text(m.title) },
-            text = {
-                Column {
-                    val detail = listOfNotNull(m.size.ifBlank { null }, m.price?.let { Sales.money(it) }).joinToString(" · ")
-                    if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "${Logic.DAY_LONG.getOrElse(m.day) { "" }} · from King Soopers. Nothing to cook: it's on your Shop list.",
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
-            },
-            confirmButton = { TextButton(onClick = { vm.removeStoreMeal(m.id); openMeal = null }) { Text("Remove") } },
-            dismissButton = { TextButton(onClick = { openMeal = null }) { Text("Close") } },
-        )
+        AppDialog(
+            onDismiss = { openMeal = null },
+            eyebrow = "Store meal · " + Logic.DAY_LONG.getOrElse(m.day) { "" },
+            title = m.title,
+            actions = listOf(
+                DialogAction("Close", ActionKind.Primary) { openMeal = null },
+                DialogAction("Remove from week", ActionKind.Danger) { vm.removeStoreMeal(m.id); openMeal = null },
+            ),
+        ) {
+            val detail = listOfNotNull(m.size.ifBlank { null }, m.price?.let { Sales.money(it) }).joinToString(" · ")
+            if (detail.isNotBlank()) Text(detail)
+            DialogNote("From King Soopers. Nothing to cook: it's on your Shop list.")
+        }
     }
 
     if (confirmFinish) {
-        AlertDialog(
-            onDismissRequest = { confirmFinish = false },
-            title = { Text("Finish this week?") },
-            text = {
-                Text(
-                    "Your ${mealCount(st)} meals will be saved to History, and the week and shopping list will be cleared." +
-                        if (st.pantry.isNotEmpty()) " Your pantry will be updated for what these meals used." else "",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { vm.finishWeek(); confirmFinish = false }) { Text("Finish week") }
-            },
-            dismissButton = { TextButton(onClick = { confirmFinish = false }) { Text("Cancel") } },
-        )
+        AppDialog(
+            onDismiss = { confirmFinish = false },
+            title = "Finish this week?",
+            actions = listOf(
+                DialogAction("Finish week", ActionKind.Primary) { vm.finishWeek(); confirmFinish = false },
+                DialogAction("Keep planning") { confirmFinish = false },
+            ),
+        ) {
+            Text(
+                "Your ${mealCount(st)} meals go to History, and the week and shopping list are cleared." +
+                    if (st.pantry.isNotEmpty()) " The Kitchen is updated for what these meals used." else "",
+            )
+        }
     }
 }

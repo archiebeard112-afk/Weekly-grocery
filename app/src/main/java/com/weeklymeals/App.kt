@@ -55,7 +55,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -383,7 +382,7 @@ fun App(vm: MealsViewModel) {
             }
         }
     }
-    SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
+    SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp)) { AppSnackbar(it) }
     // Left cooking mode mid-cook: a bubble to get back to it from anywhere in the app.
     if (cooking == null && picking == null && cookBubbleOn(st)) {
         CookBubble(
@@ -433,12 +432,19 @@ fun App(vm: MealsViewModel) {
                 }
             }
             val busy = up is UpdateState.Downloading
-            AlertDialog(
-                onDismissRequest = { if (!busy) vm.autoUpdate.value = null },
-                title = { Text("Update available") },
-                text = {
+            AppDialog(
+                onDismiss = { vm.autoUpdate.value = null },
+                dismissable = !busy,
+                eyebrow = "Update available",
+                title = "${rel.name} is ready",
+                actions = listOf(
+                    DialogAction("Update", ActionKind.Primary, enabled = !busy) { vm.downloadUpdate(rel) },
+                    DialogAction("Later", enabled = !busy) { vm.autoUpdate.value = null },
+                    DialogAction("Skip this version", enabled = !busy) { vm.skipVersion(rel) },
+                ),
+            ) {
                     Column {
-                        Text("${rel.name} is ready to install.")
+                        Text("Install it now, or later from Settings.")
                         (up as? UpdateState.Downloading)?.let { d ->
                             LinearProgressIndicator(
                                 progress = { d.percent / 100f },
@@ -447,20 +453,10 @@ fun App(vm: MealsViewModel) {
                             Text("Downloading… ${d.percent}%", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                         }
                         (up as? UpdateState.Error)?.let { e ->
-                            Text(e.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+                            Text(e.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
                         }
                     }
-                },
-                confirmButton = {
-                    TextButton(enabled = !busy, onClick = { vm.downloadUpdate(rel) }) { Text("Update") }
-                },
-                dismissButton = {
-                    Row {
-                        TextButton(enabled = !busy, onClick = { vm.skipVersion(rel) }) { Text("Skip this version") }
-                        TextButton(enabled = !busy, onClick = { vm.autoUpdate.value = null }) { Text("Later") }
-                    }
-                },
-            )
+            }
         }
     }
 
@@ -468,100 +464,93 @@ fun App(vm: MealsViewModel) {
     var crash by remember { mutableStateOf(CrashLog.pending(ctx)) }
     crash?.let { text ->
         val clip = androidx.compose.ui.platform.LocalClipboardManager.current
-        AlertDialog(
-            onDismissRequest = { CrashLog.clear(ctx); crash = null },
-            title = { Text("The app closed unexpectedly") },
-            text = {
-                Column {
-                    Text("Copy the details and send them over so it can be fixed.")
-                    Text(
-                        text.lines().take(8).joinToString("\n"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
+        AppDialog(
+            onDismiss = { CrashLog.clear(ctx); crash = null },
+            title = "The app closed unexpectedly",
+            actions = listOf(
+                DialogAction("Copy details", ActionKind.Primary) {
                     clip.setText(androidx.compose.ui.text.AnnotatedString(text))
                     vm.message.value = "Crash details copied"
                     CrashLog.clear(ctx); crash = null
-                }) { Text("Copy details") }
-            },
-            dismissButton = { TextButton(onClick = { CrashLog.clear(ctx); crash = null }) { Text("Close") } },
-        )
+                },
+                DialogAction("Close") { CrashLog.clear(ctx); crash = null },
+            ),
+        ) {
+            Text("Copy the details and send them over so it can be fixed.")
+            Text(
+                text.lines().take(8).joinToString("\n"),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
     }
 
     if (askOverlay) {
-        AlertDialog(
-            onDismissRequest = { askOverlay = false; vm.setOverlayAsked() },
-            title = { Text("Keep the bubble outside the app?") },
-            text = {
-                Text(
-                    "The cooking bubble can float over your home screen and other apps, so you can jump back " +
-                        "to your steps. Turn on \"Allow display over other apps\" for Thyme Table on the next screen.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
+        AppDialog(
+            onDismiss = { askOverlay = false; vm.setOverlayAsked() },
+            title = "Keep the bubble outside the app?",
+            actions = listOf(
+                DialogAction("Turn on", ActionKind.Primary) {
                     askOverlay = false; vm.setOverlayAsked()
                     runCatching { ctx.startActivity(CookOverlay.permissionIntent(ctx)) }
-                }) { Text("Turn on") }
-            },
-            dismissButton = { TextButton(onClick = { askOverlay = false; vm.setOverlayAsked() }) { Text("Not now") } },
-        )
+                },
+                DialogAction("Not now") { askOverlay = false; vm.setOverlayAsked() },
+            ),
+        ) {
+            Text(
+                "The cooking bubble can float over your home screen and other apps, so you can jump back " +
+                    "to your steps. Turn on \"Allow display over other apps\" for Thyme Table on the next screen.",
+            )
+        }
     }
 
     if (askAddMode) {
-        AlertDialog(
-            onDismissRequest = { askAddMode = false },
-            title = { Text("Add a recipe") },
-            text = { Text("Import it from a recipe website, or type it in yourself.") },
-            confirmButton = {
-                TextButton(onClick = {
+        AppDialog(
+            onDismiss = { askAddMode = false },
+            title = "Add a recipe",
+            actions = listOf(
+                DialogAction("From a link", ActionKind.Primary) {
                     askAddMode = false; addLinkMode = true; addFromLink = null; overlay = Overlay.AddRecipe
-                }) { Text("From a link") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
+                },
+                DialogAction("Type it in") {
                     askAddMode = false; addLinkMode = false; addFromLink = null; overlay = Overlay.AddRecipe
-                }) { Text("Type it in") }
-            },
-        )
+                },
+            ),
+        ) {
+            Text("Import it from a recipe website, or type it in yourself.")
+        }
     }
 
     confirmDelete?.let { r ->
         val mine = r.imported
-        AlertDialog(
-            onDismissRequest = { confirmDelete = null },
-            title = { Text(if (mine) "Delete ${r.name}?" else "Hide ${r.name}?") },
-            text = {
-                Text(
-                    (if (mine) "This removes the recipe for good."
-                    else "It won't show in Browse, search or Favorites. You can bring it back in Settings → Hidden recipes.") +
-                        if (r.id in st.week) " It will also come off this week and the shopping list." else "",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { vm.deleteRecipe(r); confirmDelete = null }) {
-                    Text(if (mine) "Delete" else "Hide", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
-        )
+        AppDialog(
+            onDismiss = { confirmDelete = null },
+            title = if (mine) "Delete ${r.name}?" else "Hide ${r.name}?",
+            actions = listOf(
+                DialogAction(if (mine) "Delete" else "Hide", ActionKind.Danger) { vm.deleteRecipe(r); confirmDelete = null },
+                DialogAction("Cancel") { confirmDelete = null },
+            ),
+        ) {
+            Text(
+                (if (mine) "This removes the recipe for good."
+                else "It won't show in Browse, search or Favorites. You can bring it back in Settings → Hidden recipes.") +
+                    if (r.id in st.week) " It will also come off this week and the shopping list." else "",
+            )
+        }
     }
 
     confirmRemove?.let { r ->
-        AlertDialog(
-            onDismissRequest = { confirmRemove = null },
-            title = { Text("Remove from favorites?") },
-            text = { Text("Are you sure you want to remove ${r.name} from your favorites?") },
-            confirmButton = {
-                TextButton(onClick = { vm.removeFav(r.id); confirmRemove = null }) { Text("Remove") }
-            },
-            dismissButton = { TextButton(onClick = { confirmRemove = null }) { Text("Keep") } },
-        )
+        AppDialog(
+            onDismiss = { confirmRemove = null },
+            title = "Remove from favorites?",
+            actions = listOf(
+                DialogAction("Remove", ActionKind.Danger) { vm.removeFav(r.id); confirmRemove = null },
+                DialogAction("Keep it") { confirmRemove = null },
+            ),
+        ) {
+            Text("${r.name} will come off your favorites. You can heart it again any time.")
+        }
     }
 }
 
@@ -672,7 +661,7 @@ private fun RecipeDetails(
                 Text("• " + Logic.ingText(i, serv, base), style = MaterialTheme.typography.bodyMedium)
                 // In the pantry but past its date.
                 expired[term]?.let {
-                    val amber = androidx.compose.ui.graphics.Color(0xFFBA7517)
+                    val amber = Look.Warn
                     Row(Modifier.padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         HaveIcon(zone ?: "pantry", Modifier.size(13.dp), amber)
                         Text(" $it", style = MaterialTheme.typography.labelSmall, color = amber)
@@ -1468,7 +1457,7 @@ private fun RecipeScreen(
         ) {
             // The recipe's color block with its name in big type.
             Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Look.color(r.id)),
+                Modifier.fillMaxWidth().clip(Radius.Hero).background(Look.color(r.id)),
             ) {
                 ColorBlob(r.id, 150.dp, 40.dp, (-30).dp, Modifier.align(Alignment.TopEnd))
                 OnColor {
@@ -1503,27 +1492,18 @@ private fun RecipeScreen(
             }
             if (rating) {
                 fun pick(v: Int) { rating = false; vm.rate(r.id, v) }
-                AlertDialog(
-                    onDismissRequest = { rating = false },
-                    title = { Text("How was ${r.name}?") },
-                    text = {
-                        // Three choices, then Clear / Cancel under them.
-                        Column(Modifier.fillMaxWidth()) {
-                            RatingChoices(mine, ::pick)
-                            Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                                if (mine == 1 || mine == 2 || mine == -1) {
-                                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                        TextButton(onClick = { rating = false; vm.rate(r.id, 0) }) { Text("Clear") }
-                                    }
-                                }
-                                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                    TextButton(onClick = { rating = false }) { Text("Cancel") }
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = {},
-                )
+                // Three choices, then Clear rating / Cancel under them.
+                AppDialog(
+                    onDismiss = { rating = false },
+                    eyebrow = "Your rating",
+                    title = "How was ${r.name}?",
+                    actions = listOfNotNull(
+                        if (mine == 1 || mine == 2 || mine == -1) DialogAction("Clear rating") { rating = false; vm.rate(r.id, 0) } else null,
+                        DialogAction("Cancel") { rating = false },
+                    ),
+                ) {
+                    RatingChoices(mine, ::pick)
+                }
             }
             Text(
                 "About ${Logic.fmtMinutes(Logic.cookMinutes(r))} total",
@@ -1666,8 +1646,8 @@ internal fun CompactSearch(
 ) {
     Row(
         modifier.fillMaxWidth().height(42.dp)
-            .clip(RoundedCornerShape(21.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(21.dp))
+            .clip(Radius.Pill)
+            .border(1.dp, MaterialTheme.colorScheme.outline, Radius.Pill)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1704,7 +1684,7 @@ internal fun CompactSearch(
 }
 
 /** Recipes matching a search (name or ingredient) and every selected filter chip. */
-private val BUDGET_GREEN = androidx.compose.ui.graphics.Color(0xFF5DCAA5)
+private val BUDGET_GREEN = Look.Good
 
 private fun matchesFilters(
     r: Recipe, q: String, filters: List<String>,
@@ -1728,7 +1708,7 @@ private const val LOW_CAL = 600
 /** The green bold down arrow on the "600 cal" filter chip. */
 @Composable
 private fun LowCalArrow() {
-    val green = androidx.compose.ui.graphics.Color(0xFF5DCAA5)
+    val green = Look.Good
     androidx.compose.foundation.Canvas(Modifier.size(16.dp)) {
         val u = size.width / 24f
         val p = androidx.compose.ui.graphics.Path().apply {
@@ -1755,7 +1735,7 @@ private fun FilterChipFor(key: String, label: String, on: Boolean, onClick: () -
 // ---- Favorites ---------------------------------------------------------------------
 
 private val FAV_FILTERS = listOf(
-    "crockpot" to "🍲 Crock-Pot", "instantpot" to "⚡ Instapot", "airfryer" to "🌬️ Air Fryer",
+    "crockpot" to "🍲 Crock-Pot", "instantpot" to "⚡ Instant Pot", "airfryer" to "🌬️ Air Fryer",
     "sheetpan" to "♨️ Sheet-Pan", "grill" to "🔥 Grill", "onepan" to "🍳 One-Pan",
     "budget" to "💲 Budget", "quick" to "⏱ Quick", "lowcal" to "$LOW_CAL cal",
     "leftovers" to "♻️ Uses leftovers",
@@ -1873,18 +1853,19 @@ private fun FavoritesScreen(
     adding?.let { sd -> SideToDinnerDialog(vm, st, sd, addSize) { adding = null } }
     unfav?.let { sd ->
         val mine = !vm.isBuiltInSide(sd.key)
-        AlertDialog(
-            onDismissRequest = { unfav = null },
-            title = { Text(if (mine) "Delete ${plainLabel(sd.label)}?" else "Remove from favorites?") },
-            text = {
-                Text(
-                    if (mine) "This removes the side you added for good."
-                    else "${plainLabel(sd.label)} stays in the side list when you pick a side.",
-                )
-            },
-            confirmButton = { TextButton(onClick = { vm.removeFavSide(sd.key); unfav = null }) { Text(if (mine) "Delete" else "Remove") } },
-            dismissButton = { TextButton(onClick = { unfav = null }) { Text("Keep") } },
-        )
+        AppDialog(
+            onDismiss = { unfav = null },
+            title = if (mine) "Delete ${plainLabel(sd.label)}?" else "Remove from favorites?",
+            actions = listOf(
+                DialogAction(if (mine) "Delete" else "Remove", ActionKind.Danger) { vm.removeFavSide(sd.key); unfav = null },
+                DialogAction("Keep it") { unfav = null },
+            ),
+        ) {
+            Text(
+                if (mine) "This removes the side you added for good."
+                else "${plainLabel(sd.label)} stays in the side list when you pick a side.",
+            )
+        }
     }
 }
 
@@ -1988,7 +1969,7 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
             if (st.history.isEmpty()) {
                 item {
                     Text(
-                        "No past weeks yet. When you're done with a week, tap \"Finish week\" at the bottom of My Week to save it here.",
+                        "No past weeks yet. When you're done with a week, tap Finish week on the Week tab to save it here.",
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -2078,7 +2059,7 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
                             Text("Cooking for ${w.servings}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                             Button(onClick = {
                                 vm.repeatWeek(w)
-                                vm.message.value = "Added to My Week"
+                                vm.message.value = "Added to this week"
                             }) { Text("Repeat this week") }
                             IconButton(onClick = { confirmDelete = w }) { Icon(Icons.Filled.Delete, "Delete") }
                         }
@@ -2088,13 +2069,16 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
         }
     }
     confirmDelete?.let { w ->
-        AlertDialog(
-            onDismissRequest = { confirmDelete = null },
-            title = { Text("Delete this week?") },
-            text = { Text("This removes it from History. Your recipes and favorites are not affected.") },
-            confirmButton = { TextButton(onClick = { vm.deletePastWeek(w); confirmDelete = null }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Keep") } },
-        )
+        AppDialog(
+            onDismiss = { confirmDelete = null },
+            title = "Delete this week?",
+            actions = listOf(
+                DialogAction("Delete", ActionKind.Danger) { vm.deletePastWeek(w); confirmDelete = null },
+                DialogAction("Keep it") { confirmDelete = null },
+            ),
+        ) {
+            Text("This removes it from History. Your recipes and favorites are not affected.")
+        }
     }
 }
 
@@ -2122,7 +2106,7 @@ class SearchState {
 private fun TopIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         Modifier.padding(horizontal = 2.dp).size(48.dp, 32.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(Radius.Pill)
             .background(if (selected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -2207,12 +2191,16 @@ private fun FiltersDialog(
     filters: List<String>, onChange: (List<String>) -> Unit, onDismiss: () -> Unit,
     sale: Boolean? = null, onSale: (Boolean) -> Unit = {},
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Filters") },
-        text = {
+    AppDialog(
+        onDismiss = onDismiss,
+        title = "Filters",
+        actions = listOfNotNull(
+            DialogAction("Done", ActionKind.Primary, onClick = onDismiss),
+            if (filters.isNotEmpty() || sale == true) DialogAction("Clear all") { onChange(emptyList()); if (sale == true) onSale(false) } else null,
+        ),
+    ) {
             androidx.compose.foundation.layout.FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(Space.S),
             ) {
                 if (sale != null) {
                     FilterChip(selected = sale, onClick = { onSale(!sale) }, label = { Text("🏷️ Sale") })
@@ -2222,14 +2210,7 @@ private fun FiltersDialog(
                     FilterChipFor(key, label, on) { onChange(if (on) filters - key else filters + key) }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-        dismissButton = {
-            if (filters.isNotEmpty() || sale == true) {
-                TextButton(onClick = { onChange(emptyList()); if (sale == true) onSale(false) }) { Text("Clear all") }
-            }
-        },
-    )
+    }
 }
 
 /** Sliders icon for the Filters button. */

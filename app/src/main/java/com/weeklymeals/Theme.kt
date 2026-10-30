@@ -32,6 +32,23 @@ object Look {
     val Lime = Color(0xFFD4F25A)
     /** The other days in the app icon and opening animation. */
     val DimDay = Color(0xFF55612F)
+    val Raise = Color(0xFF222622)
+
+    // What each extra color means. Lime is only for "do this now", today, and the open tab.
+    /** Good news: under budget, you have it, savings. */
+    val Good = Color(0xFF5DCAA5)
+    /** Needs a look soon: low, past sell-by, use soon. */
+    val Warn = Color(0xFFF0B44C)
+    val WarnBg = Color(0xFF3A2C14)
+    /** Removing something, past best-by. */
+    val Danger = Color(0xFFFF6B4A)
+    val DangerBg = Color(0xFF4A1F14)
+    val DangerText = Color(0xFFFFC2B3)
+    /** Notes about this week (shared ingredients, tips). */
+    val Info = Color(0xFF6CB8FF)
+    /** King Soopers store meals. */
+    val Store = Color(0xFFC79BFF)
+    val StoreBg = Color(0xFF2A2540)
 
     /** Chunky headline font (Bricolage Grotesque). Body text stays the phone's normal font. */
     val Display = FontFamily(
@@ -53,6 +70,24 @@ object Look {
     /** A recipe's color: always the same one for the same recipe. */
     fun color(id: Int): Color = swatches[Math.floorMod(id, swatches.size)].first
     fun shade(id: Int): Color = swatches[Math.floorMod(id, swatches.size)].second
+}
+
+/** Spacing used everywhere: 16 at the page edges, gaps in steps of 4. */
+object Space {
+    val Page = 16.dp
+    val XS = 4.dp
+    val S = 8.dp
+    val M = 12.dp
+    val L = 16.dp
+    val XL = 24.dp
+}
+
+/** Four corner sizes: small chips, cards, big hero cards, and fully round pills. */
+object Radius {
+    val Chip = RoundedCornerShape(10.dp)
+    val Card = RoundedCornerShape(18.dp)
+    val Hero = RoundedCornerShape(26.dp)
+    val Pill = RoundedCornerShape(50)
 }
 
 /** Content drawn on a recipe's color block: dark text and icons instead of light ones. */
@@ -129,10 +164,10 @@ private val Type = base.copy(
 
 private val Rounded = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
+    small = RoundedCornerShape(10.dp),
     medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(30.dp),
+    large = RoundedCornerShape(26.dp),
+    extraLarge = RoundedCornerShape(26.dp),
 )
 
 @Composable

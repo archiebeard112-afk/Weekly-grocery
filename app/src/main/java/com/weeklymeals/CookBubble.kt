@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.draw.shadow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -111,12 +110,15 @@ fun CookBubble(vm: MealsViewModel, st: UserState, modifier: Modifier = Modifier,
     }
 
     if (confirm) {
-        AlertDialog(
-            onDismissRequest = { confirm = false },
-            title = { Text("Stop cooking ${r.name}?") },
-            text = { Text("The bubble goes away. Any running timers keep going.") },
-            confirmButton = { TextButton(onClick = { confirm = false; vm.stopCooking() }) { Text("Stop") } },
-            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Keep") } },
-        )
+        AppDialog(
+            onDismiss = { confirm = false },
+            title = "Stop cooking ${r.name}?",
+            actions = listOf(
+                DialogAction("Stop cooking", ActionKind.Danger) { confirm = false; vm.stopCooking() },
+                DialogAction("Keep cooking") { confirm = false },
+            ),
+        ) {
+            Text("The bubble goes away. Any running timers keep going.")
+        }
     }
 }

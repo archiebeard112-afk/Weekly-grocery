@@ -28,7 +28,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -393,18 +392,14 @@ fun CookScreen(
                 }
                 if (askRating) {
                     fun finish(v: Int) { askRating = false; vm.rate(id, v); vm.stopCooking(); onDone() }
-                    AlertDialog(
-                        onDismissRequest = { askRating = false },
-                        title = { Text("How was ${r.name}?") },
-                        text = {
-                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                                RatingChoices(null, ::finish)
-                                // Centered under the choices.
-                                TextButton(onClick = { finish(0) }, modifier = Modifier.padding(top = 12.dp)) { Text("Skip") }
-                            }
-                        },
-                        confirmButton = {},
-                    )
+                    AppDialog(
+                        onDismiss = { askRating = false },
+                        eyebrow = "Done cooking",
+                        title = "How was ${r.name}?",
+                        actions = listOf(DialogAction("Skip") { finish(0) }),
+                    ) {
+                        RatingChoices(null, ::finish)
+                    }
                 }
                 Spacer(Modifier.height(40.dp))
             }
