@@ -202,35 +202,32 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             // Same margins as Browse and Favorites.
-            contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 16.dp),
+            contentPadding = PaddingValues(start = Space.Page, end = Space.Page, top = Space.S, bottom = Space.L),
         ) {
             item(key = "header") {
-                // SHOPPING LIST over "24 items", like WEEK 43 over the dates on the Week tab.
-                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.Bottom) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "SHOPPING LIST",
-                            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Text(
-                            "${toBuy.size} item${if (toBuy.size == 1) "" else "s"}",
-                            style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 38.sp),
-                        )
-                        val meals = mealCount(st)
-                        val parts = listOfNotNull(
-                            if (meals > 0) "$meals meal${if (meals == 1) "" else "s"}" else null,
-                            if (st.snacks.isNotEmpty()) "${st.snacks.size} snack${if (st.snacks.size == 1) "" else "s"}" else null,
-                            if (st.pickedStaples.isNotEmpty()) "${st.pickedStaples.size} usual" else null,
-                            if (st.extraItems.isNotEmpty()) "${st.extraItems.size} added" else null,
-                        )
-                        Text(
-                            if (parts.isEmpty()) "Nothing yet" else parts.joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                // SHOPPING LIST over "24 items", like the Week tab's header.
+                val meals = mealCount(st)
+                val parts = listOfNotNull(
+                    if (meals > 0) "$meals meal${if (meals == 1) "" else "s"}" else null,
+                    if (st.snacks.isNotEmpty()) "${st.snacks.size} snack${if (st.snacks.size == 1) "" else "s"}" else null,
+                    if (st.pickedStaples.isNotEmpty()) "${st.pickedStaples.size} usual" else null,
+                    if (st.extraItems.isNotEmpty()) "${st.extraItems.size} added" else null,
+                )
+                PageHeader(
+                    "Shopping list", "${toBuy.size} item${if (toBuy.size == 1) "" else "s"}",
+                    sub = if (parts.isEmpty()) "Nothing yet" else parts.joinToString(" · "),
+                )
+                val add = { vm.addExtraItem(newItem); newItem = ""; focus.clearFocus() }
+                // Slim rounded bar, same as the Search bar on Browse and Favorites; the ⋮ menu beside it.
+                Row(Modifier.fillMaxWidth().padding(top = Space.M), verticalAlignment = Alignment.CenterVertically) {
+                    CompactSearch(
+                        newItem, { newItem = it },
+                        Modifier.weight(1f),
+                        placeholder = "Add an item",
+                        icon = Icons.Filled.Add,
+                        onDone = { add() },
+                    )
+                    Spacer(Modifier.width(Space.S))
                     Box {
                         IconButton(
                             onClick = { menu = true },
@@ -259,15 +256,6 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                         }
                     }
                 }
-                val add = { vm.addExtraItem(newItem); newItem = ""; focus.clearFocus() }
-                // Slim rounded bar, same as the Search bar on Browse and Favorites.
-                CompactSearch(
-                    newItem, { newItem = it },
-                    Modifier.padding(top = 12.dp),
-                    placeholder = "Add an item",
-                    icon = Icons.Filled.Add,
-                    onDone = { add() },
-                )
                 // Dropdown of matches while typing.
                 if (newItem.trim().length >= 2) {
                     Surface(
@@ -335,7 +323,7 @@ fun ShopScreen(vm: MealsViewModel, st: UserState, listState: LazyListState, open
                 item(key = "h_$aisle") {
                     // "Produce  3 ............ $9.47"
                     Row(
-                        Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 18.dp, bottom = 6.dp),
+                        Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 6.dp),
                         verticalAlignment = Alignment.Bottom,
                     ) {
                         Text(

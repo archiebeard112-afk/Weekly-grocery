@@ -48,6 +48,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Refresh
@@ -86,6 +88,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
@@ -306,23 +310,22 @@ fun App(vm: MealsViewModel) {
         ) { viewing = null }
     } else if (overlay == Overlay.AddRecipe) {
         AddRecipeScreen(vm, linkMode = addLinkMode, startLink = addFromLink) { overlay = Overlay.None; addFromLink = null }
+    } else if (overlay != Overlay.None) {
+        // Kitchen, History and Settings are full pages with a back arrow (no tabs at the bottom).
+        Box(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding().navigationBarsPadding(),
+        ) {
+            when (overlay) {
+                Overlay.Pantry -> PantryScreen(vm, st) { overlay = Overlay.None }
+                Overlay.History -> HistoryScreen(vm, st) { overlay = Overlay.None }
+                else -> SettingsScreen(vm, st) { overlay = Overlay.None }
+            }
+        }
     } else {
         Scaffold(
             // Ignore the keyboard here so it slides over the tabs instead of shrinking them.
             contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-            topBar = {
-                TopAppBar(
-                    title = { Text("Thyme Table") },
-                    actions = {
-                        // Tap to open below the bar (highlighted); tap again to close.
-                        val toggle: (Overlay) -> Unit = { o -> overlay = if (overlay == o) Overlay.None else o }
-                        TopIcon(PantryIcon, "Kitchen", overlay == Overlay.Pantry) { toggle(Overlay.Pantry) }
-                        TopIcon(Icons.Filled.List, "History", overlay == Overlay.History) { toggle(Overlay.History) }
-                        TopIcon(Icons.Filled.Settings, "Settings", overlay == Overlay.Settings) { toggle(Overlay.Settings) }
-                        Spacer(Modifier.width(4.dp))
-                    },
-                )
-            },
             bottomBar = {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
                     // The open tab sits in a lime pill.
@@ -355,15 +358,20 @@ fun App(vm: MealsViewModel) {
                 }
             },
         ) { pad ->
+            // Kitchen, History and Settings: at the right end of each page's header.
+            val topIcons: @Composable () -> Unit = {
+                Row(Modifier.padding(start = Space.XS)) {
+                    TopIcon(PantryIcon, "Kitchen") { overlay = Overlay.Pantry }
+                    TopIcon(Icons.Filled.List, "History") { overlay = Overlay.History }
+                    TopIcon(Icons.Filled.Settings, "Settings") { overlay = Overlay.Settings }
+                }
+            }
+            androidx.compose.runtime.CompositionLocalProvider(LocalTopIcons provides topIcons) {
             Column(
-                Modifier.padding(pad).fillMaxSize()
-                    .then(if (overlay == Overlay.None) Modifier.keepFullHeight() else Modifier),
+                Modifier.padding(pad).statusBarsPadding().fillMaxSize().keepFullHeight(),
             ) {
-                when {
-                    overlay == Overlay.Pantry -> PantryScreen(vm, st) { overlay = Overlay.None }
-                    overlay == Overlay.History -> HistoryScreen(vm, st) { overlay = Overlay.None }
-                    overlay == Overlay.Settings -> SettingsScreen(vm, st) { overlay = Overlay.None }
-                    else -> when (tab) {
+                run {
+                    when (tab) {
                     0 -> WeekScreen(
                         vm, st, onOpen = { viewing = it }, onBrowse = { vm.setBrowseScope(BrowseScope.APP); tab = 1 }, flashId = flashId,
                         onLeftovers = { vm.setBrowseScope(BrowseScope.APP); pendingFilter = "leftovers"; tab = 1 },
@@ -379,6 +387,7 @@ fun App(vm: MealsViewModel) {
                     else -> ShopScreen(vm, st, shopListState) { overlay = Overlay.Settings }
                     }
                 }
+            }
             }
         }
     }
@@ -798,32 +807,29 @@ private fun BrowseScreen(
     var showFilters by remember { mutableStateOf(false) }
     val searching = query.isNotBlank() || filters.isNotEmpty()
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                when {
-                    st.browseScope == BrowseScope.DESSERT -> "Desserts"
-                    st.browseScope == BrowseScope.SIDE -> "Sides"
-                    st.browseScope != BrowseScope.APP -> "Search"
-                    searching -> "Search"
-                    saleOnly -> "On sale"
-                    else -> "Meals"
-                },
-                style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f),
+    Column(Modifier.fillMaxSize().padding(horizontal = Space.Page, vertical = Space.S)) {
+        PageHeader(
+            "Browse",
+            when {
+                st.browseScope == BrowseScope.APP && searching -> "Search"
+                st.browseScope == BrowseScope.APP && saleOnly -> "On sale"
+                else -> BrowseScope.label(st.browseScope)
+            },
+        )
+        // Where to search, one at a time (menu inside the search bar): this app's recipes, online recipes, or King Soopers products.
+        // Filters sit right of the search bar (sides have no cooking methods, prices or sales, so no Filters there).
+        val scopeKey = st.browseScope
+        Row(Modifier.fillMaxWidth().padding(top = Space.S, bottom = Space.XS), verticalAlignment = Alignment.CenterVertically) {
+            CompactSearch(
+                query, { query = it }, Modifier.weight(1f),
+                placeholder = BrowseScope.hint(scopeKey),
+                trailing = { ScopeMenu(scopeKey) { vm.setBrowseScope(it) } },
             )
-            // Filters live behind this button (swipe the tiles for more ideas).
-            // Sides have no cooking methods, prices to filter by or sales, so no Filters there.
             if (st.browseScope != BrowseScope.SIDE) {
-                FiltersButton(filters.size + if (saleOnly) 1 else 0, showLabel = true) { showFilters = true }
+                Spacer(Modifier.width(Space.S))
+                FiltersButton(filters.size + if (saleOnly) 1 else 0, showLabel = false) { showFilters = true }
             }
         }
-        // Where to search, one at a time (menu inside the search bar): this app's recipes, online recipes, or King Soopers products.
-        val scopeKey = st.browseScope
-        CompactSearch(
-            query, { query = it }, Modifier.padding(top = 6.dp, bottom = 4.dp),
-            placeholder = BrowseScope.hint(scopeKey),
-            trailing = { ScopeMenu(scopeKey) { vm.setBrowseScope(it) } },
-        )
         if (showFilters) {
             FiltersDialog(
                 filters, onChange = { filters = it }, onDismiss = { showFilters = false },
@@ -1030,6 +1036,19 @@ private fun <T> SwipeSets(
             }
         }
         repeat(5 - (shown.take(10).size + 1) / 2) { Spacer(Modifier.weight(1f)) }
+        // So it's clear there are more: arrows (tap them, or swipe) around a short hint.
+        Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { slide(false) }, enabled = canBack, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Filled.KeyboardArrowLeft, "Previous ideas")
+            }
+            Text(
+                "Swipe for more ideas", style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { slide(true) }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Filled.KeyboardArrowRight, "More ideas")
+            }
+        }
     }
 }
 
@@ -1047,82 +1066,97 @@ private fun RecipeTile(
     leftoverSave: Double = 0.0,
 ) {
     val inWeek = r.id in st.week
-    // Each recipe is a block of its own color; a lime ring means it's in your week.
+    // Each recipe is a block of its own color; a dark "IN WEEK · WED" chip means it's in your week.
+    val day = if (inWeek) Logic.dayPlan(st).dayOf(r.id) else null
     Card(
         colors = CardDefaults.cardColors(containerColor = Look.color(r.id), contentColor = Look.Ink),
-        border = if (inWeek) androidx.compose.foundation.BorderStroke(3.dp, Look.Lime) else null,
         modifier = modifier.combinedClickable(onClick = onOpen, onLongClick = onHold),
     ) {
       Box(Modifier.fillMaxSize()) {
       OnColor {
         Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 3.dp, end = 2.dp, bottom = 1.dp)) {
-            // Icon-only badges so they always fit (full labels are on the recipe page).
-            // At most 2 badges: on sale, then cooking method, then Budget. A badge you're
+            // At most 2 tags: in your week, on sale, then cooking method, then Budget. A tag you're
             // filtering by always gets a spot, so you can see why the meal matched.
             val all = (if (saleSave >= st.saleMin) listOf("sale" to "Sale " + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
                 (if (leftover) listOf("leftovers" to "Leftovers") else emptyList()) +
                 Logic.badgeKeys(r, cost?.let { it.total <= st.budgetMax } ?: false)
-            val keep = (all.filter { it.first in filters } + all).distinct().take(2).toSet()
-            val badges = all.filter { it in keep }.map { it.second }
-            // Every card has the same lines in the same spots: name, badges (empty if none),
-            // calories and price, then time and buttons at the bottom.
-            Column(Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp, end = 8.dp)) {
-                    Text(
-                        r.name,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 18.sp),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
+            val week = if (inWeek) listOf("week" to ("In week" + (day?.let { " · " + Logic.DAY_SHORT[it] } ?: ""))) else emptyList()
+            val keep = (week + all.filter { it.first in filters } + all).distinct().take(2).toSet()
+            val badges = (week + all).filter { it in keep }
+            // Every card has the same lines in the same spots: tags (empty if none), the name (up to
+            // two lines), calories and price, then time and buttons at the bottom.
+            Column(Modifier.weight(1f).fillMaxWidth().padding(top = 5.dp, end = 8.dp)) {
                     Row(
-                        Modifier.padding(top = 2.dp).height(17.dp),
+                        Modifier.heightIn(min = 18.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        badges.forEach { Badge(it, small = true) }
+                        badges.forEach { (key, label) -> Badge(label, small = true, dark = key == "week") }
                     }
-                    // Calories, then what you'd pay for this meal (bold at or under your budget line).
-                    // Shrinks a little when it doesn't fit (1,000+ cal), so "pantry" is never cut off.
-                    var infoSize by remember(calories, cost?.total, cost?.saved) { mutableStateOf(11.sp) }
-                    Box(Modifier.padding(top = 2.dp).height(15.dp)) {
-                        Text(
-                            buildAnnotatedString {
-                                calories?.let {
-                                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("%,d cal".format(it)) }
-                                    if (cost != null) append("  ·  ")
-                                }
-                                cost?.let { c ->
-                                    val cheap = c.total <= st.budgetMax
-                                    withStyle(SpanStyle(color = if (cheap) Look.Ink else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (cheap) FontWeight.Bold else FontWeight.Normal)) {
-                                        append(Sales.money(c.total))
-                                    }
-                                    if (c.saved >= 0.5) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(" · pantry") }
-                                }
-                            },
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = infoSize, lineHeight = 14.sp), maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            onTextLayout = { if (it.isLineEllipsized(0) && infoSize.value > 8f) infoSize = (infoSize.value - 0.5f).sp },
-                        )
-                    }
+                    Text(
+                        r.name,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 17.sp),
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 3.dp),
+                    )
+                    // Calories, then what you'd pay for this meal (bold at or under your budget line),
+                    // then the Kitchen icon when things you have cover part of it.
+                    TileInfo(calories, cost, st.budgetMax, Modifier.padding(top = 2.dp))
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     Logic.fmtShort(Logic.cookMinutes(r)),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
-                // Compact buttons leave room above for name, calories/badges and price.
+                // Compact buttons (the touch area is still the full 48dp).
                 FavButton(r, st, toggleFav, Modifier.size(32.dp))
-                IconButton(onClick = onAdd, enabled = !inWeek, modifier = Modifier.size(32.dp)) {
+                IconButton(
+                    onClick = onAdd, enabled = !inWeek,
+                    colors = if (inWeek) androidx.compose.material3.IconButtonDefaults.iconButtonColors(
+                        disabledContainerColor = Look.Ink, disabledContentColor = Look.Lime,
+                    ) else androidx.compose.material3.IconButtonDefaults.iconButtonColors(),
+                    modifier = Modifier.size(32.dp),
+                ) {
                     Icon(
                         if (inWeek) Icons.Filled.Check else Icons.Filled.Add,
                         contentDescription = if (inWeek) "In your week" else "Add to week",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (inWeek) Look.Lime else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
         }
       }
       }
+    }
+}
+
+/** A tile's calories · price line, with the Kitchen icon when things you have cover part of it. Never shrinks. */
+@Composable
+private fun TileInfo(calories: Int?, cost: MealsViewModel.MealCost?, budgetMax: Double, modifier: Modifier = Modifier) {
+    Row(modifier.heightIn(min = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            buildAnnotatedString {
+                calories?.let {
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("%,d cal".format(it)) }
+                    if (cost != null) append(" · ")
+                }
+                cost?.let { c ->
+                    val cheap = c.total <= budgetMax
+                    withStyle(SpanStyle(color = if (cheap) Look.Ink else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (cheap) FontWeight.Bold else FontWeight.Normal)) {
+                        append(Sales.money(c.total))
+                    }
+                }
+            },
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp, lineHeight = 14.sp, fontWeight = FontWeight.Normal),
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        if (cost != null && cost.saved >= 0.5) {
+            Icon(PantryIcon, "Uses things you have", Modifier.padding(start = 4.dp).size(13.dp), tint = Look.Ink)
+        }
     }
 }
 
@@ -1299,20 +1333,7 @@ private fun BrowseSideTile(
                     Row(Modifier.padding(top = 2.dp).height(17.dp), verticalAlignment = Alignment.CenterVertically) {
                         Badge("Side", small = true)
                     }
-                    Text(
-                        buildAnnotatedString {
-                            calories?.let {
-                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("%,d cal".format(it)) }
-                                if (cost != null) append("  ·  ")
-                            }
-                            cost?.let { c ->
-                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append(Sales.money(c.total)) }
-                                if (c.saved >= 0.5) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(" · pantry") }
-                            }
-                        },
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 14.sp), maxLines = 1,
-                        overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp),
-                    )
+                    TileInfo(calories, cost, budgetMax, Modifier.padding(top = 2.dp))
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.weight(1f))
@@ -1394,16 +1415,15 @@ private fun SaleSection(vm: MealsViewModel, st: UserState, r: Recipe) {
 
 /** A small rounded label like "🍲 Crock-Pot" or "💲 Budget". */
 @Composable
-internal fun Badge(text: String, small: Boolean) {
+internal fun Badge(text: String, small: Boolean, dark: Boolean = false) {
     Text(
         text,
-        // Small (tile) badges are compact so the price line always fits.
-        style = if (small) MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 13.sp)
+        style = if (small) MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold)
         else MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSecondaryContainer,
+        color = if (dark) Look.Lime else MaterialTheme.colorScheme.onSecondaryContainer,
         maxLines = 1,
         modifier = Modifier
-            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(50))
+            .background(if (dark) Look.Ink else MaterialTheme.colorScheme.secondaryContainer, if (small) RoundedCornerShape(7.dp) else Radius.Pill)
             .padding(horizontal = if (small) 5.dp else 10.dp, vertical = if (small) 0.dp else 4.dp),
     )
 }
@@ -1673,11 +1693,9 @@ internal fun CompactSearch(
             )
         }
         if (query.isNotEmpty()) {
-            Icon(
-                Icons.Filled.Close, "Clear",
-                Modifier.size(18.dp).clickable { onChange("") },
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Box(Modifier.size(36.dp).clip(CircleShape).clickable { onChange("") }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Close, "Clear", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         trailing?.invoke()
     }
@@ -1775,36 +1793,29 @@ private fun FavoritesScreen(
     var adding by remember { mutableStateOf<Side?>(null) }
     var addSize by remember { mutableIntStateOf(Logic.SIDE_NORMAL) }
     // Same layout and spacing as Browse so the title, search bar and tiles line up.
-    Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Favorites", style = MaterialTheme.typography.titleLarge)
-            if (total > 0) {
-                Text(
-                    if (count == total) "$total" else "$count of $total",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            // Filters (icon only, to leave room), then Add recipe.
+    Column(Modifier.fillMaxSize().padding(horizontal = Space.Page, vertical = Space.S)) {
+        PageHeader(
+            "Favorites",
+            when {
+                total == 0 -> "Nothing saved yet"
+                count == total -> "$total saved"
+                else -> "$count of $total"
+            },
+        )
+        // Search (with the All / Meals / Sides / Desserts menu), then Filters and Add a recipe.
+        Row(Modifier.fillMaxWidth().padding(top = Space.S, bottom = Space.XS), verticalAlignment = Alignment.CenterVertically) {
+            CompactSearch(
+                query, { query = it }, Modifier.weight(1f),
+                placeholder = FAV_HINTS[kind] ?: "Search favorites",
+                trailing = { KindMenu(kind) { vm.setFavKind(it) } },
+            )
+            Spacer(Modifier.width(Space.S))
             FiltersButton(filters.size, showLabel = false) { showFilters = true }
-            Spacer(Modifier.width(6.dp))
-            FilledTonalButton(
-                onClick = onAdd,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                modifier = Modifier.height(34.dp),
-            ) {
-                Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Add recipe")
+            Spacer(Modifier.width(Space.S))
+            FilledTonalButton(onClick = onAdd, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(42.dp)) {
+                Icon(Icons.Filled.Add, "Add a recipe", Modifier.size(22.dp))
             }
         }
-        CompactSearch(
-            query, { query = it }, Modifier.padding(top = 6.dp, bottom = 4.dp),
-            placeholder = FAV_HINTS[kind] ?: "Search favorites",
-            trailing = { KindMenu(kind) { vm.setFavKind(it) } },
-        )
         if (showFilters) FiltersDialog(filters, onChange = { filters = it }, onDismiss = { showFilters = false })
         if (total == 0) {
             Text(
@@ -1960,11 +1971,15 @@ private fun HistoryScreen(vm: MealsViewModel, st: UserState, onBack: () -> Unit)
         LazyColumn(
             Modifier.padding(pad).fillMaxSize(),
             // Same margins and title spot as the tabs.
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+            contentPadding = PaddingValues(horizontal = Space.Page, vertical = Space.S),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {
-                Text("History", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 4.dp))
+                PageHeader(
+                    "History",
+                    when (st.history.size) { 0 -> "No weeks yet"; 1 -> "1 week"; else -> "${st.history.size} weeks" },
+                    onBack = onBack,
+                )
             }
             if (st.history.isEmpty()) {
                 item {
@@ -2101,20 +2116,14 @@ class SearchState {
     val filters = androidx.compose.runtime.mutableStateOf(listOf<String>())
 }
 
-/** A top-bar icon; while its page is open it sits in a highlight pill like the bottom tabs. */
+/** A header icon (Kitchen, History, Settings): a 44dp round button. */
 @Composable
-private fun TopIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+private fun TopIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     Box(
-        Modifier.padding(horizontal = 2.dp).size(48.dp, 32.dp)
-            .clip(Radius.Pill)
-            .background(if (selected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent)
-            .clickable(onClick = onClick),
+        Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            icon, contentDescription = label,
-            tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-        )
+        Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -2170,9 +2179,9 @@ private fun FiltersButton(count: Int, showLabel: Boolean, onClick: () -> Unit) {
     FilledTonalButton(
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-        modifier = Modifier.height(34.dp),
+        modifier = Modifier.height(42.dp),
     ) {
-        Icon(TuneIcon, null, Modifier.size(18.dp))
+        Icon(TuneIcon, "Filters", Modifier.size(20.dp))
         if (showLabel) {
             Spacer(Modifier.width(4.dp))
             Text("Filters")

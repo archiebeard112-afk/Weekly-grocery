@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material.icons.filled.ArrowBack
 
 /** How a pop-up button looks: lime (the thing to do), dark (the other choice), or red (removes something). */
 enum class ActionKind { Primary, Secondary, Danger }
@@ -160,4 +161,45 @@ fun DialogNote(text: String, modifier: Modifier = Modifier) {
         text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.padding(top = Space.S),
     )
+}
+
+/** The Kitchen / History / Settings buttons, shown at the right of each main page's header. */
+val LocalTopIcons = androidx.compose.runtime.staticCompositionLocalOf<(@Composable () -> Unit)?> { null }
+
+/**
+ * The header every page uses: a lime eyebrow (WEEK, BROWSE...), a big headline, and an optional
+ * grey line under it. Main tabs show the Kitchen / History / Settings buttons on the right;
+ * pages opened from them show a back arrow instead.
+ */
+@Composable
+fun PageHeader(
+    eyebrow: String, title: String, modifier: Modifier = Modifier, sub: String? = null,
+    onBack: (() -> Unit)? = null,
+    trailing: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
+) {
+    androidx.compose.foundation.layout.Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        if (onBack != null) {
+            androidx.compose.material3.IconButton(onClick = onBack, modifier = Modifier.padding(end = Space.XS).padding(top = 6.dp).size(40.dp)) {
+                androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.ArrowBack, "Back")
+            }
+        }
+        Column(Modifier.weight(1f).padding(top = 2.dp)) {
+            Text(
+                eyebrow.uppercase(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.primary, maxLines = 1,
+            )
+            Text(
+                title, style = MaterialTheme.typography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 36.sp),
+                maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            if (sub != null) {
+                Text(
+                    sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+        }
+        trailing()
+        if (onBack == null) LocalTopIcons.current?.invoke()
+    }
 }
