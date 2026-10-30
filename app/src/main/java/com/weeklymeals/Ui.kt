@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material.icons.filled.ArrowBack
 
 /** How a pop-up button looks: lime (the thing to do), dark (the other choice), or red (removes something). */
 enum class ActionKind { Primary, Secondary, Danger }
