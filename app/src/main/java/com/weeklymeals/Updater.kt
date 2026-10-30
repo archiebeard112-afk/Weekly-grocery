@@ -82,7 +82,7 @@ object Updater {
     /** True if Android lets this app open the installer (asked once per phone). */
     fun canInstall(ctx: Context): Boolean = ctx.packageManager.canRequestPackageInstalls()
 
-    /** Opens the "Install unknown apps" switch for Weekly Meals. */
+    /** Opens the "Install unknown apps" switch for Thyme Table. */
     fun openInstallPermission(ctx: Context) {
         ctx.startActivity(
             Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))

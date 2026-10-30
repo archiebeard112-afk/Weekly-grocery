@@ -1,21 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- App icon: a shopping cart carrying the week's calendar (today in lime). Drawn in a
-     120 x 120 box and scaled into the 108 x 108 adaptive-icon canvas, inside its safe zone. -->
+<!-- Thyme Table icon: the week's calendar, with tonight as a lime chip holding a thyme leaf
+     (the leaf is cut out of the chip). Drawn in a 100 x 100 box and scaled into the
+     108 x 108 adaptive-icon canvas, inside its safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:scaleX="0.6" android:scaleY="0.6" android:translateX="18" android:translateY="23">
-        <path android:pathData="M10,24 H22 L34,76 H90 L99,36" android:strokeColor="#FFD4F25A" android:strokeWidth="7.5" android:strokeLineCap="round" android:strokeLineJoin="round"/>
-        <path android:pathData="M47,36 H77 A6,6 0 0 1 83,42 V62 A6,6 0 0 1 77,68 H47 A6,6 0 0 1 41,62 V42 A6,6 0 0 1 47,36 Z" android:fillColor="#FF1A1D19"/>
-        <path android:pathData="M47,36 H77 A6,6 0 0 1 83,42 V62 A6,6 0 0 1 77,68 H47 A6,6 0 0 1 41,62 V42 A6,6 0 0 1 47,36 Z" android:strokeColor="#FFF1EFE8" android:strokeWidth="3"/>
-        <path android:pathData="M46,36 H78 A5,5 0 0 1 83,41 V42 A5,5 0 0 1 78,47 H46 A5,5 0 0 1 41,42 V41 A5,5 0 0 1 46,36 Z" android:fillColor="#FFF1EFE8"/>
-        <path android:pathData="M41,43 H83 V47 H41 Z" android:fillColor="#FFF1EFE8"/>
-        <path android:pathData="M51,30 H51 A2,2 0 0 1 53,32 V38 A2,2 0 0 1 51,40 H51 A2,2 0 0 1 49,38 V32 A2,2 0 0 1 51,30 Z" android:fillColor="#FFF1EFE8"/>
-        <path android:pathData="M73,30 H73 A2,2 0 0 1 75,32 V38 A2,2 0 0 1 73,40 H73 A2,2 0 0 1 71,38 V32 A2,2 0 0 1 73,30 Z" android:fillColor="#FFF1EFE8"/>
-        <path android:pathData="M48.5,54 A2.5,2.5 0 1 0 53.5,54 A2.5,2.5 0 1 0 48.5,54 Z M56.5,54 A2.5,2.5 0 1 0 61.5,54 A2.5,2.5 0 1 0 56.5,54 Z M64.5,54 A2.5,2.5 0 1 0 69.5,54 A2.5,2.5 0 1 0 64.5,54 Z M72.5,54 A2.5,2.5 0 1 0 77.5,54 A2.5,2.5 0 1 0 72.5,54 Z M48.5,61 A2.5,2.5 0 1 0 53.5,61 A2.5,2.5 0 1 0 48.5,61 Z M56.5,61 A2.5,2.5 0 1 0 61.5,61 A2.5,2.5 0 1 0 56.5,61 Z" android:fillColor="#FF5D645A"/>
-        <path android:pathData="M63.4,61 A3.6,3.6 0 1 0 70.6,61 A3.6,3.6 0 1 0 63.4,61 Z" android:fillColor="#FFD4F25A"/>
-        <path android:pathData="M37,94 A7,7 0 1 0 51,94 A7,7 0 1 0 37,94 Z M75,94 A7,7 0 1 0 89,94 A7,7 0 1 0 75,94 Z" android:fillColor="#FFD4F25A"/>
+    <group android:scaleX="0.8" android:scaleY="0.8" android:translateX="14" android:translateY="14">
+        <path android:pathData="M32,26 H68 A12,12 0 0 1 80,38 V68 A12,12 0 0 1 68,80 H32 A12,12 0 0 1 20,68 V38 A12,12 0 0 1 32,26 Z" android:strokeColor="#FFD4F25A" android:strokeWidth="5"/>
+        <path android:pathData="M36,18 V30 M64,18 V30" android:strokeColor="#FFD4F25A" android:strokeWidth="5" android:strokeLineCap="round"/>
+        <path android:pathData="M29,44 A3,3 0 1 0 35,44 A3,3 0 1 0 29,44 Z M41,44 A3,3 0 1 0 47,44 A3,3 0 1 0 41,44 Z M53,44 A3,3 0 1 0 59,44 A3,3 0 1 0 53,44 Z M65,44 A3,3 0 1 0 71,44 A3,3 0 1 0 65,44 Z M29,56 A3,3 0 1 0 35,56 A3,3 0 1 0 29,56 Z M41,56 A3,3 0 1 0 47,56 A3,3 0 1 0 41,56 Z M65,56 A3,3 0 1 0 71,56 A3,3 0 1 0 65,56 Z M29,68 A3,3 0 1 0 35,68 A3,3 0 1 0 29,68 Z M41,68 A3,3 0 1 0 47,68 A3,3 0 1 0 41,68 Z M53,68 A3,3 0 1 0 59,68 A3,3 0 1 0 53,68 Z" android:fillColor="#FF55612F"/>
+        <path android:pathData="M53.5,49 H58.5 A4.5,4.5 0 0 1 63,53.5 V58.5 A4.5,4.5 0 0 1 58.5,63 H53.5 A4.5,4.5 0 0 1 49,58.5 V53.5 A4.5,4.5 0 0 1 53.5,49 Z M51.00,59.80 Q52.72,52.74 60.98,52.28 Q58.26,60.09 51.00,59.80 Z" android:fillColor="#FFD4F25A" android:fillType="evenOdd"/>
     </group>
 </vector>

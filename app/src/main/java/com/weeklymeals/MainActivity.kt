@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
             intent.removeExtra(CookOverlay.EXTRA_OPEN_COOK)
             return
         }
-        // Share → Weekly Meals from a browser: import the recipe link.
+        // Share → Thyme Table from a browser: import the recipe link.
         if (intent?.action == Intent.ACTION_SEND) {
             intent.getStringExtra(Intent.EXTRA_TEXT)?.let { Importer.findUrl(it) }?.let { vm.sharedLink.value = it }
             return
