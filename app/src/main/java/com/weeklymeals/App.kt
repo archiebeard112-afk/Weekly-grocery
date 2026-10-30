@@ -1113,7 +1113,7 @@ private fun RecipeTile(
       FitTileText {
       Box(Modifier.fillMaxSize()) {
       OnColor {
-        Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 6.dp, end = 2.dp)) {
+        Column(Modifier.fillMaxSize().padding(start = 12.dp, top = 4.dp, end = 2.dp)) {
             // At most 2 tags: in your week, on sale, then cooking method, then Budget. A tag you're
             // filtering by always gets a spot, so you can see why the meal matched.
             val all = (if (saleSave >= st.saleMin) listOf("sale" to "Sale " + Sales.money(saleSave).substringBefore(".")) else emptyList()) +
@@ -1122,42 +1122,42 @@ private fun RecipeTile(
             val week = if (inWeek) listOf("week" to ("In week" + (day?.let { " · " + Logic.DAY_SHORT[it] } ?: ""))) else emptyList()
             val keep = (week + all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = (week + all).filter { it in keep }
-            // Every card has the same lines in the same spots: tags (empty if none), the name (up to
-            // two lines), calories and price, then time and buttons at the bottom.
+            // Every card has the same lines in the same spots: the name (two lines tall), tags
+            // (empty if none), calories and price, then time and buttons at the bottom.
             Column(Modifier.weight(1f).fillMaxWidth().padding(end = 8.dp)) {
+                    Text(
+                        r.name,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, lineHeight = 18.sp),
+                        // Always two lines tall, so the tags and calories line sit in the same spot on every tile.
+                        minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(bottom = 1.dp),
+                    )
                     Row(
-                        Modifier.heightIn(min = 18.dp),
+                        Modifier.heightIn(min = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         badges.forEach { (key, label) -> Badge(label, small = true, dark = key == "week") }
                     }
-                    Text(
-                        r.name,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 17.sp),
-                        // Always two lines tall, so the calories line sits in the same spot on every tile.
-                        minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 1.dp),
-                    )
                     // Calories, then what you'd pay for this meal (bold at or under your budget line),
                     // then the Kitchen icon when things you have cover part of it.
                     TileInfo(calories, cost, st.budgetMax)
             }
-            Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().height(28.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     Logic.fmtShort(Logic.cookMinutes(r)),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
                 // Compact buttons (the touch area is still the full 48dp).
-                FavButton(r, st, toggleFav, Modifier.size(30.dp))
+                FavButton(r, st, toggleFav, Modifier.size(28.dp))
                 IconButton(
                     onClick = onAdd, enabled = !inWeek,
                     colors = if (inWeek) androidx.compose.material3.IconButtonDefaults.iconButtonColors(
                         disabledContainerColor = Look.Ink, disabledContentColor = Look.Lime,
                     ) else androidx.compose.material3.IconButtonDefaults.iconButtonColors(),
-                    modifier = Modifier.size(30.dp),
+                    modifier = Modifier.size(28.dp),
                 ) {
                     Icon(
                         if (inWeek) Icons.Filled.Check else Icons.Filled.Add,
@@ -1183,9 +1183,9 @@ private fun RecipeTile(
 private fun FitTileText(content: @Composable () -> Unit) {
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
         val d = androidx.compose.ui.platform.LocalDensity.current
-        // Fixed parts: 6dp top, 18dp tag row, 1dp gap, 30dp bottom row, 2dp spare.
-        // Text parts: name 2 x 17sp, calories line 14sp.
-        val fit = if (maxHeight == androidx.compose.ui.unit.Dp.Infinity) d.fontScale else (maxHeight.value - 57f) / 48f
+        // Fixed parts: 4dp top, 1dp gap, 16dp tag row, 28dp bottom row, 2dp spare.
+        // Text parts: name 2 x 18sp, calories line 15sp.
+        val fit = if (maxHeight == androidx.compose.ui.unit.Dp.Infinity) d.fontScale else (maxHeight.value - 51f) / 51f
         val scale = minOf(d.fontScale, fit).coerceAtLeast(0.75f)
         androidx.compose.runtime.CompositionLocalProvider(
             androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(d.density, scale),
@@ -1210,7 +1210,7 @@ private fun TileInfo(calories: Int?, cost: MealsViewModel.MealCost?, budgetMax: 
                     }
                 }
             },
-            style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp, lineHeight = 14.sp, fontWeight = FontWeight.Normal),
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp, lineHeight = 15.sp, fontWeight = FontWeight.Normal),
             maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
