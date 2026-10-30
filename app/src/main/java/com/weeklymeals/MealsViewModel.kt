@@ -973,9 +973,10 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Cooking timers --------------------------------------------------------
 
     fun startTimer(key: String, label: String, minutes: Int) {
-        val end = System.currentTimeMillis() + minutes * 60_000L
+        val now = System.currentTimeMillis()
+        val end = now + minutes * 60_000L
         Timers.schedule(getApplication(), key, label, end)
-        edit { it.copy(timers = it.timers + (key to end)) }
+        edit { it.copy(timers = it.timers + (key to end), timerStarts = it.timerStarts + (key to now)) }
     }
 
     // ---- Cooking bubble ---------------------------------------------------------
@@ -1012,7 +1013,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun stopTimer(key: String) {
         Timers.cancel(getApplication(), key)
-        edit { it.copy(timers = it.timers - key) }
+        edit { it.copy(timers = it.timers - key, timerStarts = it.timerStarts - key) }
     }
 
     fun setServings(n: Int) = edit { it.copy(servings = n.coerceIn(1, 12)) }
@@ -1922,6 +1923,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             s.copy(
                 kroger = s.kroger.copy(accessToken = "", refreshToken = "", expiresAt = 0L, pendingState = ""),
                 timers = emptyMap(),
+                timerStarts = emptyMap(),
             ),
         )
     }

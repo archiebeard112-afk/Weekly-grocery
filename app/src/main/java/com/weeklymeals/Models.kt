@@ -92,6 +92,8 @@ data class UserState(
     val history: List<PastWeek> = emptyList(),
     /** Running cooking timers: key -> time it ends (milliseconds). */
     val timers: Map<String, Long> = emptyMap(),
+    /** When each running timer was started (for the cook bubble's ring). */
+    val timerStarts: Map<String, Long> = emptyMap(),
     /** Snacks picked for this week (by name). */
     val snacks: Set<String> = emptySet(),
     /** Snacks picked last week, for quick re-adding. */

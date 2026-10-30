@@ -9,8 +9,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Canvas
+import android.graphics.Outline
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -21,14 +22,14 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
-import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.ResourcesCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,7 +61,7 @@ object CookOverlay {
     val appVisible = MutableStateFlow(true)
 
     /** What's cooking, or null when you're not. */
-    data class Info(val id: Int, val name: String, val ends: List<Long>)
+    data class Info(val id: Int, val name: String, val ends: List<Long>, val nextStart: Long? = null)
     val info = MutableStateFlow<Info?>(null)
 
     /** Recipe the floating bubble was hidden for (by holding it). */
@@ -109,7 +110,7 @@ class CookBubbleService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var wm: WindowManager
     private var bubble: View? = null
-    private var pill: TextView? = null
+    private var ring: RingView? = null
     private var params: WindowManager.LayoutParams? = null
     // The mini cook window that opens from the bubble.
     private var panel: View? = null
@@ -134,7 +135,7 @@ class CookBubbleService : Service() {
             var blink = false
             while (true) {
                 blink = !blink
-                updatePill(blink)
+                updateRing(blink)
                 delay(500)
             }
         }
@@ -187,28 +188,17 @@ class CookBubbleService : Service() {
     @SuppressLint("ClickableViewAccessibility")
     private fun showBubble() {
         if (bubble != null) return
-        val label = TextView(this).apply {
-            textSize = 12f
-            setTextColor(0xFFF1EFE8.toInt())
-            setPadding(dp(8), dp(2), dp(8), dp(2))
-            gravity = Gravity.CENTER
-            // Same-width digits so the pill doesn't jiggle as it counts down.
-            fontFeatureSettings = "tnum"
-            visibility = View.GONE
-        }
-        val icon = ImageView(this).apply {
-            setImageResource(R.drawable.ic_cook_bubble)
+        val ringView = RingView(this).apply {
             elevation = dp(6).toFloat()
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) = outline.setOval(0, 0, view.width, view.height)
+            }
         }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            // Pill sized to its text and centered over the pot (not stretched across the bubble).
-            addView(label, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { gravity = Gravity.CENTER_HORIZONTAL })
-            addView(icon, LinearLayout.LayoutParams(dp(56), dp(56)).apply { topMargin = dp(4) })
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+            addView(ringView, LinearLayout.LayoutParams(dp(56), dp(56)))
+            setPadding(dp(8), dp(8), dp(8), dp(8))
         }
         val metrics = resources.displayMetrics
         val p = WindowManager.LayoutParams(
@@ -261,8 +251,8 @@ class CookBubbleService : Service() {
             true
         }
         runCatching { wm.addView(box, p) }.onSuccess {
-            bubble = box; pill = label; params = p
-            updatePill(false)
+            bubble = box; ring = ringView; params = p
+            updateRing(false)
         }
     }
 
@@ -313,31 +303,17 @@ class CookBubbleService : Service() {
     private fun hideBubble() {
         closePanel()
         bubble?.let { runCatching { wm.removeView(it) } }
-        bubble = null; pill = null; params = null
+        bubble = null; ring = null; params = null
     }
 
-    /** Next timer for this recipe: "4:32", or a flashing red "Done!". */
-    private fun updatePill(blink: Boolean) {
-        val label = pill ?: return
-        val now = System.currentTimeMillis()
-        val next = CookOverlay.info.value?.ends?.minOrNull()
-        if (next == null) { label.visibility = View.GONE; return }
-        label.visibility = View.VISIBLE
-        val bg = GradientDrawable().apply { cornerRadius = dp(10).toFloat() }
-        if (next <= now) {
-            label.text = "Done!"
-            bg.setColor(0xFFE24B4A.toInt())
-            label.setTextColor(0xFFFFFFFF.toInt())
-            label.alpha = if (blink) 1f else 0.4f
-        } else {
-            val sec = (next - now + 999) / 1000
-            val h = sec / 3600; val m = (sec % 3600) / 60; val s = sec % 60
-            label.text = if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
-            bg.setColor(0xFF444441.toInt())
-            label.setTextColor(0xFFF1EFE8.toInt())
-            label.alpha = 1f
-        }
-        label.background = bg
+    /** Next timer for this recipe: the ring runs down with it, and blinks lime when it's done. */
+    private fun updateRing(blink: Boolean) {
+        val view = ring ?: return
+        val info = CookOverlay.info.value
+        view.look = CookRing.look(info?.ends?.minOrNull(), info?.nextStart, System.currentTimeMillis())
+        view.dim = if (blink) 1f else 0.4f
+        view.contentDescription = "Back to cooking" + (info?.name?.let { " $it" } ?: "") + (view.look.time?.let { ", $it" } ?: "")
+        view.invalidate()
     }
 
     companion object {
@@ -345,5 +321,17 @@ class CookBubbleService : Service() {
         private const val NOTIFICATION_ID = 4242
         private var savedX: Int? = null
         private var savedY: Int? = null
+    }
+}
+
+/** The floating bubble itself, drawn by [CookRing] like the in-app one. */
+private class RingView(ctx: Context) : View(ctx) {
+    var look = CookRing.Look(null, 0f, false)
+    var dim = 1f
+    private val pot = ContextCompat.getDrawable(ctx, R.drawable.ic_cook_pot)
+    private val font = runCatching { ResourcesCompat.getFont(ctx, R.font.bricolage_700) }.getOrNull()
+
+    override fun onDraw(canvas: Canvas) {
+        CookRing.draw(canvas, width.toFloat(), look, pot, font, if (look.done) dim else 1f)
     }
 }
