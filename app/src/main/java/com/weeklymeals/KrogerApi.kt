@@ -28,6 +28,8 @@ data class Product(
     val delivery: Boolean? = null,
     /** Product photo (front of the package), or "" if King Soopers has none. */
     val image: String = "",
+    /** King Soopers' departments for it, e.g. ["Produce"] or ["Canned & Packaged"]. */
+    val categories: List<String> = emptyList(),
 ) {
     /** In stock (or unknown), priced at your store, and deliverable (or unknown). */
     val available: Boolean
@@ -202,6 +204,7 @@ class KrogerApi {
                     if (f.has("delivery")) f.optBoolean("delivery") else null
                 },
                 image = photoUrl(o.optJSONArray("images")),
+                categories = o.optJSONArray("categories")?.let { c -> (0 until c.length()).map { c.optString(it) } }.orEmpty(),
             )
         }
         return out

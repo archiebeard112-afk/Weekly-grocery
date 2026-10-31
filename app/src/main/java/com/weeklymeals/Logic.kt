@@ -104,7 +104,7 @@ object Logic {
     private val frozen = Regex("frozen|egg rolls|hash browns|pie crust|edamame|ice cream|whipped topping")
     private val deli = Regex("\\bham\\b|kielbasa|pepperoni|deli |smoked sausage")
     private val pantryFirst = Regex("broth|stock|soup|peanut butter|coconut|noodles|chips|breadcrumbs|panko|croutons|tuna|sun-dried|crushed|diced|pineapple|pickles|cornbread|sauce|dressing|pesto")
-    private val produce = Regex("\\bkale\\b|eggplant|\\bpears?\\b|rosemary|fresh thyme|onion|garlic|bell pepper|jalape|chile|tomato|cucumber|lettuce|greens|spinach|broccoli|carrot|celery|potato|squash|zucchini|mushroom|avocado|lemon|lime|orange|apple|banana|berries|grapes|cilantro|basil|dill|parsley|ginger|asparagus|green beans|corn on the cob|cauliflower|bok choy|cabbage|coleslaw|sprouts|scallion|romaine")
+    private val produce = Regex("\\bkale\\b|eggplant|\\bpears?\\b|rosemary|fresh thyme|onion|garlic|bell pepper|jalape|chile|tomato|cucumber|lettuce|greens|spinach|broccoli|carrot|celery|potato|squash|zucchini|mushroom|avocado|lemon|lime|orange|apple|banana|berries|grapes|cilantro|basil|dill|parsley|ginger|asparagus|green beans|corn on the cob|cauliflower|bok choy|cabbage|coleslaw|sprouts|scallion|romaine|spring mix|salad mix|mesclun|arugula")
     private val meat = Regex("chicken|beef|pork|sausage|chorizo|bacon|turkey|steak|salmon|shrimp|cod|fish|tenderloin")
     private val dairy = Regex("egg|milk|butter|cream|cheese|mozzarella|cheddar|parmesan|feta|goat|ricotta|yogurt|cotija|swiss")
     private val bakery = Regex("bread|baguette|buns|tortillas|pita|naan|rolls|flatbread|dough|wraps|hoagie")
@@ -265,7 +265,25 @@ object Logic {
         "cucumber" to "cucumbers",
         "onion" to "yellow onions", "yellow onion" to "yellow onions",
         "small yellow onion" to "yellow onions", "red onion" to "red onions",
+        // Salad greens are a bag of fresh lettuce mix, not canned Southern-style (collard) greens.
+        "mixed greens" to "spring mix", "mixed salad greens" to "spring mix", "salad greens" to "spring mix",
+        "spring greens" to "spring mix", "baby greens" to "spring mix", "mesclun" to "spring mix",
     )
+
+    /** Product words that mean it isn't the fresh thing (canned collards for "mixed greens"). */
+    private val notFreshWords = Regex(
+        "\\b(canned|seasoned|southern style|cooked|soup|frozen|pickled|juice|chips|sauce|dried|dehydrated)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private fun notFresh(p: Product): Boolean =
+        notFreshWords.containsMatchIn(p.title) ||
+            (p.categories.isNotEmpty() && p.categories.none { it.contains("produce", true) } &&
+                p.categories.any { it.contains("canned", true) || it.contains("frozen", true) })
+
+    /** For produce, fresh products first: canned, cooked or frozen ones go to the end of the list. */
+    fun freshFirst(options: List<Product>, aisle: String): List<Product> =
+        if (aisle != AISLES[0]) options else options.sortedBy { notFresh(it) }
 
     /** Words describing how it's prepped or its size, not what to buy. */
     private val prepWords = Regex(
