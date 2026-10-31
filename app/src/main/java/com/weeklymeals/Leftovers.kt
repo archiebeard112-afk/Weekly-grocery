@@ -118,32 +118,3 @@ internal fun StepText(
     )
     Text(annotated, style = style, inlineContent = inline, textDecoration = textDecoration, modifier = modifier)
 }
-
-/** The "Uses leftovers" strip near the top of a planned recipe: what it uses up, and from which meal. */
-@Composable
-internal fun UsesLeftoversStrip(st: UserState, left: List<MealLeft>, all: Map<Int, Recipe>, modifier: Modifier = Modifier) {
-    val used = left.filter { it.usesUp }
-    if (used.isEmpty()) return
-    val lime = MaterialTheme.colorScheme.primary
-    Row(
-        modifier.background(LeftoverBg, RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        LeftoverIcon(Modifier.padding(top = 2.dp, end = 10.dp).size(18.dp), lime)
-        androidx.compose.foundation.layout.Column {
-            Text(
-                "USES LEFTOVERS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
-                color = lime, letterSpacing = 1.2.sp,
-            )
-            // One line per meal they come from: "½ lb ground beef and 2 cups spinach, left over from Mon · Chili".
-            used.groupBy { it.other }.forEach { (from, items) ->
-                val what = items.map { listOf(it.amount, it.term).filter(String::isNotBlank).joinToString(" ") }
-                val list = if (what.size <= 1) what.joinToString() else what.dropLast(1).joinToString(", ") + " and " + what.last()
-                Text(
-                    "$list, left over from " + Shares.mealLabel(st, from, all[from]?.name ?: ""),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
-    }
-}

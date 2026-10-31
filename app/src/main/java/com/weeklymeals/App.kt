@@ -1638,10 +1638,9 @@ private fun RecipeScreen(
                     }
                 }
             }
-            // Planned meals that use up what an earlier meal opened say so up top.
+            // Leftovers shared with other planned meals are noted on each ingredient row.
             val left = if (inWeek) vm.mealLeftovers(st, id) else emptyList()
             val all = vm.recipes(st)
-            UsesLeftoversStrip(st, left, all, Modifier.fillMaxWidth().padding(top = 12.dp))
             if (inWeek) WeekControls(vm, st, r, side)
             if (r.machine.isNotEmpty()) MachineCard(r.machine)
             SaleSection(vm, st, r)
