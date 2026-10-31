@@ -1637,8 +1637,9 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         val saved = refreshPicks[g.term] ?: k.choices["term:${g.term}"] ?: g.items.firstNotNullOfOrNull { k.choices[it.key] } ?: Receipts.usual(g.term)
         val search = saved?.search?.ifBlank { null } ?: Logic.baseExtra(g.term)
         val all = runCatching { api.searchProducts(token, k.store.id, search) }.getOrDefault(emptyList())
-        // Leave out anything out of stock, not sold here, or not deliverable.
-        val options = all.filter { it.available }
+        // Leave out anything out of stock, not sold here, or not deliverable. For produce, the
+        // fresh ones come first (never canned greens for a salad).
+        val options = Logic.freshFirst(all.filter { it.available }, g.aisle)
         val remembered = saved?.let { c -> options.indexOfFirst { it.upc == c.upc } } ?: -1
         val note = if (saved != null && remembered < 0 && all.any { it.upc == saved.upc && !it.available }) {
             "Your usual (${saved.label}) isn't available this week"
