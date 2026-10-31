@@ -1122,14 +1122,14 @@ private fun RecipeTile(
             val week = if (inWeek) listOf("week" to ("In week" + (day?.let { " · " + Logic.DAY_SHORT[it] } ?: ""))) else emptyList()
             val keep = (week + all.filter { it.first in filters } + all).distinct().take(2).toSet()
             val badges = (week + all).filter { it in keep }
-            // Every card has the same lines in the same spots: the name (two lines tall), tags
-            // (empty if none), calories and price, then time and buttons at the bottom.
+            // Every card: the name (one or two lines) with its tags right under it, then calories and
+            // price, time and buttons in the same spots at the bottom.
             Column(Modifier.weight(1f).fillMaxWidth().padding(end = 8.dp)) {
                     Text(
                         r.name,
                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = Look.Display, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, lineHeight = 18.sp),
-                        // Always two lines tall, so the tags and calories line sit in the same spot on every tile.
-                        minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        // Up to two lines; the tags sit right under it and move down when it wraps.
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(bottom = 1.dp),
                     )
                     Row(
@@ -1140,7 +1140,9 @@ private fun RecipeTile(
                         badges.forEach { (key, label) -> Badge(label, small = true, dark = key == "week") }
                     }
                     // Calories, then what you'd pay for this meal (bold at or under your budget line),
-                    // then the Kitchen icon when things you have cover part of it.
+                    // then the Kitchen icon when things you have cover part of it. Always in the same
+                    // spot, just above the time.
+                    Spacer(Modifier.weight(1f))
                     TileInfo(calories, cost, st.budgetMax)
             }
             Row(Modifier.fillMaxWidth().height(28.dp), verticalAlignment = Alignment.CenterVertically) {
