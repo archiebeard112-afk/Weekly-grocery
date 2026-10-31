@@ -94,7 +94,7 @@ class TimerAlarmService : Service() {
         )
         val labels = ringing.values.filter { it.isNotBlank() }
         val n = NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_fg_mono)
+            .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle("⏰ Timer done")
             .setContentText(labels.joinToString(" · ").ifBlank { "Your cooking timer is done" })
             .setCategory(NotificationCompat.CATEGORY_ALARM)

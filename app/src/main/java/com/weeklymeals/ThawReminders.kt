@@ -269,7 +269,7 @@ object Thaw {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val n = NotificationCompat.Builder(ctx, channel(ctx, beat(plan.beat)))
-            .setSmallIcon(R.drawable.ic_fg_mono)
+            .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle(title(days))
             .setContentText(lines.joinToString(" · "))
             .setStyle(NotificationCompat.BigTextStyle().bigText(lines.joinToString("\n")))
