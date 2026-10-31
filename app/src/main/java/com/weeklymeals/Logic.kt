@@ -268,6 +268,40 @@ object Logic {
         // Salad greens are a bag of fresh lettuce mix, not canned Southern-style (collard) greens.
         "mixed greens" to "spring mix", "mixed salad greens" to "spring mix", "salad greens" to "spring mix",
         "spring greens" to "spring mix", "baby greens" to "spring mix", "mesclun" to "spring mix",
+        // Same thing to buy, worded differently by different recipes: one item, one package.
+        // Wraps are flour tortillas (one bag covers wraps and burritos alike).
+        "tortilla wraps" to "flour tortillas", "tortilla wrap" to "flour tortillas", "wraps" to "flour tortillas",
+        "flour tortilla" to "flour tortillas", "flour tortilla wraps" to "flour tortillas",
+        "large flour tortillas" to "flour tortillas", "burrito tortillas" to "flour tortillas",
+        "burrito size tortillas" to "flour tortillas", "burrito-size tortillas" to "flour tortillas",
+        "corn tortilla" to "corn tortillas",
+        "boneless skinless chicken breast" to "chicken breast", "boneless skinless chicken breasts" to "chicken breast",
+        "chicken breasts" to "chicken breast",
+        "boneless skinless chicken thighs" to "chicken thigh", "boneless skinless chicken thigh" to "chicken thigh",
+        "chicken thighs" to "chicken thigh",
+        "boneless pork chops" to "pork chops", "pork chop" to "pork chops",
+        "beef chuck" to "beef chuck roast", "chuck roast" to "beef chuck roast",
+        "beef sirloin" to "sirloin steak",
+        "mild italian sausage" to "italian sausage",
+        "salmon fillet" to "salmon fillets",
+        "cheddar cheese" to "cheddar", "shredded cheddar" to "cheddar", "shredded cheddar cheese" to "cheddar",
+        "plain greek yogurt" to "greek yogurt",
+        "goat cheese log" to "goat cheese",
+        "long-grain rice" to "long grain white rice", "long-grain white rice" to "long grain white rice",
+        "long grain rice" to "long grain white rice", "white rice" to "long grain white rice",
+        "penne pasta" to "penne", "shell pasta" to "pasta shells",
+        "flour" to "all-purpose flour", "all purpose flour" to "all-purpose flour",
+        "low-sodium chicken broth" to "chicken broth", "low-sodium vegetable broth" to "vegetable broth",
+        "basil pesto" to "pesto",
+        "refrigerated pie crust" to "pie crust",
+        "oil-packed sun-dried tomatoes" to "sun-dried tomatoes", "sun-dried tomatoes in olive oil" to "sun-dried tomatoes",
+        "sun-dried tomatoes in oil" to "sun-dried tomatoes",
+        "crushed red pepper flakes" to "red pepper flakes", "crushed red pepper" to "red pepper flakes",
+        // Fresh herbs and leaves: a bunch of basil is fresh basil; spinach by the cup is a bag of baby spinach.
+        "basil" to "fresh basil", "fresh cilantro" to "cilantro",
+        "spinach" to "baby spinach", "fresh spinach" to "baby spinach",
+        // Plain spice names are the ground/dried jar.
+        "cumin" to "ground cumin", "cinnamon" to "ground cinnamon", "oregano" to "dried oregano",
     )
 
     /** Product words that mean it isn't the fresh thing (canned collards for "mixed greens"). */
