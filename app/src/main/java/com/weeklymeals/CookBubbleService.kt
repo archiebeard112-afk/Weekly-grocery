@@ -161,7 +161,7 @@ class CookBubbleService : Service() {
             )
         }
         val n: Notification = NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_fg_mono)
+            .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle("Cooking" + (name?.let { " $it" } ?: ""))
             .setContentText("Tap to go back to your steps")
             .setContentIntent(openApp())

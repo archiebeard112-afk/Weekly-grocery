@@ -85,7 +85,7 @@ object Timers {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val n = NotificationCompat.Builder(ctx, CHANNEL)
-            .setSmallIcon(R.drawable.ic_fg)
+            .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle("⏰ Timer done")
             .setContentText(label)
             .setPriority(NotificationCompat.PRIORITY_MAX)

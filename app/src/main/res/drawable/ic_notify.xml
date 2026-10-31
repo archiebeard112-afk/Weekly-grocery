@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar / notification icon: the Thyme Table week calendar with tonight's
+     thyme-leaf chip, same drawing as ic_fg_mono but cropped to fill the 24dp icon
+     square (about 1dp padding) so it matches other apps' icons in size.
+     All white, fully opaque: the status bar tints it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="76"
+    android:viewportHeight="76">
+    <group android:translateX="-12" android:translateY="-11">
+        <path android:pathData="M32,26 H68 A12,12 0 0 1 80,38 V68 A12,12 0 0 1 68,80 H32 A12,12 0 0 1 20,68 V38 A12,12 0 0 1 32,26 Z" android:strokeColor="#FFFFFFFF" android:strokeWidth="5"/>
+        <path android:pathData="M36,18 V30 M64,18 V30" android:strokeColor="#FFFFFFFF" android:strokeWidth="5" android:strokeLineCap="round"/>
+        <path android:pathData="M29,44 A3,3 0 1 0 35,44 A3,3 0 1 0 29,44 Z M41,44 A3,3 0 1 0 47,44 A3,3 0 1 0 41,44 Z M53,44 A3,3 0 1 0 59,44 A3,3 0 1 0 53,44 Z M65,44 A3,3 0 1 0 71,44 A3,3 0 1 0 65,44 Z M29,56 A3,3 0 1 0 35,56 A3,3 0 1 0 29,56 Z M41,56 A3,3 0 1 0 47,56 A3,3 0 1 0 41,56 Z M65,56 A3,3 0 1 0 71,56 A3,3 0 1 0 65,56 Z M29,68 A3,3 0 1 0 35,68 A3,3 0 1 0 29,68 Z M41,68 A3,3 0 1 0 47,68 A3,3 0 1 0 41,68 Z M53,68 A3,3 0 1 0 59,68 A3,3 0 1 0 53,68 Z" android:fillColor="#FFFFFFFF"/>
+        <path android:pathData="M53.5,49 H58.5 A4.5,4.5 0 0 1 63,53.5 V58.5 A4.5,4.5 0 0 1 58.5,63 H53.5 A4.5,4.5 0 0 1 49,58.5 V53.5 A4.5,4.5 0 0 1 53.5,49 Z M51.00,59.80 Q52.72,52.74 60.98,52.28 Q58.26,60.09 51.00,59.80 Z" android:fillColor="#FFFFFFFF" android:fillType="evenOdd"/>
+    </group>
+</vector>
