@@ -599,7 +599,7 @@ data class TimerCtl(
 )
 
 @Composable
-private fun Steps(steps: List<String>, ctl: TimerCtl? = null) {
+private fun Steps(steps: List<String>, ctl: TimerCtl? = null, leftNames: List<String> = emptyList()) {
     steps.forEachIndexed { n, s ->
         // The step number in a small lime circle, the text beside it.
         Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.Top) {
@@ -613,7 +613,11 @@ private fun Steps(steps: List<String>, ctl: TimerCtl? = null) {
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Text(s, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f).padding(top = 2.dp))
+            // Leftover ingredients get the leftover icon in a lime chip.
+            StepText(
+                listOf(Cook.Piece(s, false)), leftNames, MaterialTheme.colorScheme.primary, MaterialTheme.typography.bodyLarge,
+                Modifier.weight(1f).padding(top = 2.dp),
+            )
         }
         if (ctl != null) {
             val times = Logic.stepTimes(s)
@@ -694,9 +698,13 @@ private fun RecipeDetails(
     sideSize: Int = Logic.SIDE_NORMAL, onSideSize: ((Int) -> Unit)? = null,
     expired: Map<String, String> = emptyMap(),
     shared: List<Pair<String, String>> = emptyList(),
+    leftNotes: Map<String, String> = emptyMap(),
+    leftNames: List<String> = emptyList(),
 ) {
     // Each shopping item's price shows once, on its first ingredient line.
     val priced = mutableSetOf<String>()
+    // "left over from Mon · Chili" (or "rest goes to Thu · Tacos") under an ingredient's first line.
+    val noted = mutableSetOf<String>()
     @Composable
     fun line(i: Ingredient, serv: Int, base: Int) {
         val term = Logic.searchTerm(i.name)
@@ -706,6 +714,12 @@ private fun RecipeDetails(
         Row(Modifier.padding(vertical = 7.dp), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text(Logic.ingText(i, serv, base), style = MaterialTheme.typography.bodyLarge)
+                leftNotes[term]?.takeIf { noted.add(term) }?.let { note ->
+                    Row(Modifier.padding(top = 1.dp), verticalAlignment = Alignment.CenterVertically) {
+                        LeftoverIcon(Modifier.padding(end = 4.dp).size(13.dp))
+                        Text(note, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
                 // In the pantry but past its date.
                 expired[term]?.let {
                     val amber = Look.Warn
@@ -724,7 +738,7 @@ private fun RecipeDetails(
                             if (first && price?.have == true) HaveIcon(zone ?: "pantry")
                         }
                         // ♻️ = shared with another meal this week (or left over): always right by the price.
-                        if (first && price != null && price.note.startsWith("♻️")) {
+                        if (first && price != null && (price.note.startsWith("♻️") || term in leftNotes)) {
                             Icon(Icons.Filled.Refresh, "Shared this week", Modifier.padding(start = 4.dp).size(16.dp), tint = Look.Info)
                         }
                         Spacer(Modifier.width(4.dp))
@@ -802,11 +816,11 @@ private fun RecipeDetails(
         }
     }
     Heading("Steps")
-    Steps(r.steps, ctl)
+    Steps(r.steps, ctl, leftNames)
     if (side != null) {
         Heading("Side: ${side.label}")
         Spacer(Modifier.padding(2.dp))
-        Steps(side.steps, ctl?.copy(prefix = ctl.prefix + "side", title = side.label.substringAfter(" ")))
+        Steps(side.steps, ctl?.copy(prefix = ctl.prefix + "side", title = side.label.substringAfter(" ")), leftNames)
     }
 }
 
@@ -1624,6 +1638,10 @@ private fun RecipeScreen(
                     }
                 }
             }
+            // Planned meals that use up what an earlier meal opened say so up top.
+            val left = if (inWeek) vm.mealLeftovers(st, id) else emptyList()
+            val all = vm.recipes(st)
+            UsesLeftoversStrip(st, left, all, Modifier.fillMaxWidth().padding(top = 12.dp))
             if (inWeek) WeekControls(vm, st, r, side)
             if (r.machine.isNotEmpty()) MachineCard(r.machine)
             SaleSection(vm, st, r)
@@ -1631,6 +1649,10 @@ private fun RecipeScreen(
                 r, st.servings, if (inWeek) side else null, cost = vm.mealCost(st, r), budgetMax = st.budgetMax, expired = vm.expiredTerms(st),
                 sideSize = st.sideSize[id] ?: Logic.SIDE_NORMAL,
                 onSideSize = if (inWeek && side != null && !isStoreSide(side)) ({ size: Int -> vm.setSideSize(id, size) }) else null,
+                leftNotes = left.associate { l ->
+                    l.term to (if (l.usesUp) "left over from " else "rest goes to ") + Shares.mealLabel(st, l.other, all[l.other]?.name ?: "")
+                },
+                leftNames = leftoverNames(left, r, if (inWeek) side else null),
             )
             ReviewsSection(r.id, r.rating, r.ratingCount, r.countLabel, r.reviews)
             Spacer(Modifier.height(24.dp))

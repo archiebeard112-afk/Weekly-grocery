@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -55,6 +56,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -259,6 +261,23 @@ object Cook {
         }
     }
 
+    /**
+     * Where a step names any of [names] (leftover ingredients): every mention, by the full name or
+     * its last word ("ground beef", then "beef"), never overlapping.
+     */
+    fun mentions(step: String, names: List<String>): List<IntRange> {
+        if (names.isEmpty()) return emptyList()
+        val found = mutableListOf<IntRange>()
+        for (tier in 0..1) {
+            names.mapNotNull { phrases(it).getOrNull(tier)?.firstOrNull() }.distinct().sortedByDescending { it.length }.forEach { phrase ->
+                Regex("\\b" + Regex.escape(phrase) + "(e?s)?\\b", RegexOption.IGNORE_CASE).findAll(step).forEach { m ->
+                    if (found.none { it.first <= m.range.last && m.range.first <= it.last }) found += m.range
+                }
+            }
+        }
+        return found.sortedBy { it.first }
+    }
+
     /** True if the side's first step comes before the main dish's first step. */
     fun sideFirst(steps: List<CookStep>): Boolean = steps.firstOrNull()?.isSide == true
 }
@@ -283,6 +302,8 @@ fun CookScreen(
     val sidePieces = remember(side, sideServ) {
         side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, sideServ, Logic.SIDE_BASE) }, sideServ.toDouble() / Logic.SIDE_BASE) } ?: emptyList()
     }
+    // Ingredients this meal uses up from an earlier meal this week (marked in the steps).
+    val leftNames = leftoverNames(vm.mealLeftovers(st, id), r, side)
     // Picks up where you left off (you can leave and come back with the cooking bubble).
     val resume = st.cookingId == id
     var finished by remember(id) { mutableStateOf(if (resume) st.cookDone else setOf()) }
@@ -344,25 +365,23 @@ fun CookScreen(
                             StepTag(step, r, side)
                         }
                         val highlight = MaterialTheme.colorScheme.primary
-                        Text(
-                            buildAnnotatedString {
-                                if (step.startsSide) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Start the side: ") }
-                                pieces.forEach { p ->
-                                    if (p.isAmount) withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) { append(p.text) }
-                                    else append(p.text)
-                                }
-                            },
-                            fontSize = 16.sp, lineHeight = 23.sp,
+                        // Leftover ingredients get the leftover icon in a lime chip.
+                        StepText(
+                            pieces, leftNames, highlight, TextStyle(fontSize = 16.sp, lineHeight = 23.sp),
+                            prefix = if (step.startsSide) ({ withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Start the side: ") } }) else null,
                             textDecoration = if (done) TextDecoration.LineThrough else null,
                             modifier = Modifier.padding(start = 34.dp, top = 4.dp),
                         )
                         // This step uses something split with another meal: how much to use now.
+                        // Led by the leftover icon (circling arrows).
                         if (!done) shareForStep(vm, st, id, step.text)?.let { note ->
-                            Text(
-                                note, style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.padding(start = 34.dp, top = 4.dp),
-                            )
+                            Row(Modifier.padding(start = 34.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                LeftoverIcon(Modifier.padding(end = 4.dp).size(14.dp), MaterialTheme.colorScheme.tertiary)
+                                Text(
+                                    note, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                            }
                         }
                         if (step.times.isNotEmpty() && !done) {
                             val ctl = if (step.isSide) sideCtl else mainCtl
@@ -521,6 +540,8 @@ internal fun MiniCook(vm: MealsViewModel, st: UserState, id: Int, onOpenApp: () 
     val sidePieces = remember(side, sideServ) {
         side?.let { sd -> Cook.withAmounts(sd.steps, sd.ingredients.map { Logic.scale(it, sideServ, Logic.SIDE_BASE) }, sideServ.toDouble() / Logic.SIDE_BASE) } ?: emptyList()
     }
+    // Ingredients this meal uses up from an earlier meal this week (marked in the steps).
+    val leftNames = leftoverNames(vm.mealLeftovers(st, id), r, side)
     val mainCtl = TimerCtl(
         prefix = "r${r.id}", title = r.name, running = st.timers,
         start = { key, label, minutes -> vm.startTimer(key, label, minutes) },
@@ -566,15 +587,10 @@ internal fun MiniCook(vm: MealsViewModel, st: UserState, id: Int, onOpenApp: () 
                                 style = MaterialTheme.typography.titleMedium,
                                 color = highlight, modifier = Modifier.width(26.dp),
                             )
-                            Text(
-                                buildAnnotatedString {
-                                    if (step.isSide) withStyle(SpanStyle(color = MaterialTheme.colorScheme.secondary)) { append("Side · ") }
-                                    pieces.forEach { p ->
-                                        if (p.isAmount) withStyle(SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) { append(p.text) }
-                                        else append(p.text)
-                                    }
-                                },
-                                fontSize = 15.sp, lineHeight = 21.sp,
+                            val sideColor = MaterialTheme.colorScheme.secondary
+                            StepText(
+                                pieces, leftNames, highlight, TextStyle(fontSize = 15.sp, lineHeight = 21.sp),
+                                prefix = if (step.isSide) ({ withStyle(SpanStyle(color = sideColor)) { append("Side · ") } }) else null,
                                 textDecoration = if (isDone) TextDecoration.LineThrough else null,
                             )
                         }
@@ -608,10 +624,10 @@ private fun shareForStep(vm: MealsViewModel, st: UserState, id: Int, text: Strin
     val amount = sh.amounts[id] ?: return null
     return if (sh.meals.first() == id) {
         val later = sh.meals.drop(1).joinToString(", ") { Shares.mealLabel(st, it, all[it]?.name ?: "").substringBefore(" ·") }
-        "🔁 Use $amount ${sh.term} · save the rest for $later"
+        "Use $amount ${sh.term} · save the rest for $later"
     } else {
         val from = sh.meals.first().let { Shares.mealLabel(st, it, all[it]?.name ?: "").substringBefore(" ·") }
-        "🔁 Use the $amount ${sh.term} saved from $from"
+        "Use the $amount ${sh.term} saved from $from"
     }
 }
 
