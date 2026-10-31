@@ -68,8 +68,6 @@ fun leftoverNames(left: List<MealLeft>, r: Recipe, side: Side?): List<String> {
 /** Dark green chip behind leftover words (same as the LEFTOVERS tag on the Week tab). */
 internal val LeftoverBg = Color(0xFF26301A)
 
-private const val LEFT_ICON = "leftover"
-
 /** The leftover icon (circling arrows), as on a left-over price. */
 @Composable
 internal fun LeftoverIcon(modifier: Modifier = Modifier.size(16.dp), tint: Color = MaterialTheme.colorScheme.primary) {
@@ -77,8 +75,8 @@ internal fun LeftoverIcon(modifier: Modifier = Modifier.size(16.dp), tint: Color
 }
 
 /**
- * A step with its highlighted amounts, and every leftover ingredient in a small lime chip with the
- * leftover icon in front of it.
+ * A step with its highlighted amounts, and every leftover ingredient in a small lime chip
+ * (the note under the step says where it's left over from).
  */
 @Composable
 internal fun StepText(
@@ -98,7 +96,6 @@ internal fun StepText(
         cuts.zipWithNext().forEach { (a, b) ->
             if (b <= a) return@forEach
             val inLeft = left.any { a >= it.first && a <= it.last }
-            if (left.any { it.first == a }) appendInlineContent(LEFT_ICON, "♻")
             val inAmount = amounts.any { a >= it.first && a <= it.last }
             val st = when {
                 inLeft -> SpanStyle(background = LeftoverBg, color = if (inAmount) highlight else chip, fontWeight = FontWeight.SemiBold)
@@ -108,13 +105,5 @@ internal fun StepText(
             if (st != null) withStyle(st) { append(text.substring(a, b)) } else append(text.substring(a, b))
         }
     }
-    val inline = mapOf(
-        LEFT_ICON to InlineTextContent(Placeholder(1.15.em, 1.em, PlaceholderVerticalAlign.TextCenter)) {
-            Box(
-                Modifier.fillMaxSize().background(LeftoverBg, RoundedCornerShape(topStart = 5.dp, bottomStart = 5.dp)),
-                contentAlignment = Alignment.Center,
-            ) { LeftoverIcon(Modifier.fillMaxSize().padding(start = 2.dp), chip) }
-        },
-    )
-    Text(annotated, style = style, inlineContent = inline, textDecoration = textDecoration, modifier = modifier)
+    Text(annotated, style = style, textDecoration = textDecoration, modifier = modifier)
 }
