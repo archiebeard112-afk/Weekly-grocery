@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.currentStateAsState
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
@@ -85,8 +86,8 @@ data class ThawPlan(
 )
 
 /**
- * Thaw reminders: a notification (lock screen and a banner at the top) before meals that use meat
- * from the freezer, buzzing a food beat. It stays until you tap Moved it or Snooze.
+ * Thaw reminders: a notification and a pop-up card (on the lock screen and over other apps) before
+ * meals that use meat from the freezer, buzzing a food beat. Both stay until you tap Moved it or Snooze.
  */
 object Thaw {
     class Beat(val key: String, val emoji: String, val name: String, val about: String, val pattern: LongArray)
@@ -200,12 +201,14 @@ object Thaw {
     internal fun onDone(ctx: Context, dates: List<String>) {
         markDone(ctx, dates)
         NotificationManagerCompat.from(ctx).cancel(NOTIFICATION_ID)
+        AlertActivity.close(AlertActivity.KIND_THAW)
         ctx.getSystemService(AlarmManager::class.java).cancel(snoozeAlarm(ctx, emptyList()))
         reschedule(ctx)
     }
 
     internal fun onSnooze(ctx: Context, dates: List<String>) {
         NotificationManagerCompat.from(ctx).cancel(NOTIFICATION_ID)
+        AlertActivity.close(AlertActivity.KIND_THAW)
         val minutes = load(ctx).snooze.coerceAtLeast(1)
         setAlarm(ctx, System.currentTimeMillis() + minutes * 60_000L, snoozeAlarm(ctx, dates))
     }
@@ -264,13 +267,14 @@ object Thaw {
             ctx, code, Intent(ctx, ThawReceiver::class.java).setAction(action).putExtra(EXTRA_DATES, dates.toTypedArray()),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val open = PendingIntent.getActivity(
-            ctx, NOTIFICATION_ID, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        val title = title(days)
+        // The pop-up card: opens on the lock screen (full-screen intent) and over other apps, and
+        // tapping the notification brings it back if you left it with the Home button.
+        val card = AlertActivity.intent(ctx, AlertActivity.KIND_THAW, title, lines, dates, plan.snooze)
+        val open = AlertActivity.pending(ctx, NOTIFICATION_ID, card)
         val n = NotificationCompat.Builder(ctx, channel(ctx, beat(plan.beat)))
             .setSmallIcon(R.drawable.ic_notify)
-            .setContentTitle(title(days))
+            .setContentTitle(title)
             .setContentText(lines.joinToString(" · "))
             .setStyle(NotificationCompat.BigTextStyle().bigText(lines.joinToString("\n")))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -279,6 +283,7 @@ object Thaw {
             .setOngoing(true)
             .setAutoCancel(false)
             .setContentIntent(open)
+            .setFullScreenIntent(open, true)
             .addAction(0, "Moved it", action(NOTIFICATION_ID + 2, ACTION_DONE))
             .addAction(0, "Snooze ${plan.snooze} min", action(NOTIFICATION_ID + 3, ACTION_SNOOZE))
             .build()
@@ -286,6 +291,7 @@ object Thaw {
             NotificationManagerCompat.from(ctx).notify(NOTIFICATION_ID, n)
         } catch (_: SecurityException) {
         }
+        AlertActivity.popUp(ctx, card)
     }
 
     /** Plays a beat on the phone right now (the Try it button). */
@@ -410,6 +416,26 @@ fun ColumnScope.ThawSettings(vm: MealsViewModel, st: UserState) {
         style = MaterialTheme.typography.bodySmall, color = muted,
     )
 
+    Label("Pop-up")
+    Text(
+        "A card pops up on the lock screen and over other apps, and stays until you tap Moved it or Snooze.",
+        style = MaterialTheme.typography.bodySmall, color = muted,
+    )
+    // Re-checked when you come back from Android's settings page.
+    val life by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val overApps = remember(life) { AlertActivity.canPopUp(ctx) }
+    val onLock = remember(life) { AlertActivity.canUseLockScreen(ctx) }
+    if (!onLock) {
+        OutlinedButton(onClick = { runCatching { ctx.startActivity(AlertActivity.lockScreenSettings(ctx)) } }, modifier = Modifier.fillMaxWidth()) {
+            Text("Allow the pop-up on the lock screen")
+        }
+    }
+    if (!overApps) {
+        OutlinedButton(onClick = { runCatching { ctx.startActivity(CookOverlay.permissionIntent(ctx)) } }, modifier = Modifier.fillMaxWidth()) {
+            Text("Allow the pop-up over other apps")
+        }
+    }
+
     Label("Snooze for")
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         listOf(5, 10, 30).forEach { m ->
@@ -433,11 +459,13 @@ fun ColumnScope.ThawSettings(vm: MealsViewModel, st: UserState) {
             else {
                 val plan = vm.thawPlan(st)
                 val days = next?.second ?: listOf(ThawDay(LocalDate.now().plusDays(1).toString(), listOf(ThawItem("Chicken breast", "3 pieces", "Example meal"))))
-                Thaw.show(ctx, plan, days, test = true)
+                // A short wait so you can lock the phone and see it on the lock screen.
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ Thaw.show(ctx.applicationContext, plan, days, test = true) }, 10_000L)
+                android.widget.Toast.makeText(ctx, "Test reminder in 10 seconds. Lock your phone to see it there.", android.widget.Toast.LENGTH_LONG).show()
             }
         },
         modifier = Modifier.fillMaxWidth(),
-    ) { Text("Send a test reminder now") }
+    ) { Text("Send a test reminder in 10 seconds") }
 
     picking?.let { i ->
         val t = st.thawTimes.getOrNull(i) ?: return@let
