@@ -4,4 +4,12 @@
     <style name="Theme.WeeklyMeals" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/ic_bg</item>
     </style>
+
+    <!-- The thaw reminder pop-up: see-through, so the card floats over what's behind it. -->
+    <style name="Theme.WeeklyMeals.Alert" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
 </resources>

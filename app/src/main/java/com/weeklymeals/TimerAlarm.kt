@@ -99,6 +99,7 @@ class TimerAlarmService : Service() {
             .setContentText(labels.joinToString(" · ").ifBlank { "Your cooking timer is done" })
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setContentIntent(open)
             .addAction(0, "Stop", stop)
