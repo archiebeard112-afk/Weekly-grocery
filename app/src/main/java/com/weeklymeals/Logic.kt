@@ -242,7 +242,7 @@ object Logic {
         // An egg white or yolk is bought as a whole egg (2 egg whites = 2 eggs).
         "egg white" to "eggs", "egg whites" to "eggs", "egg yolk" to "eggs", "egg yolks" to "eggs",
         "large egg white" to "eggs", "large egg whites" to "eggs", "large egg yolk" to "eggs", "large egg yolks" to "eggs",
-        "celery stalks" to "celery",
+        "celery stalks" to "celery", "celery rib" to "celery", "celery ribs" to "celery",
         "scallion" to "green onions", "scallions" to "green onions",
         "garlic" to "garlic bulb",
         // However a recipe words it, garlic cloves are the same thing to buy (or have).
@@ -333,6 +333,26 @@ object Logic {
     /** An extra's name without its row number ("Kool-Aid #2" -> "Kool-Aid"). */
     fun baseExtra(name: String): String = name.replace(Regex("\\s+#\\d+$"), "")
 
+    /**
+     * How a recipe counts a piece isn't a different thing to buy: "stalk of celery", "2 ribs celery",
+     * "celery stalks" and "celery" are all celery. Same for heads, sprigs, bunches, sticks, pinches...
+     */
+    private val pieceOf = Regex(
+        "^(stalks?|ribs?|sticks?|heads?|sprigs?|bunch(es)?|cloves?|pieces?|knobs?|leaf|leaves|pinch(es)?|" +
+            "dash(es)?|splash(es)?|handfuls?|cans?|jars?|bags?|box(es)?|packages?|slices?|sheets?|loaf|loaves|" +
+            "bottles?|cartons?|containers?|blocks?|wedges?)\\s+of\\s+",
+    )
+    /** Without "of", only words that can't start a product name ("rib eye", "stick butter" stay). */
+    private val piecePrefix = Regex("^(stalks?|sprigs?|heads?|bunch(es)?)\\s+")
+    private val pieceSuffix = Regex("\\s+(stalks?|sprigs?|heads?|bunch(es)?)$")
+
+    private fun stripPieceWords(n: String): String {
+        val out = n.replace(pieceOf, "").replace(piecePrefix, "")
+            .replace(pieceSuffix, "")
+            .trim()
+        return out.ifEmpty { n }
+    }
+
     fun searchTerm(name: String): String = termMemo.getOrPut(name) { searchTermOf(name) }
 
     private fun searchTermOf(name: String): String {
@@ -345,6 +365,7 @@ object Logic {
             val rest = n.substringAfter(" or ").trim().split(" ")
             n = if (first.contains(" ") || rest.size == 1) first else "$first ${rest.drop(1).joinToString(" ")}"
         }
+        n = stripPieceWords(n)
         buyAs[n]?.let { return it }
         val stripped = n.replace(prepWords, " ").replace(Regex("\\s+"), " ").trim()
         buyAs[stripped]?.let { return it }
