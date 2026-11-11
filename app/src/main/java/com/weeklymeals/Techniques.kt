@@ -4,7 +4,6 @@ import android.net.Uri
 import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,7 +27,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 
 /**
  * Short looping how-to clips for cooking techniques (res/raw/tech_*.mp4, made in Blender).
- * A step that names a technique gets a "▶ How to …" chip in cooking mode; tapping it plays the clip.
+ * Cooking mode's "Techniques" bubble lists them all; tapping one plays the clip.
  */
 object Techniques {
     data class Technique(val title: String, val video: Int)
@@ -64,81 +63,6 @@ object Techniques {
         "Pans and pots" to listOf(SKILLET, WOK, PC_NATURAL, PC_QUICK),
         "Mixing and coating" to listOf(FOLD_BATTER, FOLD_OMELETTE, DREDGE),
     )
-
-    private fun rx(p: String) = Regex(p, RegexOption.IGNORE_CASE)
-
-    /** Onions that aren't diced: green onions, slices/strips/rings, powder, fried onions. */
-    private val notDicedOnion = rx("green onion|spring onion|onion powder|fried onion|onion soup|slic\\w*[^;.]{0,25}\\bonion|onions?\\b[^;.]{0,20}\\b(strips|rings|slices|wedges)|carameli[sz]")
-
-    /** Checked in order; a step shows at most [MAX_PER_STEP] chips. */
-    private val rules: List<Pair<Regex, (String) -> Technique?>> = listOf(
-        rx("\\bbrais(e|ed|ing)\\b") to { _ -> BRAISE },
-        rx("\\broux\\b") to { _ -> ROUX },
-        rx("carameli[sz]e") to { _ -> CARAMELIZE },
-        rx("\\bdeglaz") to { _ -> DEGLAZE },
-        rx("until (slightly )?reduced|\\breduce (the )?(sauce|liquid)|\\breduced by") to { _ -> REDUCE },
-        rx("\\bsear(ed|ing)?\\b") to { _ -> SEAR },
-        rx("stir[- ]?fr(y|ied|ying)") to { s -> if (rx("\\bwok\\b").containsMatchIn(s)) WOK else SKILLET },
-        rx("\\bbast(e|ing)\\b") to { _ -> BASTE },
-        rx("\\bfold\\b") to { s ->
-            if (rx("\\begg|omelet").containsMatchIn(s) && !rx("fold in|fold (it )?(into|through)|batter").containsMatchIn(s)) FOLD_OMELETTE
-            else FOLD_BATTER
-        },
-        rx("\\bglaz(e|ed|ing)\\b") to { _ -> GLAZE },
-        rx("slurry|cornstarch (and|with|mixed with|in) (a little |some )?(cold )?(water|milk|broth)") to { _ -> SLURRY },
-        rx("pressure[- ]cook|\\b(natural|quick)(ly)?[- ]release|release (the )?pressure|lock the lid") to { s ->
-            if (rx("quick(ly)?[- ]release|release (the )?pressure manually|manual release").containsMatchIn(s)) PC_QUICK else PC_NATURAL
-        },
-        rx("\\bdredg|\\bbread(ed)? (the )?(chicken|pork|fish|cutlets)|\\bdip\\b.*\\b(flour|breadcrumbs|panko|egg)") to { _ -> DREDGE },
-        rx("julienne|matchstick") to { _ -> JULIENNE },
-        // Any onion that goes in diced, even when the step only says "cook the onion".
-        rx("\\bonions?\\b") to { s -> if (notDicedOnion.containsMatchIn(s)) null else DICE_ONION },
-        rx("\\bchop(ped)?\\b[^;.]{0,20}\\b(romaine|lettuce)") to { _ -> CHOP_ROMAINE },
-        rx("\\bchop(ped)?\\b[^;.]{0,20}\\b(parsley|cilantro|basil|herbs|dill|chives|mint)") to { _ -> CHOP_HERBS },
-        rx("\\bchop(ped)?\\b[^;.]{0,12}\\b(the )?(vegetables|veggies|cucumbers?|tomato(es)?|peppers?|celery|carrots?|broccoli|zucchini)") to { _ -> CHOP_VEG },
-        rx("\\bpeel(ed)?\\b") to { _ -> PEEL },
-        rx("\\bzest\\b") to { _ -> ZEST },
-    )
-
-    private const val MAX_PER_STEP = 2
-
-    /** The technique clips that fit this step (no repeats). */
-    fun forStep(step: String): List<Technique> =
-        rules.mapNotNull { (re, pick) -> if (re.containsMatchIn(step)) pick(step) else null }
-            .distinctBy { it.video }
-            .take(MAX_PER_STEP)
-}
-
-/** Lime "▶ How to …" chips under a step; each opens the looping clip. */
-@Composable
-fun TechniqueChips(step: String, modifier: Modifier = Modifier) {
-    val list = remember(step) { Techniques.forStep(step) }
-    if (list.isEmpty()) return
-    var open by remember { mutableStateOf<Techniques.Technique?>(null) }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        list.forEach { t ->
-            Text(
-                "▶  How to: ${t.title}",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-                    .clickable { open = t }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-        }
-    }
-    open?.let { t ->
-        AppDialog(
-            onDismiss = { open = null },
-            eyebrow = "Technique",
-            title = t.title,
-            actions = listOf(DialogAction("Close") { open = null }),
-        ) {
-            TechniqueVideo(t.video)
-        }
-    }
 }
 
 /** Plays a res/raw clip on a loop, muted, on the clip's own dark card colour. */
