@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
@@ -321,6 +322,8 @@ fun CookScreen(
         onDispose { view.keepScreenOn = false }
     }
     BackHandler { onClose() }
+    var showTechniques by remember { mutableStateOf(false) }
+    if (showTechniques) TechniquesMenu { showTechniques = false }
 
     Scaffold(
         topBar = {
@@ -328,6 +331,14 @@ fun CookScreen(
                 title = { Text(r.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Exit cooking mode") } },
             )
+        },
+        // Bubble that opens every how-to clip.
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { showTechniques = true },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ) { Text("▶  Techniques", style = MaterialTheme.typography.labelLarge) }
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
@@ -372,8 +383,6 @@ fun CookScreen(
                             textDecoration = if (done) TextDecoration.LineThrough else null,
                             modifier = Modifier.padding(start = 34.dp, top = 4.dp),
                         )
-                        // How-to clip for a technique this step names (sear, fold, roux...).
-                        if (!done) TechniqueChips(step.text, Modifier.padding(start = 34.dp, top = 6.dp))
                         // This step uses something split with another meal: how much to use now.
                         // Led by the leftover icon (circling arrows).
                         if (!done) shareForStep(vm, st, id, step.text)?.let { note ->
@@ -422,7 +431,7 @@ fun CookScreen(
                         RatingChoices(null, ::finish)
                     }
                 }
-                Spacer(Modifier.height(40.dp))
+                Spacer(Modifier.height(96.dp)) // room for the Techniques bubble
             }
         }
     }
