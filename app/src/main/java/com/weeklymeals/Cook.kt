@@ -372,6 +372,8 @@ fun CookScreen(
                             textDecoration = if (done) TextDecoration.LineThrough else null,
                             modifier = Modifier.padding(start = 34.dp, top = 4.dp),
                         )
+                        // How-to clip for a technique this step names (sear, fold, roux...).
+                        if (!done) TechniqueChips(step.text, Modifier.padding(start = 34.dp, top = 6.dp))
                         // This step uses something split with another meal: how much to use now.
                         // Led by the leftover icon (circling arrows).
                         if (!done) shareForStep(vm, st, id, step.text)?.let { note ->
