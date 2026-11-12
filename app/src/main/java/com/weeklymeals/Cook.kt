@@ -1,6 +1,21 @@
 package com.weeklymeals
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
@@ -26,7 +41,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
@@ -332,13 +346,9 @@ fun CookScreen(
                 navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Exit cooking mode") } },
             )
         },
-        // Bubble that opens every how-to clip.
+        // Chef's hat bubble that opens every how-to clip.
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showTechniques = true },
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            ) { Text("▶  Techniques", style = MaterialTheme.typography.labelLarge) }
+            TechniquesBubble { showTechniques = true }
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
@@ -642,3 +652,33 @@ private fun shareForStep(vm: MealsViewModel, st: UserState, id: Int, text: Strin
     }
 }
 
+
+/**
+ * The Techniques bubble: drawn like the cook bubble (dark circle, grey ring) with a lime
+ * chef's hat. It sinks a little while pressed.
+ */
+@Composable
+private fun TechniquesBubble(onClick: () -> Unit) {
+    val press = remember { MutableInteractionSource() }
+    val pressed by press.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.92f else 1f, label = "hatPress")
+    Box(
+        Modifier.size(64.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .shadow(10.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(CircleShape)
+            .background(Look.Card)
+            .drawBehind {
+                drawCircle(
+                    color = Color(0xFF2E332C),
+                    radius = size.minDimension * 25f / 60f,
+                    style = Stroke(width = size.minDimension * 0.05f),
+                )
+            }
+            .clickable(press, LocalIndication.current, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = "Cooking techniques" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(painterResource(R.drawable.ic_chef_hat), null, Modifier.fillMaxSize())
+    }
+}
