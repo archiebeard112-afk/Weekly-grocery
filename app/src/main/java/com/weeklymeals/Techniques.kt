@@ -45,8 +45,6 @@ object Techniques {
     private val FOLD_OMELETTE = Technique("Fold an omelette", R.raw.tech_fold_omelette)
     private val GLAZE = Technique("Glaze", R.raw.tech_glaze)
     private val SLURRY = Technique("Thicken with a slurry", R.raw.tech_slurry)
-    private val PC_NATURAL = Technique("Pressure cook (natural release)", R.raw.tech_pressure_cook_natural)
-    private val PC_QUICK = Technique("Pressure cook (quick release)", R.raw.tech_pressure_cook_quick)
     private val DREDGE = Technique("Dredge / bread", R.raw.tech_dredge)
     private val JULIENNE = Technique("Julienne", R.raw.tech_julienne)
     private val DICE_ONION = Technique("Dice an onion", R.raw.tech_dice_onion)
@@ -60,7 +58,7 @@ object Techniques {
     val all: List<Pair<String, List<Technique>>> = listOf(
         "Knife and prep" to listOf(DICE_ONION, CHOP_VEG, CHOP_HERBS, CHOP_ROMAINE, JULIENNE, PEEL, ZEST),
         "Heat and sauces" to listOf(SEAR, BRAISE, BASTE, GLAZE, DEGLAZE, REDUCE, ROUX, SLURRY, CARAMELIZE),
-        "Pans and pots" to listOf(SKILLET, WOK, PC_NATURAL, PC_QUICK),
+        "Pans and pots" to listOf(SKILLET, WOK),
         "Mixing and coating" to listOf(FOLD_BATTER, FOLD_OMELETTE, DREDGE),
     )
 }
