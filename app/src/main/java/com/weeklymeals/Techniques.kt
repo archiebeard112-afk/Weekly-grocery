@@ -32,34 +32,56 @@ import androidx.compose.ui.viewinterop.AndroidView
 object Techniques {
     data class Technique(val title: String, val video: Int)
 
-    private val BRAISE = Technique("Braise", R.raw.tech_braise)
-    private val ROUX = Technique("Make a roux", R.raw.tech_roux)
-    private val CARAMELIZE = Technique("Caramelize onions", R.raw.tech_caramelize_onions)
-    private val DEGLAZE = Technique("Deglaze", R.raw.tech_deglaze)
-    private val REDUCE = Technique("Reduce a sauce", R.raw.tech_reduce)
-    private val SEAR = Technique("Sear", R.raw.tech_sear_main)
-    private val WOK = Technique("Stir-fry (wok)", R.raw.tech_stir_fry_wok)
-    private val SKILLET = Technique("Stir-fry (skillet)", R.raw.tech_stir_fry_skillet)
-    private val BASTE = Technique("Baste", R.raw.tech_baste)
-    private val FOLD_BATTER = Technique("Fold into a batter", R.raw.tech_fold_batter)
-    private val FOLD_OMELETTE = Technique("Fold an omelette", R.raw.tech_fold_omelette)
-    private val GLAZE = Technique("Glaze", R.raw.tech_glaze)
-    private val SLURRY = Technique("Thicken with a slurry", R.raw.tech_slurry)
-    private val DREDGE = Technique("Dredge / bread", R.raw.tech_dredge)
-    private val JULIENNE = Technique("Julienne", R.raw.tech_julienne)
-    private val DICE_ONION = Technique("Dice an onion", R.raw.tech_dice_onion)
-    private val CHOP_ROMAINE = Technique("Chop romaine", R.raw.tech_chop_romaine)
-    private val CHOP_HERBS = Technique("Chop herbs", R.raw.tech_chop_herbs)
-    private val CHOP_VEG = Technique("Chop vegetables", R.raw.tech_chop_vegetables)
-    private val PEEL = Technique("Peel", R.raw.tech_peel)
-    private val ZEST = Technique("Zest", R.raw.tech_zest)
+    private fun t(title: String, video: Int) = Technique(title, video)
 
-    /** Every clip, for the Techniques menu: (section, techniques). */
+    /** Every major technique, one clip each, for the Techniques menu: (section, techniques). */
     val all: List<Pair<String, List<Technique>>> = listOf(
-        "Knife and prep" to listOf(DICE_ONION, CHOP_VEG, CHOP_HERBS, CHOP_ROMAINE, JULIENNE, PEEL, ZEST),
-        "Heat and sauces" to listOf(SEAR, BRAISE, BASTE, GLAZE, DEGLAZE, REDUCE, ROUX, SLURRY, CARAMELIZE),
-        "Pans and pots" to listOf(SKILLET, WOK),
-        "Mixing and coating" to listOf(FOLD_BATTER, FOLD_OMELETTE, DREDGE),
+        "Knife work" to listOf(
+            t("Dice", R.raw.tech_dice_onion),
+            t("Chop", R.raw.tech_chop_vegetables),
+            t("Mince", R.raw.tech_mince),
+            t("Slice", R.raw.tech_slice_onion),
+            t("Julienne", R.raw.tech_julienne),
+            t("Grate", R.raw.tech_grate),
+            t("Zest", R.raw.tech_zest),
+            t("Peel", R.raw.tech_peel),
+        ),
+        "Dry heat" to listOf(
+            t("Sear", R.raw.tech_sear_main),
+            t("Sauté", R.raw.tech_saute_main),
+            t("Stir-fry", R.raw.tech_stir_fry_wok),
+            t("Pan-fry", R.raw.tech_fry_pan),
+            t("Deep-fry", R.raw.tech_deep_fry),
+            t("Roast", R.raw.tech_roast_oven),
+            t("Broil", R.raw.tech_broil),
+            t("Grill", R.raw.tech_grill_grill),
+            t("Air fry", R.raw.tech_air_fry_air_fryer),
+        ),
+        "Wet heat" to listOf(
+            t("Boil", R.raw.tech_boil_pasta),
+            t("Blanch", R.raw.tech_blanch),
+            t("Simmer", R.raw.tech_simmer_stovetop),
+            t("Poach", R.raw.tech_poach),
+            t("Steam", R.raw.tech_steam_pan),
+            t("Braise", R.raw.tech_braise),
+        ),
+        "Sauces and finishing" to listOf(
+            t("Deglaze", R.raw.tech_deglaze),
+            t("Reduce a sauce", R.raw.tech_reduce),
+            t("Make a roux", R.raw.tech_roux),
+            t("Thicken with a slurry", R.raw.tech_slurry),
+            t("Glaze", R.raw.tech_glaze),
+            t("Baste", R.raw.tech_baste),
+            t("Caramelize onions", R.raw.tech_caramelize_onions),
+            t("Rest meat", R.raw.tech_rest_meat),
+        ),
+        "Mixing and coating" to listOf(
+            t("Whisk", R.raw.tech_whisk_main),
+            t("Whip", R.raw.tech_whip),
+            t("Fold", R.raw.tech_fold_batter),
+            t("Dredge / bread", R.raw.tech_dredge),
+            t("Marinate", R.raw.tech_marinate),
+        ),
     )
 }
 
