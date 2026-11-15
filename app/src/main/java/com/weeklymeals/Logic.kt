@@ -34,6 +34,9 @@ object Logic {
 
     fun isDessert(r: Recipe): Boolean = "dessert" in r.tags
 
+    /** Built-in meatless meals taken out of Browse (Nov 2026). Kept in the file so past weeks and favorites still open. */
+    fun isRetired(r: Recipe): Boolean = "retired" in r.tags
+
     /** Servings to show a recipe at: ones you added and desserts (a loaf, a pan of bars) keep their own servings, the rest follow Cooking for. */
     fun servFor(r: Recipe, serv: Int): Int = if (r.imported || isDessert(r)) r.base else serv
 

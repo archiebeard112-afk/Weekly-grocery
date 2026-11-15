@@ -296,6 +296,16 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     private val browseSets = mutableListOf<List<Int>>()
     private var browseAt = -1
 
+    /**
+     * Ideas already shown since the deck was last reshuffled, kept on the phone so Browse doesn't
+     * repeat a meal until you've seen every other one (even after closing the app).
+     */
+    private val seenPrefs = app.getSharedPreferences("browse_seen", android.content.Context.MODE_PRIVATE)
+    private val browseSeen: MutableSet<Int> =
+        seenPrefs.getString("ids", "").orEmpty().split(',').mapNotNull { it.toIntOrNull() }.toMutableSet()
+
+    private fun saveSeen() = seenPrefs.edit().putString("ids", browseSeen.joinToString(",")).apply()
+
     init {
         refreshBrowse()
         // Read back this week's King Soopers lookups, then save them whenever they change.
@@ -475,49 +485,56 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Ten ideas: skips meals already planned or made in the last 3 weeks (and the set just shown),
-     * spreads across proteins, and leans toward meals on sale when sale prices are loaded.
+     * Ten ideas, dealt like cards from a shuffled deck: no meal comes back until every other
+     * meal has been shown once. Skips meals already planned or made in the last 3 weeks,
+     * keeps any one protein to 4 per set, and leans toward sale and 👍 meals.
      */
     private fun pickTen(): List<Int> {
         val st = state.value
         val cache = salesCache(st)
         if (saleOnly.value) {
-            val pool = recipes(st).values.filter { !Logic.isDessert(it) && it.id !in st.removed && st.ratings[it.id] != -1 && Sales.savings(it, st.servings, cache) >= st.saleMin }.map { it.id }
+            val pool = recipes(st).values.filter { !Logic.isDessert(it) && !Logic.isRetired(it) && it.id !in st.removed && st.ratings[it.id] != -1 && Sales.savings(it, st.servings, cache) >= st.saleMin }.map { it.id }
             if (pool.isEmpty()) message.value = "No meals save ${Sales.money(st.saleMin)} or more at your store today"
             return pool.shuffled().take(10)
         }
         val cutoff = System.currentTimeMillis() - 21L * 86_400_000L
         val recent = st.history.filter { it.date >= cutoff }.flatMap { it.recipes }.toSet()
         val lastShown = browseSets.lastOrNull().orEmpty().toSet()
-        // 👎 meals never come up as ideas (you can still search for them); 😐 meals about half as often.
+        // 👎 meals never come up as ideas (you can still search for them).
         val all = bundle.recipes.filter {
-            !it.imported && !Logic.isDessert(it) && it.id !in st.removed && st.ratings[it.id] != -1 && (st.ratings[it.id] != 2 || Math.random() < 0.5)
+            !it.imported && !Logic.isDessert(it) && !Logic.isRetired(it) && it.id !in st.removed && st.ratings[it.id] != -1
         }
-        var pool = all.filter { it.id !in st.week && it.id !in recent && it.id !in lastShown }
-        if (pool.size < 10) pool = all.filter { it.id !in st.week }
-        // Within each protein, sale meals tend to come first; then take one from each protein in turn.
-        val groups = pool.groupBy { protein(it) }.mapValues { (_, list) ->
-            // Decide each meal's coin flip once, then sort (a sort can't ask a random question twice).
-            list.shuffled().map { r ->
-                // Sale meals and 👍 meals tend to come first.
-                r to (if (Sales.savings(r, st.servings, cache) >= st.saleMin && Math.random() < 0.6) 1 else 0) +
-                    (if (st.ratings[r.id] == 1 && Math.random() < 0.6) 1 else 0)
-            }.sortedByDescending { it.second }.map { it.first }.toMutableList()
+        var eligible = all.filter { it.id !in st.week && it.id !in recent }
+        if (eligible.size < 10) eligible = all.filter { it.id !in st.week }
+        // Start a fresh deck once fewer than 10 unseen meals are left (the set just shown still waits a turn).
+        var unseen = eligible.filter { it.id !in browseSeen && it.id !in lastShown }
+        if (unseen.size < 10) {
+            browseSeen.clear()
+            browseSeen += lastShown
+            unseen = eligible.filter { it.id !in lastShown }.ifEmpty { eligible }
         }
-        val order = groups.keys.shuffled()
-        val picked = mutableListOf<Int>()
+        // A weighted shuffle: sale and 👍 meals tend to come up sooner, 😐 meals later.
+        val deck = unseen.map { r ->
+            var w = 1.0
+            if (Sales.savings(r, st.servings, cache) >= st.saleMin) w *= 2.0
+            when (st.ratings[r.id]) { 1 -> w *= 2.0; 2 -> w *= 0.4 }
+            r to Math.pow(Math.random(), 1.0 / w)
+        }.sortedByDescending { it.second }.map { it.first }
+        val picked = mutableListOf<Recipe>()
         // Up to 3 meals that use up this week's leftovers go in first.
-        pool.filter { usesLeftovers(st, it) }.shuffled().take(3).forEach { r ->
-            picked += r.id
-            groups.values.forEach { g -> g.removeAll { it.id == r.id } }
+        deck.filter { usesLeftovers(st, it) }.take(3).forEach { picked += it }
+        // Then deal in deck order, at most 4 of any one protein, so each set is a mix.
+        for (r in deck) {
+            if (picked.size >= 10) break
+            if (r !in picked && picked.count { protein(it) == protein(r) } < 4) picked += r
         }
-        while (picked.size < 10 && groups.values.any { it.isNotEmpty() }) {
-            for (k in order) {
-                val g = groups.getValue(k)
-                if (g.isNotEmpty() && picked.size < 10) picked += g.removeAt(0).id
-            }
+        for (r in deck) {
+            if (picked.size >= 10) break
+            if (r !in picked) picked += r
         }
-        return picked.shuffled()
+        browseSeen += picked.map { it.id }
+        saveSeen()
+        return picked.map { it.id }.shuffled()
     }
 
     // ---- Sales -------------------------------------------------------------------
