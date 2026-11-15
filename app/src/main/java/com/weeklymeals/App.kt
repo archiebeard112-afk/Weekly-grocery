@@ -950,7 +950,7 @@ private fun BrowseScreen(
             // All matches, scrolling.
             val q = query.trim().lowercase()
             val matches = all.values.filter { r ->
-                r.id !in st.removed && !Logic.isDessert(r) &&
+                r.id !in st.removed && !Logic.isDessert(r) && !Logic.isRetired(r) &&
                 matchesFilters(r, q, filters, { vm.mealCalories(st, it) }, { vm.isBudget(st, it) }, { vm.usesLeftovers(st, it) }) && (!saleOnly || Sales.savings(r, st.servings, cache) >= st.saleMin)
             }.let { list ->
                 // Uses-leftovers filter: the meals that save you the most come first.
