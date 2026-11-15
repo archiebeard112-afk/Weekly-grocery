@@ -415,7 +415,7 @@ private val EMOJI_GROUPS = listOf(
 
 /** The Emoji box: tap it for a grid to pick from (or type your own at the bottom). */
 @Composable
-private fun EmojiPicker(emoji: String, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
+internal fun EmojiPicker(emoji: String, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     var typed by remember { mutableStateOf("") }
     Box(modifier) {

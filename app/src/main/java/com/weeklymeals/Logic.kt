@@ -95,6 +95,10 @@ object Logic {
         return listOf(fmt(s.q), s.u, s.name).filter { it.isNotBlank() }.joinToString(" ")
     }
 
+    /** An ingredient as one line you can edit ("1½ cup flour"); read back with [parseIngredient]. */
+    fun ingLine(i: Ingredient): String =
+        listOf(if (i.q > 0) fmt(i.q) else "", i.u, i.name).filter { it.isNotBlank() }.joinToString(" ")
+
     fun itemLabel(i: ShopItem): String =
         listOf(fmt(i.qty), i.unit, i.name).filter { it.isNotBlank() }.joinToString(" ")
 

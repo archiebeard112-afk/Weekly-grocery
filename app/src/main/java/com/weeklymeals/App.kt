@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Button
@@ -819,8 +820,15 @@ private fun RecipeDetails(
     Steps(r.steps, ctl, leftNames)
     if (side != null) {
         Heading("Side: ${side.label}")
-        Spacer(Modifier.padding(2.dp))
-        Steps(side.steps, ctl?.copy(prefix = ctl.prefix + "side", title = side.label.substringAfter(" ")), leftNames)
+        if (isStoreSide(side)) {
+            Text(
+                "🛒 Store-bought: ${storeSideTitle(side)}. Nothing to cook.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Spacer(Modifier.padding(2.dp))
+            Steps(side.steps, ctl?.copy(prefix = ctl.prefix + "side", title = side.label.substringAfter(" ")), leftNames)
+        }
     }
 }
 
@@ -1360,7 +1368,7 @@ private fun SideResults(vm: MealsViewModel, st: UserState, query: String, gridSt
     }
     lookAt?.let { sd ->
         SidePreview(
-            st, sd, onUse = { size -> lookAt = null; addSize = size; adding = sd }, onBack = { lookAt = null },
+            vm, st, sd, onUse = { size -> lookAt = null; addSize = size; adding = sd }, onBack = { lookAt = null },
             fav = if (vm.isBuiltInSide(sd.key)) vm.isFavSide(st, sd.key) else null,
             onFav = { if (vm.isFavSide(st, sd.key)) vm.removeFavSide(sd.key) else vm.addFavSide(sd.key) },
         )
@@ -1532,6 +1540,17 @@ private fun RecipeScreen(
     if (r == null) { onBack(); return }
     val side = st.sides[id]?.let { vm.sideMap[it] }
     val inWeek = id in st.week
+    var editing by remember(id) { mutableStateOf(false) }
+    if (editing) {
+        vm.rawRecipe(st, id)?.let { raw ->
+            RecipeEditor(
+                heading = "Edit recipe", start = draftOf(raw), showServes = true,
+                onReset = if (vm.isEditedBuiltIn(st, id)) ({ vm.resetRecipe(id) }) else null,
+                onSave = { d -> vm.saveRecipeEdit(id, d.name, d.emoji, d.serves, d.ingredients, d.steps) },
+                onClose = { editing = false },
+            )
+        }
+    }
     Scaffold(
         modifier = Modifier.swipeBack(onBack),
         topBar = {
@@ -1540,6 +1559,7 @@ private fun RecipeScreen(
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
                 actions = {
                     val ctx = LocalContext.current
+                    IconButton(onClick = { editing = true }) { Icon(Icons.Filled.Edit, "Edit recipe") }
                     IconButton(onClick = { shareRecipe(ctx, r, st.servings, if (inWeek) side else null, st.sideSize[id]) }) {
                         Icon(Icons.Filled.Share, "Share recipe")
                     }
@@ -1951,7 +1971,7 @@ private fun FavoritesScreen(
         }
     }
     }
-    lookAt?.let { sd -> SidePreview(st, sd, onUse = { size -> lookAt = null; addSize = size; adding = sd }, onBack = { lookAt = null }) }
+    lookAt?.let { sd -> SidePreview(vm, st, sd, onUse = { size -> lookAt = null; addSize = size; adding = sd }, onBack = { lookAt = null }) }
     adding?.let { sd -> SideToDinnerDialog(vm, st, sd, addSize) { adding = null } }
     unfav?.let { sd ->
         val mine = !vm.isBuiltInSide(sd.key)

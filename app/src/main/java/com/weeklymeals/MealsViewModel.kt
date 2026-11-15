@@ -89,20 +89,79 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UserState> =
         store.flow.stateIn(viewModelScope, SharingStarted.Eagerly, UserState())
 
-    private var sideCache: Triple<Map<Int, List<StoreSide>>, List<Side>, Map<String, Side>>? = null
+    private var sideCache: Pair<List<Any>, Map<String, Side>>? = null
+    private var recipeSideCache: Pair<List<Any>, Map<String, Side>>? = null
 
-    /** All sides: built-in ones, online sides you added ("web:…"), and store-bought ones ("buy:<upc>"). */
+    /** Every side's recipe, with your edits: built-in ones, then ones you added (online or typed in). */
+    private fun sideRecipes(st: UserState): Map<String, Side> {
+        val deps = listOf<Any>(st.customSides, st.sideEdits)
+        recipeSideCache?.let { (d, v) -> if (d.indices.all { d[it] === deps[it] }) return v }
+        val m = baseSides.mapValues { (k, v) -> st.sideEdits[k] ?: v } + st.customSides.associateBy { it.key }
+        recipeSideCache = deps to m
+        return m
+    }
+
+    /**
+     * All sides as you'll shop and cook them: built-in ones, online sides you added ("web:…"), and
+     * store-bought ones ("buy:<upc>"). A side you buy instead of making has no ingredients or steps
+     * here (see [Side.buy]); [sideRecipe] still has its recipe.
+     */
     val sideMap: Map<String, Side>
         get() {
             val st = state.value
-            val ss = st.storeSides
-            val cs = st.customSides
-            sideCache?.let { (a, b, v) -> if (a === ss && b === cs) return v }
-            val m = baseSides + cs.associateBy { it.key } +
-                ss.values.flatten().associate { storeSideKey(it.upc) to storeSide(it) }
-            sideCache = Triple(ss, cs, m)
+            val deps = listOf<Any>(st.storeSides, st.customSides, st.sideEdits, st.sideBuy)
+            sideCache?.let { (d, v) -> if (d.indices.all { d[it] === deps[it] }) return v }
+            val m = sideRecipes(st).mapValues { (k, sd) -> st.sideBuy[k]?.let { boughtSide(sd, it) } ?: sd } +
+                st.storeSides.values.flatten().associate { storeSideKey(it.upc) to storeSide(it) }
+            sideCache = deps to m
             return m
         }
+
+    /** A side's full recipe (with your edits), even when you buy it instead of making it. */
+    fun sideRecipe(st: UserState, key: String): Side? = sideRecipes(st)[key] ?: sideMap[key]
+
+    /** Buy this side at King Soopers instead of making it (every dish it goes with). */
+    fun setSideBuy(key: String, p: Product) {
+        val title = p.title.trim()
+        if (title.isEmpty()) return
+        val term = Logic.searchTerm(title)
+        products.update { it + (term to CartLine(term = term, search = title, options = listOf(p), selected = 0, quantity = 1)) }
+        edit { s ->
+            s.copy(
+                sideBuy = s.sideBuy + (key to StoreSide(p.upc, title)),
+                kroger = s.kroger.copy(choices = s.kroger.choices + ("term:$term" to Choice(p.upc, title, title))),
+            )
+        }
+        suggestions.value = emptyList()
+        message.value = "You'll buy $title instead"
+    }
+
+    /** Back to making this side from its recipe. */
+    fun makeSideInstead(key: String) = edit { it.copy(sideBuy = it.sideBuy - key) }
+
+    fun isSideEdited(st: UserState, key: String) = key in st.sideEdits
+
+    /** Saves your changes to a side. Built-in sides keep their original (Reset brings it back). */
+    fun saveSideEdit(key: String, name: String, emoji: String, ingText: String, stepText: String): Boolean {
+        val st = state.value
+        val orig = sideRecipes(st)[key] ?: return false
+        val ings = editedIngredients(ingText, orig.ingredients)
+        val steps = parseSteps(stepText)
+        if (name.isBlank() || ings.isEmpty() || steps.isEmpty()) return false
+        val changed = orig.copy(label = "${emoji.ifBlank { "🍽️" }} ${name.trim()}", ingredients = ings, steps = steps)
+        edit { s ->
+            when {
+                s.customSides.any { it.key == key } -> s.copy(customSides = s.customSides.map { if (it.key == key) changed else it })
+                key in baseSides -> s.copy(sideEdits = if (changed == baseSides[key]) s.sideEdits - key else s.sideEdits + (key to changed))
+                else -> s
+            }
+        }
+        message.value = "Saved ${name.trim()}"
+        return true
+    }
+
+    /** Puts a built-in side back the way it came. */
+    fun resetSide(key: String) = edit { it.copy(sideEdits = it.sideEdits - key) }
 
     /** Recommended sides for a recipe: its usual sides, then ones you've used with it. */
     fun sideOptions(st: UserState, r: Recipe): List<Side> {
@@ -115,7 +174,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Every side you can cook (built-in and online ones you've added), A to Z. */
     fun allSides(st: UserState): List<Side> =
-        (baseSides.values.filter { it.key !in st.hiddenSides } + st.customSides).sortedBy { it.label.substringAfter(" ").lowercase() }
+        sideRecipes(st).values.filter { it.key !in st.hiddenSides }.sortedBy { it.label.substringAfter(" ").lowercase() }
 
     /** Adds the meal with this side (or changes its side), and remembers it for the recipe. */
     /** A meal that was just added to the week: the app jumps to Week and highlights it. */
@@ -176,6 +235,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         s.copy(
             customSides = s.customSides.filterNot { it.key == key },
             favSides = s.favSides - key,
+            sideBuy = s.sideBuy - key,
             storeSides = s.storeSides.mapValues { (_, l) -> l.filterNot { storeSideKey(it.upc) == key } },
             recipeSides = s.recipeSides.mapValues { (_, l) -> l - key },
         )
@@ -221,7 +281,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Sides in Favorites: the ones you added (always) and built-in ones you hearted. */
     fun favoriteSides(st: UserState): List<Side> =
-        (st.customSides + baseSides.values.filter { it.key in st.favSides && it.key !in st.hiddenSides })
+        sideRecipes(st).values.filter { sd -> st.customSides.any { it.key == sd.key } || (sd.key in st.favSides && sd.key !in st.hiddenSides) }
             .sortedBy { it.label.substringAfter(" ").lowercase() }
 
     fun isFavSide(st: UserState, key: String) = key in st.favSides || st.customSides.any { it.key == key }
@@ -1248,7 +1308,7 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 favs = s.favs - r.id,
                 storeSides = s.storeSides - r.id,
             )
-            if (s.custom.any { it.id == r.id }) base.copy(
+            if (r.id !in builtInIds) base.copy(
                 custom = s.custom.filterNot { it.id == r.id },
                 deletedNames = s.deletedNames + (r.id to "${r.emoji} ${r.name}"),
             ) else base.copy(removed = s.removed + r.id)
@@ -1277,6 +1337,56 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
                 })
             }
         }
+    }
+
+    private val builtIns: Map<Int, Recipe> by lazy { bundle.recipes.associateBy { it.id } }
+    private val builtInIds: Set<Int> get() = builtIns.keys
+
+    /** Ingredient lines from the editor: lines you didn't change keep their exact amounts. */
+    private fun editedIngredients(text: String, before: List<Ingredient>): List<Ingredient> {
+        val known = before.associateBy { Logic.ingLine(it) }
+        return text.lines().map { it.trim() }.filter { it.isNotEmpty() }.mapNotNull { known[it] ?: Logic.parseIngredient(it) }
+    }
+
+    private fun parseSteps(text: String) =
+        text.lines().map { it.trim().replace(Regex("^\\d+[.)]\\s*"), "") }.filter { it.isNotEmpty() }
+
+    /** A recipe as written (your edited copy if you changed it), before any app adjustments. */
+    fun rawRecipe(st: UserState, id: Int): Recipe? = st.custom.lastOrNull { it.id == id } ?: builtIns[id]
+
+    /** True for a built-in recipe you've changed (Reset to original brings back the old one). */
+    fun isEditedBuiltIn(st: UserState, id: Int) = id in builtInIds && st.custom.any { it.id == id }
+
+    /** Saves your changes to a recipe. Built-in recipes keep their original for Reset. */
+    fun saveRecipeEdit(id: Int, name: String, emoji: String, base: Int, ingText: String, stepText: String): Boolean {
+        val orig = rawRecipe(state.value, id) ?: return false
+        val ings = editedIngredients(ingText, orig.ingredients)
+        val steps = parseSteps(stepText)
+        if (name.isBlank() || ings.isEmpty() || steps.isEmpty()) return false
+        val r = orig.copy(
+            name = name.trim(), emoji = emoji.ifBlank { "🍽️" }, base = base.coerceAtLeast(1),
+            ingredients = ings, steps = steps,
+            // The site's calorie count no longer fits once the ingredients change: estimate instead.
+            calories = if (ings == orig.ingredients && base == orig.base) orig.calories else null,
+        )
+        edit { s ->
+            when {
+                s.custom.any { it.id == id } ->
+                    if (builtIns[id] == r) s.copy(custom = s.custom.filterNot { it.id == id })
+                    else s.copy(custom = s.custom.map { if (it.id == id) r else it })
+                r == builtIns[id] -> s
+                else -> s.copy(custom = s.custom + r)
+            }
+        }
+        message.value = "Saved ${r.name}"
+        return true
+    }
+
+    /** Puts a built-in recipe back the way it came. */
+    fun resetRecipe(id: Int) {
+        if (id !in builtInIds) return
+        edit { s -> s.copy(custom = s.custom.filterNot { it.id == id }) }
+        message.value = "Back to the original recipe"
     }
 
     /** Saves a recipe you typed in or imported from a link: [kind] is "main", "side" or "dessert". */
@@ -1324,13 +1434,11 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
             } +
             st.extraItems.map { n -> ShopItem("extra:${n.lowercase()}", n, "", 1.0, EXTRAS) } +
             // Store-bought sides: one of the product per meal it goes with.
-            st.week.mapNotNull { id -> st.sides[id]?.takeIf { it.startsWith("buy:") } }
-                .groupingBy { it }.eachCount()
-                .mapNotNull { (key, n) ->
-                    sideMap[key]?.let { sd ->
-                        val title = storeSideTitle(sd)
-                        ShopItem("side:${key.removePrefix("buy:")}", title, "", n.toDouble(), Logic.aisle(title))
-                    }
+            st.week.mapNotNull { id -> st.sides[id]?.let { sideMap[it] }?.takeIf { isStoreSide(it) } }
+                .groupBy { storeSideUpc(it) }
+                .map { (upc, l) ->
+                    val title = storeSideTitle(l.first())
+                    ShopItem("side:$upc", title, "", l.size.toDouble(), Logic.aisle(title))
                 } +
             // Store-bought meals (frozen pizza on Wednesday): one of the product per day it's planned.
             st.storeMeals.groupBy { it.upc }.map { (upc, list) ->
@@ -1345,8 +1453,8 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
         for (id in st.week) {
             val r = all[id] ?: continue
             r.ingredients.forEach { from.getOrPut("${it.name}|${it.u}".lowercase()) { mutableSetOf() } += r.name }
-            st.sides[id]?.takeIf { it.startsWith("buy:") }?.let { key ->
-                from.getOrPut("side:${key.removePrefix("buy:")}") { mutableSetOf() } += "for ${r.name}"
+            st.sides[id]?.let { sideMap[it] }?.takeIf { isStoreSide(it) }?.let { sd ->
+                from.getOrPut("side:${storeSideUpc(sd)}") { mutableSetOf() } += "for ${r.name}"
             }
             st.sides[id]?.let { sideMap[it] }?.let { sd ->
                 sd.ingredients.forEach { from.getOrPut("${it.name}|${it.u}".lowercase()) { mutableSetOf() } += sd.label.substringAfter(" ") }
@@ -2330,8 +2438,13 @@ class MealsViewModel(app: Application) : AndroidViewModel(app) {
 fun storeSideKey(upc: String) = "buy:$upc"
 
 /** A King Soopers product as a side: no ingredients or steps; it's bought ready to go. */
-fun storeSide(s: StoreSide) = Side(storeSideKey(s.upc), "🛒 ${s.title}", emptyList(), emptyList())
+fun storeSide(s: StoreSide) = Side(storeSideKey(s.upc), "🛒 ${s.title}", emptyList(), emptyList(), buy = s)
 
-fun storeSideTitle(sd: Side) = sd.label.removePrefix("🛒 ")
+/** A side with a recipe that you buy instead (frozen garlic bread): nothing to cook or shop for but the product. */
+fun boughtSide(sd: Side, p: StoreSide) = sd.copy(ingredients = emptyList(), steps = emptyList(), buy = p)
 
-fun isStoreSide(sd: Side) = sd.key.startsWith("buy:")
+fun storeSideTitle(sd: Side) = sd.buy?.title ?: sd.label.removePrefix("🛒 ")
+
+fun storeSideUpc(sd: Side) = sd.buy?.upc ?: sd.key.removePrefix("buy:")
+
+fun isStoreSide(sd: Side) = sd.key.startsWith("buy:") || sd.buy != null
