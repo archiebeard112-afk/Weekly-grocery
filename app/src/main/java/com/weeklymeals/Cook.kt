@@ -1,28 +1,11 @@
 package com.weeklymeals
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -336,8 +319,6 @@ fun CookScreen(
         onDispose { view.keepScreenOn = false }
     }
     BackHandler { onClose() }
-    var showTechniques by remember { mutableStateOf(false) }
-    if (showTechniques) TechniquesMenu { showTechniques = false }
 
     Scaffold(
         topBar = {
@@ -345,10 +326,6 @@ fun CookScreen(
                 title = { Text(r.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Exit cooking mode") } },
             )
-        },
-        // Chef's hat bubble that opens every how-to clip.
-        floatingActionButton = {
-            TechniquesBubble { showTechniques = true }
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
@@ -441,7 +418,6 @@ fun CookScreen(
                         RatingChoices(null, ::finish)
                     }
                 }
-                Spacer(Modifier.height(96.dp)) // room for the Techniques bubble
             }
         }
     }
@@ -649,36 +625,5 @@ private fun shareForStep(vm: MealsViewModel, st: UserState, id: Int, text: Strin
     } else {
         val from = sh.meals.first().let { Shares.mealLabel(st, it, all[it]?.name ?: "").substringBefore(" ·") }
         "Use the $amount ${sh.term} saved from $from"
-    }
-}
-
-
-/**
- * The Techniques bubble: drawn like the cook bubble (dark circle, grey ring) with a lime
- * chef's hat. It sinks a little while pressed.
- */
-@Composable
-private fun TechniquesBubble(onClick: () -> Unit) {
-    val press = remember { MutableInteractionSource() }
-    val pressed by press.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.92f else 1f, label = "hatPress")
-    Box(
-        Modifier.size(64.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(10.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
-            .clip(CircleShape)
-            .background(Look.Card)
-            .drawBehind {
-                drawCircle(
-                    color = Color(0xFF2E332C),
-                    radius = size.minDimension * 25f / 60f,
-                    style = Stroke(width = size.minDimension * 0.05f),
-                )
-            }
-            .clickable(press, LocalIndication.current, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = "Cooking techniques" },
-        contentAlignment = Alignment.Center,
-    ) {
-        Image(painterResource(R.drawable.ic_chef_hat), null, Modifier.fillMaxSize())
     }
 }
