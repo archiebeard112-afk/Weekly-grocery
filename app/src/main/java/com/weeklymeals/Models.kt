@@ -42,6 +42,8 @@ data class Side(
     val ratingCount: Int? = null,
     val countLabel: String = "ratings",
     val reviews: List<Review> = emptyList(),
+    /** Set when you buy this side at King Soopers instead of making it (the recipe is kept). */
+    val buy: StoreSide? = null,
 )
 
 @Serializable
@@ -124,6 +126,10 @@ data class UserState(
     val sales: SalesCache = SalesCache(),
     /** Store-bought sides you've picked for each recipe (offered again next time). */
     val storeSides: Map<Int, List<StoreSide>> = emptyMap(),
+    /** Your edited versions of built-in sides, by side key. */
+    val sideEdits: Map<String, Side> = emptyMap(),
+    /** Sides you buy instead of making (e.g. frozen garlic bread): side key -> the product. */
+    val sideBuy: Map<String, StoreSide> = emptyMap(),
     /** Spoonacular API key, for searching recipes online. */
     val spoonKey: String = "",
     /** Online recipe search: "spoonacular", "allrecipes", "mealdb", "off", or "" (automatic). */

@@ -3,6 +3,7 @@ package com.weeklymeals
 import androidx.compose.material.icons.filled.Check
 
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 
@@ -77,7 +78,7 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
     // One row per side: tap to preview, ✓ to add right away; in Edit mode, ✕ to remove.
     @Composable
     fun item(sd: Side) = SideRow(
-        sd.label, editing = editing,
+        if (sd.key in st.sideBuy) "${sd.label} · 🛒 bought" else sd.label, editing = editing,
         onHold = { held = sd },
         onQuick = { pick(sd.key) },
         onEdit = { held = sd },
@@ -86,7 +87,7 @@ internal fun SidePicker(vm: MealsViewModel, st: UserState, r: Recipe, onOnlineSi
     preview?.let { sd ->
         val fav = vm.isFavSide(st, sd.key)
         SidePreview(
-            st, sd, onUse = { size -> vm.chooseSide(id, sd.key, size); close() }, onBack = { preview = null },
+            vm, st, sd, onUse = { size -> vm.chooseSide(id, sd.key, size); close() }, onBack = { preview = null },
             // Sides you added are always in Favorites; built-in ones get a ♥.
             fav = if (vm.isBuiltInSide(sd.key)) fav else null,
             onFav = { if (fav) vm.removeFavSide(sd.key) else vm.addFavSide(sd.key) },
@@ -258,15 +259,38 @@ internal fun sideServesText(serv: Int, size: Int?): String = Logic.fmt(Logic.sid
  */
 @Composable
 internal fun SidePreview(
-    st: UserState, sd: Side, onUse: ((Int) -> Unit)?, onBack: () -> Unit,
+    vm: MealsViewModel, st: UserState, shown: Side, onUse: ((Int) -> Unit)?, onBack: () -> Unit,
     fav: Boolean? = null, onFav: () -> Unit = {},
 ) {
+    // Always the full recipe, even for a side you buy instead of making.
+    val sd = vm.sideRecipe(st, shown.key) ?: shown
+    val bought = st.sideBuy[sd.key]
     var size by remember(sd.key) { mutableIntStateOf(Logic.SIDE_NORMAL) }
+    var editing by remember(sd.key) { mutableStateOf(false) }
+    var buying by remember(sd.key) { mutableStateOf(false) }
+    if (editing) {
+        val builtIn = vm.isBuiltInSide(sd.key)
+        RecipeEditor(
+            heading = "Edit side", start = draftOf(sd), showServes = false,
+            note = "Amounts are for 4 servings.",
+            onReset = if (builtIn && vm.isSideEdited(st, sd.key)) ({ vm.resetSide(sd.key) }) else null,
+            onSave = { d -> vm.saveSideEdit(sd.key, d.name, d.emoji, d.ingredients, d.steps) },
+            onClose = { editing = false },
+        )
+        return
+    }
+    if (buying) {
+        BuyInsteadPicker(vm, st, sd.key, plainLabel(sd.label)) { buying = false }
+        return
+    }
     AppDialog(
         onDismiss = onBack,
         eyebrow = "Side",
         title = plainLabel(sd.label),
         titleEnd = {
+            if (!sd.key.startsWith("buy:")) IconButton(onClick = { editing = true }) {
+                Icon(Icons.Filled.Edit, "Edit side", tint = MaterialTheme.colorScheme.primary)
+            }
             if (fav != null) IconButton(onClick = onFav) {
                 Icon(
                     if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
@@ -289,10 +313,18 @@ internal fun SidePreview(
                     )
                 }
                 sd.rating?.let { RatingLine(it, sd.ratingCount, sd.countLabel, 14.dp) }
-                if (isStoreSide(sd)) {
+                if (sd.key.startsWith("buy:")) {
                     Note("Store-bought from King Soopers. Nothing to cook.")
                 } else {
-                    if (onUse != null) SideSizeChoice(size, { size = it }, Modifier.padding(top = 8.dp))
+                    if (bought != null) {
+                        BoughtNote(bought.title) { vm.makeSideInstead(sd.key) }
+                        Note("Your list gets this product instead of the ingredients below.")
+                    } else {
+                        TextButton(onClick = { buying = true }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp)) {
+                            Text("🛒 Buy at King Soopers instead")
+                        }
+                        if (onUse != null) SideSizeChoice(size, { size = it }, Modifier.padding(top = 8.dp))
+                    }
                     GroupLabel("Ingredients (for ${sideServesText(st.servings, size)})")
                     sd.ingredients.forEach {
                         Text("• " + Logic.ingText(it, Logic.sideServ(st.servings, size), Logic.SIDE_BASE), style = MaterialTheme.typography.bodyMedium)
